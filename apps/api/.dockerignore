@@ -1,0 +1,13 @@
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+.env
+.env.*
+*.log
+.pytest_cache/
+.ruff_cache/
+htmlcov/
+migrations/
+README.md

@@ -1,0 +1,14 @@
+{
+  "name": "neighborhoodiq",
+  "private": true,
+  "scripts": {
+    "dev:api": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/run-api.ps1",
+    "dev:web": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/run-web.ps1",
+    "dev": "concurrently -n api,web -c cyan,magenta \"npm run dev:api\" \"npm run dev:web\"",
+    "dev:docker": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/start.ps1 docker",
+    "dev:install": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/start.ps1 local -Install"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.2"
+  }
+}
