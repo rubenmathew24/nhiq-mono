@@ -10,9 +10,9 @@ import {
 } from "lucide-react";
 
 export const navLinks = [
-  { href: "#scores", label: "Scores" },
-  { href: "#ai", label: "AI Insights" },
-  { href: "#pricing", label: "Pricing" },
+  { href: "/#scores", label: "Scores" },
+  { href: "/#ai", label: "AI Insights" },
+  { href: "/#pricing", label: "Pricing" },
 ] as const;
 
 export const heroContent = {

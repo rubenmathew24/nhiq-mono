@@ -2,6 +2,17 @@ from datetime import datetime, timezone
 
 from app.schemas.score import Factor, NeighborhoodReport, ScoreDimension
 
+# Stable demo lookups for TEMP_dev_lookups.jsonl seed rows (no Redis required).
+DEMO_LOOKUPS: dict[str, dict] = {
+    "demo-address-001": {
+        "address_raw": "123 Main St, Austin, TX 78701",
+        "address_normalized": "123 Main St, Austin, TX 78701",
+        "latitude": 30.2672,
+        "longitude": -97.7431,
+        "geoid": "48453001100",
+    },
+}
+
 
 def _dimension(
     score: float,

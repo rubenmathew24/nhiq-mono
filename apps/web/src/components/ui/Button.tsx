@@ -9,6 +9,7 @@ interface ButtonProps extends React.ComponentPropsWithoutRef<"button"> {
   href?: string;
   className?: string;
   children: React.ReactNode;
+  type?: "button" | "submit" | "reset";
 }
 
 const variantStyles: Record<ButtonVariant, string> = {

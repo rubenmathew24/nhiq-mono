@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { ArrowLeft } from "lucide-react";
 import Header from "@/components/layout/Header";
 import Footer from "@/components/layout/Footer";
 import MapView from "@/components/report/MapView";
@@ -7,6 +8,7 @@ import ReportAiSummary from "@/components/report/ReportAiSummary";
 import ScoreBreakdown from "@/components/report/ScoreBreakdown";
 import ScoreSummary from "@/components/report/ScoreSummary";
 import { ApiError, apiFetch } from "@/lib/api";
+import { auth } from "@/lib/auth";
 import type { NeighborhoodReport } from "@/types/api";
 
 interface ReportPageProps {
@@ -15,6 +17,8 @@ interface ReportPageProps {
 
 export default async function ReportPage({ params }: ReportPageProps) {
   const { addressId } = await params;
+  const session = await auth();
+  const isSignedIn = !!session?.user;
 
   let report: NeighborhoodReport;
   try {
@@ -38,12 +42,23 @@ export default async function ReportPage({ params }: ReportPageProps) {
               ? err.message
               : "The scoring service is temporarily unavailable."}
           </p>
-          <Link
-            href="/"
-            className="inline-flex text-sm font-semibold text-primary hover:opacity-90"
-          >
-            Back to search
-          </Link>
+          <div className="flex flex-wrap items-center justify-center gap-4">
+            {isSignedIn && (
+              <Link
+                href="/dashboard"
+                className="inline-flex items-center gap-1.5 text-sm font-semibold text-primary hover:opacity-90"
+              >
+                <ArrowLeft className="w-4 h-4" aria-hidden="true" />
+                Back to dashboard
+              </Link>
+            )}
+            <Link
+              href="/"
+              className="inline-flex text-sm font-semibold text-muted-foreground hover:text-foreground"
+            >
+              Back to search
+            </Link>
+          </div>
         </main>
         <Footer />
       </div>
@@ -54,6 +69,16 @@ export default async function ReportPage({ params }: ReportPageProps) {
     <div className="min-h-screen bg-background text-foreground font-sans">
       <Header />
       <main className="max-w-5xl mx-auto px-6 pt-28 pb-16 space-y-8">
+        {isSignedIn && (
+          <Link
+            href="/dashboard"
+            className="inline-flex items-center gap-1.5 text-sm font-semibold text-muted-foreground hover:text-foreground transition-colors"
+          >
+            <ArrowLeft className="w-4 h-4" aria-hidden="true" />
+            Back to dashboard
+          </Link>
+        )}
+
         <header className="space-y-1">
           <p className="text-xs uppercase tracking-wider font-semibold text-muted-foreground">
             Neighborhood report

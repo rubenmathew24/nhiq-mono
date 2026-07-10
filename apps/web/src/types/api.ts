@@ -1,5 +1,29 @@
 export type UserTier = "free" | "buyer" | "buyer_pro" | "agent" | "brokerage";
 
+export interface User {
+  id: string;
+  email: string;
+  full_name: string;
+  tier: UserTier;
+}
+
+export interface TokenResponse {
+  access_token: string;
+  token_type: string;
+  user: User;
+}
+
+export interface SavedLookup {
+  user_id: string;
+  address_id: string;
+  address_normalized: string;
+  looked_up_at: string;
+}
+
+export interface LookupListResponse {
+  items: SavedLookup[];
+}
+
 export interface Factor {
   name: string;
   value: string;

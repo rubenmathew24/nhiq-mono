@@ -1,9 +1,14 @@
 import Link from "next/link";
 import { MapPin } from "lucide-react";
+import { auth } from "@/lib/auth";
 import { navLinks } from "@/content/landing";
 import { ButtonWithArrow } from "@/components/ui/Button";
+import UserMenu from "@/components/layout/UserMenu";
 
-export default function Header() {
+export default async function Header() {
+  const session = await auth();
+  const isSignedIn = !!session?.user;
+
   return (
     <nav className="absolute top-0 inset-x-0 z-30">
       <div className="max-w-7xl mx-auto px-6 h-20 flex items-center justify-between">
@@ -28,9 +33,23 @@ export default function Header() {
           ))}
         </div>
 
-        <ButtonWithArrow href="#pricing" className="px-5 py-2.5">
-          Get started
-        </ButtonWithArrow>
+        <div className="flex items-center gap-3">
+          {isSignedIn ? (
+            <UserMenu />
+          ) : (
+            <>
+              <Link
+                href="/login"
+                className="hidden sm:block text-sm font-medium text-foreground/70 hover:text-foreground transition-colors"
+              >
+                Sign in
+              </Link>
+              <ButtonWithArrow href="/register" className="px-5 py-2.5">
+                Get started
+              </ButtonWithArrow>
+            </>
+          )}
+        </div>
       </div>
     </nav>
   );

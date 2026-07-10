@@ -1,8 +1,11 @@
 import Link from "next/link";
 import { MapPin } from "lucide-react";
 import { footerContent, navLinks } from "@/content/landing";
+import { auth } from "@/lib/auth";
 
-export default function Footer() {
+export default async function Footer() {
+  const session = await auth();
+  const isSignedIn = !!session?.user;
   const year = new Date().getFullYear();
 
   return (
@@ -33,9 +36,11 @@ export default function Footer() {
                 {link.label}
               </a>
             ))}
-            <Link href="#pricing" className="hover:text-foreground transition-colors">
-              Sign in
-            </Link>
+            {!isSignedIn && (
+              <Link href="/login" className="hover:text-foreground transition-colors">
+                Sign in
+              </Link>
+            )}
           </div>
         </div>
 

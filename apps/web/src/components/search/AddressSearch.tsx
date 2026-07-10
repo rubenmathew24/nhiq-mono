@@ -17,57 +17,10 @@ export default function AddressSearch() {
     setLoading(true);
     setError(null);
 
-    const lookupPath = `/api/v1/lookup?address=${encodeURIComponent(address)}`;
-    // #region agent log
-    fetch("http://127.0.0.1:7840/ingest/20a8000b-d31a-4591-ae7d-d359808c8413", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "X-Debug-Session-Id": "9a6fa9",
-      },
-      body: JSON.stringify({
-        sessionId: "9a6fa9",
-        runId: "pre-fix",
-        hypothesisId: "A,D",
-        location: "AddressSearch.tsx:handleSearch:start",
-        message: "lookup request starting",
-        data: {
-          apiBase: process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000",
-          lookupPath,
-          addressLength: address.trim().length,
-        },
-        timestamp: Date.now(),
-      }),
-    }).catch(() => {});
-    // #endregion
-
     try {
-      const result = await apiFetch<LookupResponse>(lookupPath);
-
-      // #region agent log
-      fetch(
-        "http://127.0.0.1:7840/ingest/20a8000b-d31a-4591-ae7d-d359808c8413",
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "X-Debug-Session-Id": "9a6fa9",
-          },
-          body: JSON.stringify({
-            sessionId: "9a6fa9",
-            runId: "pre-fix",
-            hypothesisId: "A",
-            location: "AddressSearch.tsx:handleSearch:success",
-            message: "lookup succeeded",
-            data: {
-              hasAddressId: Boolean(result.address_id),
-              status: result.status,
-            },
-            timestamp: Date.now(),
-          }),
-        },
-      ).catch(() => {});
-      // #endregion
+      const result = await apiFetch<LookupResponse>(
+        `/api/v1/lookup?address=${encodeURIComponent(address)}`,
+      );
 
       if (result.address_id) {
         router.push(`/report/${result.address_id}`);
@@ -76,33 +29,6 @@ export default function AddressSearch() {
 
       setError("Lookup did not return a report. Please try again.");
     } catch (err) {
-      // #region agent log
-      fetch(
-        "http://127.0.0.1:7840/ingest/20a8000b-d31a-4591-ae7d-d359808c8413",
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "X-Debug-Session-Id": "9a6fa9",
-          },
-          body: JSON.stringify({
-            sessionId: "9a6fa9",
-            runId: "pre-fix",
-            hypothesisId: "A,B,C,D",
-            location: "AddressSearch.tsx:handleSearch:error",
-            message: "lookup failed",
-            data: {
-              isApiError: err instanceof ApiError,
-              status: err instanceof ApiError ? err.status : null,
-              errorMessage:
-                err instanceof Error ? err.message : "unknown error",
-            },
-            timestamp: Date.now(),
-          }),
-        },
-      ).catch(() => {});
-      // #endregion
-
       if (err instanceof ApiError && err.status === 422) {
         setError(
           "We couldn't find that address. Try a full street address in the U.S.",

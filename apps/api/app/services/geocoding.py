@@ -1,36 +1,8 @@
-import json
-import time
-from pathlib import Path
 from urllib.parse import quote
 
 import httpx
 
 from app.core.config import settings
-
-_DEBUG_LOG = Path(__file__).resolve().parents[4] / "debug-9a6fa9.log"
-
-
-def _agent_log(
-    *,
-    hypothesis_id: str,
-    location: str,
-    message: str,
-    data: dict,
-) -> None:
-    try:
-        payload = {
-            "sessionId": "9a6fa9",
-            "runId": "pre-fix",
-            "hypothesisId": hypothesis_id,
-            "location": location,
-            "message": message,
-            "data": data,
-            "timestamp": int(time.time() * 1000),
-        }
-        with _DEBUG_LOG.open("a", encoding="utf-8") as log_file:
-            log_file.write(json.dumps(payload) + "\n")
-    except OSError:
-        pass
 
 
 async def geocode_address(address: str) -> dict:
@@ -39,12 +11,6 @@ async def geocode_address(address: str) -> dict:
     Raises ValueError if address cannot be geocoded.
     """
     if not settings.MAPBOX_TOKEN:
-        _agent_log(
-            hypothesis_id="C",
-            location="geocoding.py:geocode_address:no_token",
-            message="MAPBOX_TOKEN missing",
-            data={},
-        )
         raise ValueError("Mapbox token is not configured")
 
     encoded = quote(address.strip(), safe="")
@@ -63,14 +29,6 @@ async def geocode_address(address: str) -> dict:
         )
         response.raise_for_status()
         data = response.json()
-
-    feature_count = len(data.get("features") or [])
-    _agent_log(
-        hypothesis_id="D",
-        location="geocoding.py:geocode_address:mapbox_response",
-        message="mapbox geocode response",
-        data={"featureCount": feature_count, "statusCode": response.status_code},
-    )
 
     if not data.get("features"):
         raise ValueError(f"Could not geocode address: {address}")

@@ -11,6 +11,7 @@ services:
     ports:
       - "3000:3000"
     environment:
+      API_INTERNAL_URL: http://api:8000
       NEXT_PUBLIC_API_URL: http://localhost:8000
       NEXT_PUBLIC_MAPBOX_TOKEN: ${NEXT_PUBLIC_MAPBOX_TOKEN:-}
       NEXTAUTH_SECRET: ${NEXTAUTH_SECRET:-local-dev-secret-change-me}
