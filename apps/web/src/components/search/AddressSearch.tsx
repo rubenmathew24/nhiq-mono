@@ -2,12 +2,14 @@
 
 import { useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
+import { useSession } from "next-auth/react";
 import { ArrowRight, Search } from "lucide-react";
 import { ApiError, apiFetch } from "@/lib/api";
 import type { LookupResponse } from "@/types/api";
 
 export default function AddressSearch() {
   const router = useRouter();
+  const { data: session } = useSession();
   const [address, setAddress] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -20,6 +22,7 @@ export default function AddressSearch() {
     try {
       const result = await apiFetch<LookupResponse>(
         `/api/v1/lookup?address=${encodeURIComponent(address)}`,
+        { token: session?.accessToken },
       );
 
       if (result.address_id) {
@@ -44,7 +47,7 @@ export default function AddressSearch() {
     } finally {
       setLoading(false);
     }
-  }, [address, router]);
+  }, [address, router, session]);
 
   return (
     <div className="space-y-3">
@@ -78,7 +81,11 @@ export default function AddressSearch() {
           {!loading && <ArrowRight className="w-4 h-4" aria-hidden="true" />}
         </button>
       </form>
-      {error && <p className="text-red-500 text-sm">{error}</p>}
+      {error ? (
+        <p className="text-sm text-destructive" role="alert">
+          {error}
+        </p>
+      ) : null}
     </div>
   );
 }

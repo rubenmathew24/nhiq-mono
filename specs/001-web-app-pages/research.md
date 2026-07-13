@@ -2,54 +2,40 @@
 
 **Feature**: `001-web-app-pages` | **Date**: 2026-07-10
 
-## Decision: Temporary file-backed user store (API-side)
+## Decision: Docker Compose PostgreSQL for auth & saved lookups (supersedes TEMP JSONL)
 
-**Decision**: Implement register/login/`/users/me`/saved-lookups against newline-delimited JSON text files under `apps/api/data/TEMP_*.jsonl`, accessed only through a `UserStore` / `LookupStore` protocol in FastAPI services. Web never reads these files.
+**Decision (updated 2026-07-13)**: Persist register/login/`/users/me`/saved-lookups in the **local Docker Compose** PostGIS database (`db` service). Keep `UserStore` / `LookupStore` protocols; implement `PostgresUserStore` / `PostgresLookupStore`. Web never talks to SQL.
 
-**Rationale**: User confirmed there is no user database yet and asked to spoof with a text-file lookup. Keeping the spoof behind FastAPI preserves Thin Client / Fat API and keeps `/api/v1` contracts stable for the real backend swap.
+**Rationale**: File store was a time-boxed spoof so UI could ship. Before merge to `master`, auth must use the constitution datastore (Postgres). Docker Compose is already the local DB (`DATABASE_URL`, `infra/sql/init.sql`).
 
 **Alternatives considered**:
 
 | Alternative | Why rejected |
 |-------------|--------------|
-| Browser `localStorage` only | Violates constitution (client as source of truth); no shared JWT with API |
-| Skip auth until Postgres | Blocks login/signup/user menu/dashboard acceptance criteria |
-| SQLite “temporary” DB | Heavier than requested; still a second persistence story to delete |
-| Hardcoded single demo user | Cannot exercise register or multi-user dashboard empty/full states |
+| Keep TEMP JSONL through merge | Leaves known debt; constitution expects Postgres as system of record |
+| Azure Flexible Server now | Out of scope for local pre-merge; Azure comes with deploy later |
+| Host-only Postgres (non-Docker) | Extra setup; compose `db` is already wired for the monorepo |
+| SQLite | Not the locked stack |
 
-### File format (illustrative)
+### Table mapping
 
-`TEMP_dev_users.jsonl` — one JSON object per line:
+| API / entity | Postgres |
+|--------------|----------|
+| UserAccount | `users` (`hashed_password` column ↔ app `password_hash`) |
+| SavedLookup list | `saved_lookups` ⋈ `address_lookups` (`address_id` = `address_lookups.id`, label/normalized from address row, `looked_up_at` ← `saved_lookups.created_at`) |
 
-```json
-{"id":"uuid","email":"demo@example.com","full_name":"Demo User","password_hash":"...","tier":"free","created_at":"2026-07-10T00:00:00Z"}
-```
+Ensure `infra/sql/init.sql` matches design docs for columns needed by auth (e.g. `users` fields). Seed optional demo user/saved rows via SQL or a one-shot script — not JSONL.
 
-`TEMP_dev_lookups.jsonl`:
+### TEMP file store removal checklist (MUST complete before merge)
 
-```json
-{"user_id":"uuid","address_id":"…","address_normalized":"…","looked_up_at":"…"}
-```
-
-### Temporary auth store removal checklist
-
-**MUST complete when real backend user tables ship:**
-
-1. Implement SQLAlchemy models + Alembic migrations for `users` and `address_lookups` (per design schema docs).
-2. Replace `FileUserStore` / `FileLookupStore` with Postgres repositories; keep the same service method signatures.
-3. Delete `apps/api/data/TEMP_*` files and `TEMP_REMOVE_WHEN_REAL_AUTH.md`.
-4. Remove any `AUTH_STORE=file` (or equivalent) env flag; default to database only.
+1. Add SQLAlchemy session/engine + ORM models for `users`, `address_lookups`, `saved_lookups` aligned with `infra/sql/init.sql` / `08-database-schema.md`.
+2. Implement Postgres repositories; keep the same `UserStore` / `LookupStore` method signatures used by `AuthService` and users endpoints.
+3. Delete `apps/api/data/TEMP_*` files and `TEMP_REMOVE_WHEN_REAL_AUTH.md`; remove file-store classes.
+4. Default to database only (no `AUTH_STORE=file` flag).
 5. Grep the repo for `TEMP_`, `FileUserStore`, `FileLookupStore`, `dev_users.jsonl` — zero hits remaining.
-6. Update tests to use DB fixtures; delete file-store-specific tests.
-7. Note in the auth PR description: “Removes temporary file auth spoof from 001-web-app-pages.”
-
-Until then, every file-store module MUST start with a comment:
-
-```text
-TEMPORARY: File-backed auth/lookups for UI development only.
-DELETE when Postgres users/address_lookups are implemented.
-See specs/001-web-app-pages/research.md removal checklist.
-```
+6. Replace file-store tests with Postgres fixtures (compose `db` or pytest DB); delete `test_auth_file_store.py` if file-only.
+7. Update quickstart: start `db` (and redis/api/web as needed) via Docker Compose; validate register → row in `users`.
+8. PR note: “Replaces temporary file auth with Docker Postgres for 001-web-app-pages.”
 
 ---
 
@@ -93,9 +79,9 @@ See specs/001-web-app-pages/research.md removal checklist.
 
 ## Decision: Dashboard data source
 
-**Decision**: List lookups from temporary lookup file filtered by `user_id`. Seed 0–2 example rows for demo user; empty state otherwise. Opening a row navigates to existing `/report/[addressId]`. Dashboard embeds the same `AddressSearch` component as splash so users can start a new lookup without leaving the page.
+**Decision (updated 2026-07-13)**: List lookups from Postgres `saved_lookups` joined to `address_lookups`, filtered by `user_id`. Empty set → empty dashboard. Opening a row navigates to `/report/[addressId]` where `addressId` is `address_lookups.id`. Dashboard embeds `AddressSearch` for new lookups.
 
-**Rationale**: No `address_lookups` table yet; same removal path as users file. On-page search matches product expectation that dashboard is the hub for lookups.
+**Rationale**: Same product behavior as the TEMP store, durable in Docker Postgres.
 
 ---
 

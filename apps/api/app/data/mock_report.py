@@ -2,7 +2,7 @@ from datetime import datetime, timezone
 
 from app.schemas.score import Factor, NeighborhoodReport, ScoreDimension
 
-# Stable demo lookups for TEMP_dev_lookups.jsonl seed rows (no Redis required).
+# Stable demo lookups for local report smoke tests when Redis has no entry.
 DEMO_LOOKUPS: dict[str, dict] = {
     "demo-address-001": {
         "address_raw": "123 Main St, Austin, TX 78701",

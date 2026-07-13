@@ -154,6 +154,6 @@ A user can open `/compare` (including from the user menu) and see a clear “Fea
 - Splash (home) and report pages already exist and are the visual source of truth; this feature extends them rather than redesigning them.
 - Authentication is **email and password** (no social/OAuth providers in this feature).
 - **Payment checkout / Stripe** and functional plan upgrades are out of scope; upgrade CTAs are UI placeholders only.
-- **No Postgres user database yet**: auth and saved lookups are backed by a **temporary text/JSONL file store** in the API for this feature only. That store MUST be removed and replaced with the real user/lookup tables when backend auth is implemented (see `research.md` removal checklist).
+- **Auth persistence**: register/login and saved lookups use **Docker Compose PostgreSQL** (`db` service, `DATABASE_URL`). TEMP JSONL file store is removed before merge (see `research.md`). API request/response contracts stay the same; only the repository implementation changes.
 - Agent white-label, PDF export, and brokerage API portals are out of scope.
 - “Keep the styling” means reuse the current design tokens, typography (display + body), header brand treatment, and component patterns already on splash/report — not introduce a second visual system.

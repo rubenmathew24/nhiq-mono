@@ -9,7 +9,11 @@ from app.api.v1.router import api_router
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     print(f"Starting NeighborhoodIQ API — env: {settings.ENVIRONMENT}")
+    # Dispose async engine pool on shutdown (sessions are per-request via get_db).
     yield
+    from app.db.session import engine
+
+    await engine.dispose()
     print("Shutting down")
 
 

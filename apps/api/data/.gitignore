@@ -1,5 +1,3 @@
-# Ignore runtime user/lookup JSONL — may contain hashed credentials
-# TEMP files committed here are example seeds only — no real data
-*.jsonl
-!TEMP_dev_users.jsonl
-!TEMP_dev_lookups.jsonl
+# Local/runtime data directory — no committed auth seeds (use Postgres)
+*
+!.gitignore

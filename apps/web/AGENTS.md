@@ -1,19 +1,12 @@
 # AGENTS.md — Web App (Next.js)
 
-## File-backed auth — TEMPORARY
+## Auth storage
 
-`apps/api/data/TEMP_dev_users.jsonl` and `apps/api/data/TEMP_dev_lookups.jsonl` back
-a **temporary file store** used instead of PostgreSQL while the users table is not yet
-implemented.
+Auth and saved lookups live in **Docker Compose PostgreSQL** (`users`, `saved_lookups`,
+`address_lookups`) via FastAPI repositories. The web app never talks to SQL —
+use Auth.js + `apiFetch` only.
 
-**Do NOT extend this store.** When the real Postgres backend ships:
-
-1. Replace `FileUserStore` / `FileLookupStore` in `apps/api/app/services/`.
-2. Update `AuthService`, auth endpoints, and user endpoints.
-3. Delete `apps/api/tests/test_auth_file_store.py`.
-4. Delete `apps/api/data/TEMP_*` files and `TEMP_REMOVE_WHEN_REAL_AUTH.md`.
-
-See full removal checklist: `specs/001-web-app-pages/research.md`.
+See `specs/001-web-app-pages/research.md` and `quickstart.md`.
 
 ## Key conventions
 

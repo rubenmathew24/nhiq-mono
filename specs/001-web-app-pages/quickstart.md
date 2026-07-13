@@ -1,30 +1,33 @@
 # Quickstart: Web App Pages
 
-**Feature**: `001-web-app-pages` | **Date**: 2026-07-10
+**Feature**: `001-web-app-pages` | **Date**: 2026-07-10 | **Updated**: 2026-07-13
 
 Validation guide after implementation. See [contracts/auth-api.md](./contracts/auth-api.md) and [data-model.md](./data-model.md) for shapes.
 
 ## Prerequisites
 
-- Docker Compose (or local) API + web running per repo README / compose file
-- Env: `SECRET_KEY` (or JWT secret), `AUTH_SECRET` / `NEXTAUTH_SECRET`, `NEXTAUTH_URL`, `NEXT_PUBLIC_API_URL`
-- Confirm `apps/api/data/TEMP_REMOVE_WHEN_REAL_AUTH.md` exists (marks temporary store)
+- Docker Desktop running
+- Stack via Compose (`npm run dev:docker` / `docker compose up`) so **`db`** (PostGIS), API, and web are up — or API/web local with `DATABASE_URL=postgresql://postgres:postgres@localhost:5433/neighborhoodiq` (Compose publishes Postgres on **5433** to avoid a local Windows Postgres on 5432)
+- Env from `.env.example`: `DATABASE_URL`, `SECRET_KEY`, `AUTH_SECRET` / `NEXTAUTH_SECRET`, `NEXTAUTH_URL`, `NEXT_PUBLIC_API_URL`
+- Confirm `apps/api/data/TEMP_*` are **gone** after Postgres swap (no file auth)
 
 ## Setup
 
-1. Start stack (`docker compose up` or equivalent).
-2. Ensure TEMP user/lookup files exist (seed example user optional).
-3. Open web app (typically `http://localhost:3000`).
+1. Start Docker Desktop; run compose (or `db` + local API/web).
+2. Confirm API health: `http://localhost:8000/health`.
+3. Open web: `http://localhost:3000`.
 
 ## Validation scenarios
 
-### V1 — Register and sign in
+### V1 — Register and sign in (Postgres)
 
 1. Open `/register`, submit valid name/email/password.
 2. Expect signed-in header (UserMenu visible).
-3. Sign out; open `/login` with same credentials; expect UserMenu again.
-4. Wrong password → **“Invalid email or password”** (not “Something went wrong”).
-5. Invalid email on register (e.g. `testing@t`) → specific validation message (not “Something went wrong”).
+3. Confirm a row in Postgres:  
+   `docker compose exec db psql -U postgres -d neighborhoodiq -c "SELECT email, tier FROM users ORDER BY created_at DESC LIMIT 5;"`
+4. Sign out; open `/login` with same credentials; expect UserMenu again.
+5. Wrong password → **“Invalid email or password”**.
+6. Invalid email on register → specific validation message (not “Something went wrong”).
 
 ### V2 — Chrome and styling
 
@@ -36,33 +39,32 @@ Validation guide after implementation. See [contracts/auth-api.md](./contracts/a
 
 1. As guest: header Pricing → splash `#pricing` with register CTAs; direct `/pricing` → login redirect.
 2. As signed-in: UserMenu → Plans & upgrade → `/pricing`; current plan labeled; plan buttons do nothing.
-3. As signed-in on home: splash `#pricing` shows the same upgrade UI (current plan + Coming soon), not register CTAs.
+3. As signed-in on home: splash `#pricing` shows upgrade UI, not register CTAs.
 4. UpgradePrompt CTA → `/pricing`.
 
 ### V4 — Dashboard
 
-1. As signed-in user with no lookups → address search bar + empty state pointing at that search.
-2. Submit a valid address in dashboard search → report page.
-3. With seeded lookup row → list shows address; click opens `/report/{address_id}`.
-4. On report as signed-in → **Back to dashboard** visible and works; as guest → link absent.
-5. As guest, `/dashboard` → redirected to `/login` (or equivalent).
+1. As signed-in user with no `saved_lookups` → address search + empty state.
+2. Submit a valid address in dashboard search → report page (and saved lookup row if product writes one).
+3. With seeded `saved_lookups` + `address_lookups` → list shows address; click opens `/report/{address_id}`.
+4. On report as signed-in → **Back to dashboard**; as guest → link absent.
+5. As guest, `/dashboard` → redirected to `/login`.
 
 ### V5 — Compare coming soon
 
-1. Open `/compare` (guest or signed-in, including UserMenu link).
-2. Expect “Feature coming soon”; primary **Go to dashboard** (arrow button); secondary **Back to home**.
+1. Open `/compare`.
+2. Expect “Feature coming soon”; **Go to dashboard** + **Back to home**.
 3. No live compare UI or API errors.
 
-## Temporary store sanity
+## TEMP store sanity (must fail after swap)
 
-- After register, a new line appears in `TEMP_dev_users.jsonl` (local only; do not commit secrets).
-- Grep reminder before merge to main when real auth exists: no `FileUserStore` / `TEMP_dev_` left (see [research.md](./research.md) removal checklist).
+- Grep: no `FileUserStore` / `FileLookupStore` / `TEMP_dev_` under `apps/api` (see [research.md](./research.md) checklist).
 
-## Tests (once implemented)
+## Tests
 
 ```bash
-# API
-cd apps/api && pytest tests/test_auth_file_store.py tests/test_auth_endpoints.py -q
+# API (Postgres fixtures)
+cd apps/api && pytest tests/test_auth_endpoints.py tests/test_user_lookups.py -q
 
 # Web
 cd apps/web && npm test

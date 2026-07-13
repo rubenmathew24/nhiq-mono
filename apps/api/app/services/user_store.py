@@ -1,74 +1,63 @@
-# TEMPORARY: File-backed user store for UI development only.
-# DELETE when Postgres users table is implemented.
-# See specs/001-web-app-pages/research.md removal checklist.
+"""User persistence — Postgres implementation behind UserStore protocol."""
 
 from __future__ import annotations
 
-import json
-import os
 import uuid
-from pathlib import Path
-from datetime import datetime, timezone
 from typing import Optional, Protocol, runtime_checkable
 
+from sqlalchemy import func, select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.models import User
 from app.schemas.auth import UserInDB
-
-
-# apps/api/app/services/user_store.py → parents[2] == apps/api
-DATA_DIR = Path(__file__).resolve().parents[2] / "data"
-USERS_FILE = DATA_DIR / "TEMP_dev_users.jsonl"
 
 
 @runtime_checkable
 class UserStore(Protocol):
-    def get_by_email(self, email: str) -> Optional[UserInDB]: ...
-    def get_by_id(self, user_id: str) -> Optional[UserInDB]: ...
-    def create(self, email: str, full_name: str, password_hash: str) -> UserInDB: ...
+    async def get_by_email(self, email: str) -> Optional[UserInDB]: ...
+    async def get_by_id(self, user_id: str) -> Optional[UserInDB]: ...
+    async def create(self, email: str, full_name: str, password_hash: str) -> UserInDB: ...
 
 
-class FileUserStore:
-    """TEMPORARY file-backed implementation. Replace with Postgres repository."""
+def _to_schema(row: User) -> UserInDB:
+    return UserInDB(
+        id=str(row.id),
+        email=row.email,
+        full_name=row.full_name or "",
+        tier=row.tier or "free",  # type: ignore[arg-type]
+        password_hash=row.password_hash or "",
+        created_at=row.created_at.isoformat() if row.created_at else "",
+    )
 
-    def _read_all(self) -> list[UserInDB]:
-        if not USERS_FILE.exists():
-            return []
-        users: list[UserInDB] = []
-        with USERS_FILE.open(encoding="utf-8") as f:
-            for line in f:
-                line = line.strip()
-                if line:
-                    users.append(UserInDB(**json.loads(line)))
-        return users
 
-    def _append(self, user: UserInDB) -> None:
-        DATA_DIR.mkdir(parents=True, exist_ok=True)
-        with USERS_FILE.open("a", encoding="utf-8") as f:
-            f.write(user.model_dump_json() + "\n")
+class PostgresUserStore:
+    """Postgres-backed user repository (Docker Compose `db` / DATABASE_URL)."""
 
-    def get_by_email(self, email: str) -> Optional[UserInDB]:
-        for user in self._read_all():
-            if user.email.lower() == email.lower():
-                return user
-        return None
+    def __init__(self, session: AsyncSession) -> None:
+        self._session = session
 
-    def get_by_id(self, user_id: str) -> Optional[UserInDB]:
-        for user in self._read_all():
-            if user.id == user_id:
-                return user
-        return None
+    async def get_by_email(self, email: str) -> Optional[UserInDB]:
+        stmt = select(User).where(func.lower(User.email) == email.lower())
+        result = await self._session.execute(stmt)
+        row = result.scalar_one_or_none()
+        return _to_schema(row) if row else None
 
-    def create(self, email: str, full_name: str, password_hash: str) -> UserInDB:
-        user = UserInDB(
-            id=str(uuid.uuid4()),
-            email=email,
+    async def get_by_id(self, user_id: str) -> Optional[UserInDB]:
+        try:
+            uid = uuid.UUID(user_id)
+        except ValueError:
+            return None
+        row = await self._session.get(User, uid)
+        return _to_schema(row) if row else None
+
+    async def create(self, email: str, full_name: str, password_hash: str) -> UserInDB:
+        row = User(
+            email=email.lower(),
             full_name=full_name,
             password_hash=password_hash,
             tier="free",
-            created_at=datetime.now(timezone.utc).isoformat(),
         )
-        self._append(user)
-        return user
-
-
-# Singleton used by services — swap this for a DB-backed implementation.
-user_store: UserStore = FileUserStore()
+        self._session.add(row)
+        await self._session.commit()
+        await self._session.refresh(row)
+        return _to_schema(row)

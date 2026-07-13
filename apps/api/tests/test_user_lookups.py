@@ -1,63 +1,83 @@
-"""Tests for GET /users/me/lookups via TEMP file lookup store.
+"""Postgres lookup store tests (requires Docker Compose `db`)."""
 
-TEMPORARY: Replace with DB fixture tests when Postgres ships.
-"""
+import uuid
+from datetime import datetime, timedelta, timezone
 
-import json
 import pytest
-from pathlib import Path
-from app.services.lookup_store import FileLookupStore
-from app.schemas.auth import SavedLookup
+import pytest_asyncio
+from sqlalchemy import delete, text
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+
+from app.core.config import settings
+from app.db.session import _async_database_url
+from app.models import AddressLookup, SavedLookup, User
+from app.services.lookup_store import PostgresLookupStore
 
 
-@pytest.fixture()
-def tmp_lookup_store(tmp_path, monkeypatch):
-    import app.services.lookup_store as lm
-    monkeypatch.setattr(lm, "LOOKUPS_FILE", tmp_path / "lookups.jsonl")
-    monkeypatch.setattr(lm, "DATA_DIR", tmp_path)
-    store = FileLookupStore()
-    lm.LOOKUPS_FILE = tmp_path / "lookups.jsonl"
-    lm.DATA_DIR = tmp_path
-    return store, tmp_path / "lookups.jsonl"
+@pytest_asyncio.fixture()
+async def db_session():
+    engine = create_async_engine(_async_database_url(settings.DATABASE_URL), pool_pre_ping=True)
+    try:
+        async with engine.connect() as conn:
+            await conn.execute(text("SELECT 1"))
+    except Exception as exc:  # noqa: BLE001
+        await engine.dispose()
+        pytest.skip(f"Postgres not available: {exc}")
+
+    Session = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+    async with Session() as session:
+        yield session
+    await engine.dispose()
 
 
-def test_empty_lookups(tmp_lookup_store):
-    store, _ = tmp_lookup_store
-    assert store.list_for_user("user-1") == []
+@pytest.mark.asyncio
+async def test_empty_lookups(db_session: AsyncSession):
+    store = PostgresLookupStore(db_session)
+    assert await store.list_for_user(str(uuid.uuid4())) == []
 
 
-def test_seeded_lookups(tmp_lookup_store):
-    store, lookups_file = tmp_lookup_store
-    entry = {
-        "user_id": "user-1",
-        "address_id": "addr-001",
-        "address_normalized": "123 Main St",
-        "looked_up_at": "2026-07-10T10:00:00Z",
-    }
-    lookups_file.write_text(json.dumps(entry) + "\n", encoding="utf-8")
-    results = store.list_for_user("user-1")
-    assert len(results) == 1
-    assert results[0].address_id == "addr-001"
+@pytest.mark.asyncio
+async def test_seeded_lookups_filtered_and_sorted(db_session: AsyncSession):
+    user = User(
+        email=f"lookups-{uuid.uuid4().hex[:8]}@example.com",
+        full_name="L",
+        password_hash="x",
+        tier="free",
+    )
+    other = User(
+        email=f"other-{uuid.uuid4().hex[:8]}@example.com",
+        full_name="O",
+        password_hash="x",
+        tier="free",
+    )
+    addr_old = AddressLookup(address_raw="Old", address_normalized="Old St")
+    addr_new = AddressLookup(address_raw="New", address_normalized="New St")
+    addr_other = AddressLookup(address_raw="Other", address_normalized="Other St")
+    db_session.add_all([user, other, addr_old, addr_new, addr_other])
+    await db_session.flush()
 
+    t0 = datetime.now(timezone.utc) - timedelta(days=2)
+    t1 = datetime.now(timezone.utc)
+    db_session.add_all(
+        [
+            SavedLookup(user_id=user.id, address_lookup_id=addr_old.id, created_at=t0),
+            SavedLookup(user_id=user.id, address_lookup_id=addr_new.id, created_at=t1),
+            SavedLookup(user_id=other.id, address_lookup_id=addr_other.id, created_at=t1),
+        ]
+    )
+    await db_session.commit()
 
-def test_lookups_filtered_by_user(tmp_lookup_store):
-    store, lookups_file = tmp_lookup_store
-    rows = [
-        {"user_id": "user-1", "address_id": "a1", "address_normalized": "A1", "looked_up_at": "2026-07-09T10:00:00Z"},
-        {"user_id": "user-2", "address_id": "b1", "address_normalized": "B1", "looked_up_at": "2026-07-09T11:00:00Z"},
-    ]
-    lookups_file.write_text("\n".join(json.dumps(r) for r in rows) + "\n", encoding="utf-8")
-    assert len(store.list_for_user("user-1")) == 1
-    assert len(store.list_for_user("user-2")) == 1
-    assert store.list_for_user("user-1")[0].address_id == "a1"
-
-
-def test_lookups_sorted_newest_first(tmp_lookup_store):
-    store, lookups_file = tmp_lookup_store
-    rows = [
-        {"user_id": "u1", "address_id": "old", "address_normalized": "Old", "looked_up_at": "2026-07-08T10:00:00Z"},
-        {"user_id": "u1", "address_id": "new", "address_normalized": "New", "looked_up_at": "2026-07-10T10:00:00Z"},
-    ]
-    lookups_file.write_text("\n".join(json.dumps(r) for r in rows) + "\n", encoding="utf-8")
-    results = store.list_for_user("u1")
-    assert results[0].address_id == "new"
+    try:
+        store = PostgresLookupStore(db_session)
+        results = await store.list_for_user(str(user.id))
+        assert len(results) == 2
+        assert results[0].address_id == str(addr_new.id)
+        assert results[0].address_normalized == "New St"
+        assert results[1].address_id == str(addr_old.id)
+    finally:
+        await db_session.execute(delete(SavedLookup).where(SavedLookup.user_id.in_([user.id, other.id])))
+        await db_session.execute(delete(User).where(User.id.in_([user.id, other.id])))
+        await db_session.execute(
+            delete(AddressLookup).where(AddressLookup.id.in_([addr_old.id, addr_new.id, addr_other.id]))
+        )
+        await db_session.commit()

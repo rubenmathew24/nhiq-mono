@@ -22,7 +22,7 @@ description: "Task list for Web App Pages feature implementation"
 
 - **Web**: `apps/web/src/`
 - **API**: `apps/api/app/`, tests in `apps/api/tests/`
-- **TEMP store**: `apps/api/data/TEMP_*` (must be removed when real auth ships — see research.md)
+- **Postgres (Docker Compose `db`)**: `users`, `address_lookups`, `saved_lookups` via `infra/sql/init.sql` — TEMP JSONL removed before merge (research.md)
 
 ---
 
@@ -314,11 +314,10 @@ Task: "T022 login/page.tsx"
 
 ## Notes
 
-- Every TEMP file-store touch MUST keep the deletion banner (research.md checklist)
-- Do not put user text files under `apps/web`
+- Pre-merge: complete **Phase 13** (Docker Postgres); TEMP JSONL must be gone (research.md checklist)
 - Keep business logic in FastAPI services; Next.js stays thin (Principle II)
 - User-facing errors follow Constitution VIII
-- Suggested MVP scope: **Phase 1–3 (US1 only)**
+- Suggested next scope: **Phase 13 only** (storage swap), then merge when quickstart V1–V5 pass
 
 ---
 
@@ -329,3 +328,84 @@ Task: "T022 login/page.tsx"
 - [x] T071 Add a clear dashboard loading state (`loading.tsx` and/or Suspense) per US4 loading states (missing)
 - [x] T072 Remove leftover `_agent_log` / `debug-9a6fa9.log` instrumentation from `apps/api/app/api/v1/endpoints/lookup.py` and `apps/api/app/services/geocoding.py` per unrequested debug leftover (unrequested)
 - [x] T073 Add Vitest coverage for signed-in splash/upgrade tier mode and report Back to dashboard visibility per Constitution VI / FR-006 / FR-016 (partial)
+
+---
+
+## Phase 13: Docker Postgres auth swap (before merge)
+
+**Purpose**: Replace TEMP JSONL with Docker Compose PostgreSQL so merge targets durable local auth
+
+**Goal**: Register/login/`/me`/saved lookups use `users` + `saved_lookups` ⋈ `address_lookups`; file store deleted
+
+**Independent Test**: With `db` up, register → row in `users`; login works; empty dashboard with no `saved_lookups`; seeded join shows list; `rg "FileUserStore|TEMP_dev_" apps/api` is empty; quickstart V1–V4 pass
+
+**Depends on**: Phases 1–12 complete (UI + file-backed contracts already shipped)
+
+### Foundational (DB wiring)
+
+- [x] T074 Align `infra/sql/init.sql` `users` / `address_lookups` / `saved_lookups` with auth needs in `docs/nhiq-design-main/08-database-schema.md` (add missing columns if required for register/login/list)
+- [x] T075 [P] Add SQLAlchemy async engine + session helpers in `apps/api/app/db/session.py` (and package `__init__.py`) using `settings.DATABASE_URL`
+- [x] T076 [P] Add ORM models for `User`, `AddressLookup`, `SavedLookup` in `apps/api/app/models/` mapping DB `hashed_password` ↔ app `password_hash`
+- [x] T077 Wire FastAPI lifespan/dependency to open/close DB sessions in `apps/api/main.py` (or `apps/api/app/api/deps.py`) without breaking `/health`
+
+### Repositories (keep protocols)
+
+- [x] T078 Implement `PostgresUserStore` (`get_by_email`, `get_by_id`, `create`) in `apps/api/app/services/user_store.py`; default singleton to Postgres (remove `FileUserStore`)
+- [x] T079 Implement `PostgresLookupStore.list_for_user` joining `saved_lookups` + `address_lookups` in `apps/api/app/services/lookup_store.py`; map to `SavedLookup` schema (`address_id`, `address_normalized`, `looked_up_at`); remove `FileLookupStore`
+- [x] T080 Ensure `AuthService` in `apps/api/app/services/auth_service.py` and users endpoints still use store protocols only (no SQL in routes)
+
+### Tests & seeds
+
+- [x] T081 [P] Replace file-store fixtures with Postgres test fixtures in `apps/api/tests/conftest.py` (DATABASE_URL to compose/`localhost` or ephemeral test DB)
+- [x] T082 Rewrite auth/lookup tests for Postgres in `apps/api/tests/test_auth_endpoints.py` and `apps/api/tests/test_user_lookups.py`; delete `apps/api/tests/test_auth_file_store.py`
+- [x] T083 [P] Add optional SQL seed script or compose init snippet for one demo user + saved lookup under `infra/sql/` (or docs in quickstart) — not JSONL
+
+### Remove TEMP + docs verify
+
+- [x] T084 Delete `apps/api/data/TEMP_dev_users.jsonl`, `TEMP_dev_lookups.jsonl`, `TEMP_REMOVE_WHEN_REAL_AUTH.md`, and clean `apps/api/data/.gitignore` if obsolete
+- [x] T085 [P] Grep repo for `TEMP_`, `FileUserStore`, `FileLookupStore`, `dev_users.jsonl` — fix until zero hits under `apps/api` (and update `apps/web/AGENTS.md` notes if they still say file auth)
+- [x] T086 Run quickstart V1–V5 against Docker Compose; confirm `SELECT` on `users` after register; mark Phase 13 done when green
+
+**Checkpoint**: Auth durable in Docker Postgres; TEMP gone; ready to merge `001-web-app-pages` → `master`
+
+---
+
+## Phase 14: Guest chrome CTA regression (docker vs source)
+
+**Purpose**: Guests must see Sign in → `/login` and Get started / pricing CTAs → `/register` on the **running** site (not splash `#pricing` / `#hero` anchors)
+
+**Independent Test**: Hard-refresh `/` as guest; header shows Sign in + Get started; both pricing tier CTAs open `/register`; footer Sign in opens `/login`
+
+- [x] T087 Confirm workspace `Header.tsx` / `PricingTiersGrid.tsx` / `Footer.tsx` already target `/login` and `/register` (source was correct)
+- [x] T088 Rebuild/restart Compose `web` image after auth chrome changes (`docker compose build web && docker compose up -d web`) — production image had no volume mount so stale builds kept `#pricing` CTAs; root `.dockerignore` added to keep rebuilds sane
+- [x] T089 Soft-verify in browser: guest header Sign in + Get started; splash pricing CTAs → register (quickstart V2)
+
+**Note**: Until T088, local `apps/web` via `npm run dev` (port 3000) serves current source while API/db stay on Compose.
+
+---
+
+## Phase 15: Convergence
+
+- [x] T090 CRITICAL: Delete `apps/api/data/TEMP_*` / `TEMP_REMOVE_WHEN_REAL_AUTH.md` and `apps/api/tests/test_auth_file_store.py`; grep `apps/api` for `TEMP_`, `FileUserStore`, `FileLookupStore`, `dev_users.jsonl` until zero hits per plan: TEMP removal / Constitution VI (contradicts)
+- [x] T091 Remove `#region agent log` debug ingest `fetch` blocks from `apps/web/src/components/layout/Header.tsx` and `apps/web/src/components/pricing/PricingTiersGrid.tsx` per unrequested debug leftover (unrequested)
+- [x] T092 On authenticated address lookup, upsert `address_lookups` + `saved_lookups` (extend `LookupStore` / `apps/api/app/api/v1/endpoints/lookup.py`) so dashboard history grows after search per FR-007 / US4 (partial)
+- [x] T093 Make `/report/[addressId]` resolve Postgres `address_lookups` ids (and/or align `infra/sql/seed_demo_auth.sql` seed ids with score/report fixtures) so dashboard list rows open a report per US4/AC3 (partial)
+- [x] T094 Add `apps/api/migrations/` Alembic layout aligned with `infra/sql/init.sql`, or remove unused Alembic packaging/docs claim so plan structure matches reality per plan: migrations (missing)
+
+---
+
+## Phase 16: Convergence
+
+- [x] T095 Add `SECRET_KEY` to `.env.example` and Compose `api` environment (JWT signing) so local/prod secrets are not the hardcoded `change-me-in-production` default in `apps/api/app/core/config.py` per Constitution V / plan: JWT from env / quickstart (partial)
+
+---
+
+## Phase 17: Close gate — web lint
+
+**Purpose**: Clear the `/speckit-close` verification failure so the feature can merge to `master`
+
+**Independent Test**: From `apps/web`, `npm run lint` exits 0; `npm test` still passes
+
+- [x] T096 Fix React Compiler / `react-hooks/preserve-manual-memoization` on `handleSearch` in `apps/web/src/components/search/AddressSearch.tsx` — align `useCallback` deps with inferred `session` (or remove manual memoization) so ESLint no longer errors
+- [x] T097 Re-run `npm run lint` and `npm test` in `apps/web`; confirm green before re-running `/speckit-close`
+

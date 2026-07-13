@@ -2,8 +2,11 @@
 
 import os
 
-# Provide minimal settings so pydantic-settings doesn't fail on required fields.
-# These are test-only values; no real database or Redis is needed.
-os.environ.setdefault("DATABASE_URL", "postgresql://test:test@localhost:5432/test")
+# Host-run pytest → Compose Postgres published on 5433 (see docker-compose.yml).
+# Service hostname `db:5432` only works on the Docker network.
+os.environ["DATABASE_URL"] = (
+    "postgresql://postgres:postgres@localhost:5433/neighborhoodiq"
+)
 os.environ.setdefault("REDIS_URL", "redis://localhost:6379")
 os.environ.setdefault("SECRET_KEY", "test-secret-key-for-pytest-only")
+os.environ.setdefault("ENVIRONMENT", "test")

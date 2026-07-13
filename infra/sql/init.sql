@@ -46,25 +46,35 @@ CREATE TABLE IF NOT EXISTS address_lookups (
 
 CREATE INDEX IF NOT EXISTS idx_address_lookups_address ON address_lookups(address_normalized);
 
--- Users
+-- Users (auth)
 CREATE TABLE IF NOT EXISTS users (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     email VARCHAR(255) UNIQUE NOT NULL,
     hashed_password TEXT,
     full_name VARCHAR(255),
-    tier VARCHAR(20) DEFAULT 'free',
+    tier VARCHAR(20) DEFAULT 'free'
+        CHECK (tier IN ('free', 'buyer', 'buyer_pro', 'agent', 'brokerage')),
     lookup_count_this_month INTEGER DEFAULT 0,
     billing_cycle_start TIMESTAMPTZ,
     stripe_customer_id VARCHAR(255),
+    stripe_subscription_id VARCHAR(255),
+    is_active BOOLEAN DEFAULT true,
     created_at TIMESTAMPTZ DEFAULT NOW(),
     updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- Saved lookups per user
+CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
+CREATE INDEX IF NOT EXISTS idx_users_tier ON users(tier);
+
+-- Saved lookups per user (dashboard history)
 CREATE TABLE IF NOT EXISTS saved_lookups (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     address_lookup_id UUID NOT NULL REFERENCES address_lookups(id),
     label VARCHAR(255),
-    created_at TIMESTAMPTZ DEFAULT NOW()
+    notes TEXT,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    UNIQUE(user_id, address_lookup_id)
 );
+
+CREATE INDEX IF NOT EXISTS idx_saved_lookups_user ON saved_lookups(user_id);

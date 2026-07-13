@@ -1,44 +1,134 @@
-# TEMPORARY: File-backed lookup store for UI development only.
-# DELETE when Postgres address_lookups table is implemented.
-# See specs/001-web-app-pages/research.md removal checklist.
+"""Saved-lookup persistence — Postgres join behind LookupStore protocol."""
 
 from __future__ import annotations
 
-import json
-from pathlib import Path
-from typing import Protocol, runtime_checkable
+import uuid
+from datetime import datetime, timezone
+from typing import Any, Optional, Protocol, runtime_checkable
 
+from sqlalchemy import select
+from sqlalchemy.dialects.postgresql import insert
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
+
+from app.models import AddressLookup, SavedLookup as SavedLookupRow
 from app.schemas.auth import SavedLookup
-
-
-# apps/api/app/services/lookup_store.py → parents[2] == apps/api
-DATA_DIR = Path(__file__).resolve().parents[2] / "data"
-LOOKUPS_FILE = DATA_DIR / "TEMP_dev_lookups.jsonl"
 
 
 @runtime_checkable
 class LookupStore(Protocol):
-    def list_for_user(self, user_id: str) -> list[SavedLookup]: ...
+    async def list_for_user(self, user_id: str) -> list[SavedLookup]: ...
+
+    async def record_lookup(
+        self,
+        *,
+        address_raw: str,
+        address_normalized: str,
+        latitude: float,
+        longitude: float,
+        geoid: Optional[str],
+        user_id: Optional[str] = None,
+    ) -> str: ...
+
+    async def get_address_payload(self, address_id: str) -> Optional[dict[str, Any]]: ...
 
 
-class FileLookupStore:
-    """TEMPORARY file-backed implementation. Replace with Postgres repository."""
+class PostgresLookupStore:
+    """List/save user lookups via address_lookups + saved_lookups."""
 
-    def _read_all(self) -> list[SavedLookup]:
-        if not LOOKUPS_FILE.exists():
+    def __init__(self, session: AsyncSession) -> None:
+        self._session = session
+
+    async def list_for_user(self, user_id: str) -> list[SavedLookup]:
+        try:
+            uid = uuid.UUID(user_id)
+        except ValueError:
             return []
-        lookups: list[SavedLookup] = []
-        with LOOKUPS_FILE.open(encoding="utf-8") as f:
-            for line in f:
-                line = line.strip()
-                if line:
-                    lookups.append(SavedLookup(**json.loads(line)))
-        return lookups
 
-    def list_for_user(self, user_id: str) -> list[SavedLookup]:
-        all_lookups = self._read_all()
-        user_lookups = [lk for lk in all_lookups if lk.user_id == user_id]
-        return sorted(user_lookups, key=lambda lk: lk.looked_up_at, reverse=True)
+        stmt = (
+            select(SavedLookupRow)
+            .where(SavedLookupRow.user_id == uid)
+            .options(selectinload(SavedLookupRow.address_lookup))
+            .order_by(SavedLookupRow.created_at.desc())
+        )
+        result = await self._session.execute(stmt)
+        rows = result.scalars().all()
 
+        items: list[SavedLookup] = []
+        for row in rows:
+            addr = row.address_lookup
+            items.append(
+                SavedLookup(
+                    user_id=str(row.user_id),
+                    address_id=str(row.address_lookup_id),
+                    address_normalized=(
+                        (addr.address_normalized if addr and addr.address_normalized else None)
+                        or (addr.address_raw if addr else "")
+                        or row.label
+                        or ""
+                    ),
+                    looked_up_at=row.created_at.isoformat() if row.created_at else "",
+                )
+            )
+        return items
 
-lookup_store: LookupStore = FileLookupStore()
+    async def record_lookup(
+        self,
+        *,
+        address_raw: str,
+        address_normalized: str,
+        latitude: float,
+        longitude: float,
+        geoid: Optional[str],
+        user_id: Optional[str] = None,
+    ) -> str:
+        """Insert address_lookups row; optionally attach saved_lookups for a user. Returns address id."""
+        addr = AddressLookup(
+            address_raw=address_raw,
+            address_normalized=address_normalized,
+            latitude=latitude,
+            longitude=longitude,
+            geoid=geoid,
+            last_looked_up_at=datetime.now(timezone.utc),
+        )
+        self._session.add(addr)
+        await self._session.flush()
+
+        if user_id:
+            try:
+                uid = uuid.UUID(user_id)
+            except ValueError:
+                uid = None
+            if uid is not None:
+                stmt = (
+                    insert(SavedLookupRow)
+                    .values(
+                        user_id=uid,
+                        address_lookup_id=addr.id,
+                        label=address_normalized,
+                    )
+                    .on_conflict_do_nothing(
+                        index_elements=["user_id", "address_lookup_id"],
+                    )
+                )
+                await self._session.execute(stmt)
+
+        await self._session.commit()
+        await self._session.refresh(addr)
+        return str(addr.id)
+
+    async def get_address_payload(self, address_id: str) -> Optional[dict[str, Any]]:
+        try:
+            aid = uuid.UUID(address_id)
+        except ValueError:
+            return None
+        row = await self._session.get(AddressLookup, aid)
+        if row is None:
+            return None
+        return {
+            "address_raw": row.address_raw,
+            "address_normalized": row.address_normalized or row.address_raw,
+            "latitude": float(row.latitude) if row.latitude is not None else 0.0,
+            "longitude": float(row.longitude) if row.longitude is not None else 0.0,
+            "geoid": row.geoid or "",
+        }

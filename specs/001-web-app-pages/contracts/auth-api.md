@@ -2,7 +2,7 @@
 
 **Feature**: `001-web-app-pages` | **Date**: 2026-07-10
 
-Backing store for this phase: **TEMPORARY** file repository ([research.md](../research.md)). Request/response shapes MUST remain valid when swapped to Postgres.
+Backing store: **Docker Compose PostgreSQL** (`users`, `saved_lookups`, `address_lookups`). Request/response shapes MUST stay stable vs the prior TEMP file phase.
 
 ## `POST /api/v1/auth/register`
 

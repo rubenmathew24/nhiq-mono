@@ -33,6 +33,7 @@ services:
       REDIS_URL: redis://redis:6379
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
       MAPBOX_TOKEN: ${MAPBOX_TOKEN:-}
+      SECRET_KEY: ${SECRET_KEY:-local-dev-api-jwt-change-me}
       ENVIRONMENT: development
       LOG_LEVEL: INFO
     volumes:
@@ -58,7 +59,8 @@ services:
       POSTGRES_PASSWORD: postgres
       POSTGRES_DB: neighborhoodiq
     ports:
-      - "5432:5432"
+      # Host 5433 avoids clashing with a local Windows Postgres on 5432
+      - "5433:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
       - ./infra/sql/init.sql:/docker-entrypoint-initdb.d/init.sql
