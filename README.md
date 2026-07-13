@@ -29,3 +29,13 @@ npm run dev:docker
 | http://localhost:8000/api/docs | FastAPI Swagger UI |
 
 The startup script creates `.env` from `.env.example` if needed, bootstraps `apps/api/.venv`, and runs both services in one terminal (via `concurrently`). Use `-Install` to refresh Python and npm dependencies.
+
+## Branching
+
+| Branch | Role |
+|--------|------|
+| `master` | Production — CI/CD deploys from here |
+| `dev` | Integration / staging — spin up to test before prod |
+| `NNN-feature-name` | Spec Kit feature work — always branch from **`dev`**, merge PRs back to **`dev`**, then promote `dev` → `master` for release |
+
+Configured in `.specify/init-options.json` (`feature_base_branch`). Override with env `SPECIFY_FEATURE_BASE_BRANCH` if needed.

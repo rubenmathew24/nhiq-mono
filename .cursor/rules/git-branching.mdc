@@ -1,0 +1,16 @@
+---
+description: Branch from dev for Spec Kit features; master is production
+alwaysApply: true
+---
+
+# Git branching (NeighborhoodIQ)
+
+- **`master`**: production. Deploy / promote here only after `dev` is verified.
+- **`dev`**: integration / staging. Default base for all new work.
+- **Spec Kit feature branches** (`NNN-short-name`): create from **`dev`**, open PRs into **`dev`**, never directly onto `master` unless explicitly releasing.
+
+When starting `/speckit-specify` or `create-new-feature.ps1`:
+
+1. Ensure you are branching from up-to-date `dev` (script uses `feature_base_branch` in `.specify/init-options.json`, default `dev`).
+2. Do not create feature branches from `master`.
+3. After feature close, merge to `dev` first; promote `dev` → `master` as a separate release step.

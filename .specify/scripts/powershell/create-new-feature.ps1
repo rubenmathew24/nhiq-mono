@@ -191,6 +191,74 @@ if ($branchName.Length -gt $maxBranchLength) {
 $featureDir = Join-Path $specsDir $branchName
 $specFile = Join-Path $featureDir 'spec.md'
 
+function Get-FeatureBaseBranch {
+    if (-not [string]::IsNullOrWhiteSpace($env:SPECIFY_FEATURE_BASE_BRANCH)) {
+        return $env:SPECIFY_FEATURE_BASE_BRANCH.Trim()
+    }
+
+    $initOptionsPath = Join-Path $repoRoot '.specify/init-options.json'
+    if (Test-Path -LiteralPath $initOptionsPath) {
+        try {
+            $opts = Get-Content -LiteralPath $initOptionsPath -Raw | ConvertFrom-Json
+            if ($opts.PSObject.Properties.Name -contains 'feature_base_branch' -and
+                -not [string]::IsNullOrWhiteSpace([string]$opts.feature_base_branch)) {
+                return ([string]$opts.feature_base_branch).Trim()
+            }
+        } catch {
+            # Fall through to default
+        }
+    }
+
+    return 'dev'
+}
+
+function Ensure-GitFeatureBranch {
+    param(
+        [string]$Name,
+        [string]$BaseBranch,
+        [switch]$AllowExisting
+    )
+
+    git rev-parse --is-inside-work-tree 2>$null | Out-Null
+    if ($LASTEXITCODE -ne 0) {
+        Write-Warning "[specify] Not a git repository; skipped creating branch '$Name'"
+        return
+    }
+
+    git show-ref --verify --quiet "refs/heads/$Name"
+    $localFeatureExists = ($LASTEXITCODE -eq 0)
+    if ($localFeatureExists) {
+        if ($AllowExisting) {
+            git checkout $Name
+            if ($LASTEXITCODE -ne 0) { throw "Failed to checkout existing branch '$Name'" }
+            return
+        }
+        throw "Git branch '$Name' already exists. Use -AllowExistingBranch or pick another name/number."
+    }
+
+    git fetch origin $BaseBranch 2>$null | Out-Null
+
+    git show-ref --verify --quiet "refs/heads/$BaseBranch"
+    $localBaseExists = ($LASTEXITCODE -eq 0)
+    git show-ref --verify --quiet "refs/remotes/origin/$BaseBranch"
+    $remoteBaseExists = ($LASTEXITCODE -eq 0)
+
+    if (-not $localBaseExists -and $remoteBaseExists) {
+        git checkout -b $BaseBranch "origin/$BaseBranch"
+        if ($LASTEXITCODE -ne 0) { throw "Failed to create local '$BaseBranch' from origin/$BaseBranch" }
+    } elseif ($localBaseExists) {
+        git checkout $BaseBranch
+        if ($LASTEXITCODE -ne 0) { throw "Failed to checkout base branch '$BaseBranch'" }
+        git pull --ff-only origin $BaseBranch 2>$null | Out-Null
+    } else {
+        throw "Base branch '$BaseBranch' not found locally or on origin. Create and push it first."
+    }
+
+    git checkout -b $Name
+    if ($LASTEXITCODE -ne 0) { throw "Failed to create feature branch '$Name' from '$BaseBranch'" }
+    Write-Host "[specify] Created git branch '$Name' from '$BaseBranch'"
+}
+
 if (-not $DryRun) {
     if ((Test-Path -LiteralPath $featureDir -PathType Container) -and -not $AllowExistingBranch) {
         if ($Timestamp) {
@@ -198,6 +266,14 @@ if (-not $DryRun) {
         } else {
             Write-Error "Error: Feature directory '$featureDir' already exists. Please use a different feature name or specify a different number with -Number."
         }
+        exit 1
+    }
+
+    $baseBranch = Get-FeatureBaseBranch
+    try {
+        Ensure-GitFeatureBranch -Name $branchName -BaseBranch $baseBranch -AllowExisting:$AllowExistingBranch
+    } catch {
+        Write-Error "Error: $($_.Exception.Message)"
         exit 1
     }
 
@@ -232,6 +308,7 @@ if ($Json) {
         BRANCH_NAME = $branchName
         SPEC_FILE = $specFile
         FEATURE_NUM = $featureNum
+        FEATURE_BASE_BRANCH = (Get-FeatureBaseBranch)
     }
     if ($DryRun) {
         $obj | Add-Member -NotePropertyName 'DRY_RUN' -NotePropertyValue $true
@@ -241,6 +318,7 @@ if ($Json) {
     Write-Output "BRANCH_NAME: $branchName"
     Write-Output "SPEC_FILE: $specFile"
     Write-Output "FEATURE_NUM: $featureNum"
+    Write-Output "FEATURE_BASE_BRANCH: $(Get-FeatureBaseBranch)"
     if (-not $DryRun) {
         Write-Output "SPECIFY_FEATURE set to: $branchName"
         Write-Output "SPECIFY_FEATURE_DIRECTORY set to: $featureDir"

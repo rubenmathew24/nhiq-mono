@@ -2,6 +2,7 @@
   "ai": "cursor-agent",
   "ai_skills": true,
   "feature_numbering": "sequential",
+  "feature_base_branch": "dev",
   "here": true,
   "integration": "cursor-agent",
   "script": "ps",

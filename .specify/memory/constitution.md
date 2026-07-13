@@ -113,7 +113,8 @@ edge (Front Door + WAF).
 Tests MUST be written alongside features, not deferred to a later phase.
 Backend tests live under `apps/api/tests/` (pytest + pytest-asyncio).
 Frontend tests live under `apps/web/src/__tests__/` (Vitest). The relevant
-suite MUST pass before merging to `main`.
+suite MUST pass before merging to `dev`. Promotion to `master` (prod)
+MUST keep the same bar.
 
 When a change touches API contracts, auth/tier gates, scoring, or
 ingestion, tests MUST cover those paths (contract/integration as
@@ -121,7 +122,7 @@ appropriate). Ingestion loads MUST be idempotent (`ON CONFLICT` / upsert)
 and scoring MUST remain reproducible for a given data vintage.
 
 Rationale: `docs/nhiq-design-main/09-testing.md` treats tests as part of
-delivery; CI on `main` is the quality gate for deploy.
+delivery; CI on `dev`/`master` is the quality gate for deploy.
 
 ### VII. Observability & Graceful Degradation
 
@@ -192,9 +193,15 @@ committing real values.
 
 ## Development Workflow
 
-- Branches: `feat/`, `fix/`, or `chore/` + short description
+- Branch model (this repo):
+  - `master` — production; CI/CD deploys from here
+  - `dev` — integration / staging; spin up to test before prod
+  - Spec Kit feature branches (`NNN-short-name`) — created from **`dev`**,
+    merged back to **`dev`** via PR; promote `dev` → `master` for release
 - Commits: Conventional Commits (`feat:`, `fix:`, `chore:`, `docs:`, …)
-- Integration: open PRs to `main`; do not push directly to `main`
+- Integration: open feature PRs to `dev`; do not push directly to `master`
+  (or to `dev` except intentional integration merges). Spec Kit base branch
+  is configured in `.specify/init-options.json` as `feature_base_branch`
 - Python: type hints everywhere; `ruff` + `black`; async I/O in handlers
 - TypeScript: `"strict": true`; Tailwind only (no CSS modules /
   styled-components for app UI)
@@ -228,4 +235,4 @@ gates before Phase 0 research proceeds. Complexity that violates a
 principle MUST be recorded in the plan's Complexity Tracking table with a
 simpler alternative rejected for a concrete reason.
 
-**Version**: 1.1.0 | **Ratified**: 2026-07-09 | **Last Amended**: 2026-07-10
+**Version**: 1.2.0 | **Ratified**: 2026-07-09 | **Last Amended**: 2026-07-13
