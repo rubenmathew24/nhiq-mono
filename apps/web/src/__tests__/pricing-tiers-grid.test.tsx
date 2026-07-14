@@ -6,15 +6,14 @@ import PricingTiersGrid, {
 } from "@/components/pricing/PricingTiersGrid";
 
 describe("PricingTiersGrid", () => {
-  it("guest mode links CTAs to register", () => {
+  it("guest mode only Free links to register; paid tiers are coming soon", () => {
     render(<PricingTiersGrid mode="guest" />);
     const links = screen.getAllByRole("link");
-    expect(links.length).toBeGreaterThan(0);
-    links.forEach((link) => {
-      expect(link).toHaveAttribute("href", "/register");
-    });
+    expect(links).toHaveLength(1);
+    expect(links[0]).toHaveAttribute("href", "/register");
+    expect(links[0]).toHaveAccessibleName(/start free/i);
+    expect(screen.getAllByRole("button", { name: /coming soon/i })).toHaveLength(2);
     expect(screen.queryByText(/current plan/i)).not.toBeInTheDocument();
-    expect(screen.queryByText(/coming soon/i)).not.toBeInTheDocument();
   });
 
   it("upgrade mode labels current plan and disables other CTAs", () => {
