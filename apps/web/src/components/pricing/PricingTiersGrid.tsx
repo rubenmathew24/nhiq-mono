@@ -119,7 +119,7 @@ export default function PricingTiersGrid({
               ))}
             </ul>
 
-            {mode === "guest" ? (
+            {mode === "guest" && tier.name === "Free" ? (
               <ButtonWithArrow
                 href="/register"
                 variant={tier.highlighted ? "accent" : "primary"}
@@ -127,6 +127,17 @@ export default function PricingTiersGrid({
               >
                 {tier.cta}
               </ButtonWithArrow>
+            ) : mode === "guest" ? (
+              /* Paid plans shown for marketing; checkout / paid signup not live yet */
+              <Button
+                type="button"
+                variant={tier.highlighted ? "accent" : "primary"}
+                className="w-full opacity-80 cursor-not-allowed"
+                disabled
+                aria-disabled="true"
+              >
+                Coming soon
+              </Button>
             ) : (
               /* UI-only: upgrade checkout not wired yet */
               <Button
