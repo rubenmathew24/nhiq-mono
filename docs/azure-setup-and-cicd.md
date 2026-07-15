@@ -438,6 +438,8 @@ Values can change if resources are recreated; confirm in Portal or CLI when unsu
 | Key Vault | `niq-kv-21698` (example; use your vault name) | East US |
 | Storage | `niqstorage*****` (random suffix) | East US |
 | Deploy workflow | `.github/workflows/deploy.yml` on `master` | — |
+| Worker image | `neighborhoodiq-worker:dev` in ACR | Hand-pushed (not Deploy.yml) |
+| Worker jobs | `niq-worker-*` (9 manual ACA Jobs) | See §16 |
 
 ---
 
@@ -449,10 +451,57 @@ Values can change if resources are recreated; confirm in Portal or CLI when unsu
 | IaC | Bicep under `infra/bicep/` | Mostly Azure CLI / Portal |
 | CI | Separate `ci.yml` + `deploy.yml` + workers | **Deploy only** on `master` |
 | Migrations | Alembic job in CI | Manual `init.sql` against Azure |
-| Workers / Front Door / Key Vault→ACA identity | Specified | Not wired yet |
-| Image promotion | Tag by git SHA + `latest` | Same idea in current Deploy workflow |
+| Workers / Front Door / Key Vault→ACA identity | Specified | **Workers: manual ACA Jobs wired (see §16)**; Front Door / KV→ACA identity still not wired |
+| Image promotion | Tag by git SHA + `latest` | API/web via Deploy on `master`; **worker image pushed by hand** to ACR tag `neighborhoodiq-worker:dev` |
+| Ingest schema | Design raw tables | Azure has `init.sql` + manual `002` / `003` / `004` applied |
+| National ingest | Design 50-state loops | **Not done.** Jobs currently scoped to fixture counties via optional `INGEST_COUNTY_ALLOWLIST` |
 
 When you extend prod, update **this** file with what you actually did, and keep the design docs as the longer-term target unless you deliberately change the constitution/stack.
+
+---
+
+## 16. Worker Container Apps Jobs (as-built)
+
+Ingest workers write **directly** to Azure Postgres (`niq-postgres` / `neighborhoodiq`). They do **not** go through the `master` Deploy workflow.
+
+### Image and secrets
+
+| Item | As-built |
+|------|----------|
+| Image | `neighborhoodiqacr.azurecr.io/neighborhoodiq-worker:dev` (build from worker branch with `docker/worker.Dockerfile`, `az acr login`, push) |
+| Worker DB URL | Key Vault `WORKER-DATABASE-URL` — **`?sslmode=require`** (psycopg2). Do **not** reuse API `DATABASE-URL` (`?ssl=require` / asyncpg) |
+| Other KV secrets | `EPA-AQS-EMAIL`, `EPA-AQS-KEY`, `FBI-CDE-API-KEY`, `CENSUS-API-KEY` (as needed) |
+| Scope env | `INGEST_COUNTY_ALLOWLIST` — comma-separated SSCCC FIPS; **empty/unset = all checked-in fixture counties**; set e.g. `05007` for a one-county smoke |
+
+### Manual jobs (resource group `neighborhoodiq-rg`, env `niq-env`)
+
+`niq-worker-census`, `niq-worker-epa`, `niq-worker-cms`, `niq-worker-fbi`, `niq-worker-nces`, `niq-worker-urban`, `niq-worker-acs`, `niq-worker-bls`, `niq-worker-scoring`.
+
+Shape: trigger **Manual**, ~1 CPU / 2Gi, `--replica-timeout` 7200s. Command form: `python` `-m` `<module>` (e.g. `ingest.census.run`, `scoring.compute`).
+
+### Run order and resume
+
+```text
+census → epa → cms → fbi → nces → urban → acs → bls → scoring
+```
+
+Upserts are idempotent — re-start a failed job, then re-run scoring if needed. Do not truncate.
+
+```powershell
+az containerapp job start --name niq-worker-census --resource-group neighborhoodiq-rg
+az containerapp job execution list --name niq-worker-census --resource-group neighborhoodiq-rg -o table
+```
+
+### Schema on Azure (workers)
+
+Applied manually (in order) when missing: `infra/sql/init.sql`, `002_raw_ingest_tables.sql`, `003_score_sources.sql`, `004_safety_education_economic.sql`. Same Docker `psql` + `sslmode=require` pattern as §7.
+
+### Explicitly deferred
+
+- Full national / 50-state allowlist
+- Cron schedules on jobs
+- Worker image build in GitHub Actions / promote via `master`
+- Front Door; Key Vault managed-identity wiring to ACA
 
 ---
 
