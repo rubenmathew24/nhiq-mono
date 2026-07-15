@@ -83,6 +83,12 @@ def haversine_miles(lat1: float, lon1: float, lat2: float, lon2: float) -> float
     return 2 * r * math.asin(min(1.0, math.sqrt(a)))
 
 
+# Transient CDE / api.data.gov failures — retry before giving up on a county.
+_RETRY_STATUS = frozenset({429, 502, 503, 504})
+_RETRY_ATTEMPTS = 3
+_RETRY_BASE_SLEEP_SEC = 1.0
+
+
 def _chart_get(path: str, params: dict[str, Any] | None = None) -> dict[str, Any]:
     api_key = require_api_key()
     base = chart_base()
@@ -91,13 +97,44 @@ def _chart_get(path: str, params: dict[str, Any] | None = None) -> dict[str, Any
     # CDE chart host accepts API_KEY query param (probe verifies both styles).
     query["API_KEY"] = api_key
     url = f"{base}{rel}"
-    with httpx.Client(timeout=60.0) as client:
-        response = client.get(url, params=query)
-        response.raise_for_status()
-        payload = response.json()
-    if isinstance(payload, dict):
-        return payload
-    return {"results": payload}
+    last_exc: Exception | None = None
+    for attempt in range(1, _RETRY_ATTEMPTS + 1):
+        try:
+            with httpx.Client(timeout=60.0) as client:
+                response = client.get(url, params=query)
+                if response.status_code in _RETRY_STATUS:
+                    raise httpx.HTTPStatusError(
+                        f"Transient HTTP {response.status_code}",
+                        request=response.request,
+                        response=response,
+                    )
+                response.raise_for_status()
+                payload = response.json()
+            if isinstance(payload, dict):
+                return payload
+            return {"results": payload}
+        except (httpx.HTTPStatusError, httpx.TransportError, httpx.TimeoutException) as exc:
+            last_exc = exc
+            status = (
+                exc.response.status_code
+                if isinstance(exc, httpx.HTTPStatusError)
+                else None
+            )
+            retryable = status in _RETRY_STATUS or not isinstance(exc, httpx.HTTPStatusError)
+            if not retryable or attempt >= _RETRY_ATTEMPTS:
+                raise
+            sleep_s = _RETRY_BASE_SLEEP_SEC * (2 ** (attempt - 1))
+            logger.warning(
+                "CDE GET %s attempt %s/%s failed (%s); retry in %.1fs",
+                rel,
+                attempt,
+                _RETRY_ATTEMPTS,
+                exc,
+                sleep_s,
+            )
+            time.sleep(sleep_s)
+    assert last_exc is not None
+    raise last_exc
 
 
 def _agency_lat_lon(agency: dict[str, Any]) -> tuple[float, float] | None:
