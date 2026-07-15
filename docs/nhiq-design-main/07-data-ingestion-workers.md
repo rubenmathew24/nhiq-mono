@@ -485,16 +485,16 @@ async def compute_and_store_scores(geoid: str):
 
 ## Testing Workers Locally
 
+**Local path (current)**: Fixture-county ingest for the 10 canonical addresses — see root `README.md` (“Local data workers”) and `specs/002-data-ingestion-workers/quickstart.md`. Commands use `docker compose --profile workers run --rm worker-*` (census, epa, cms, fbi CDE, nces, urban, acs, bls, scoring). **No Azure Container Apps Jobs** for this feature branch.
+
 ```bash
 # Run EPA worker against local DB
-cd neighborhoodiq
 docker compose up db -d   # Start just the DB
 
-docker compose run --rm worker-epa
+docker compose --profile workers run --rm worker-epa
 
-# Or run directly with venv
-cd workers/ingest
-python -m epa.run
+# Or run directly with venv from workers/
+python -m ingest.epa.run
 ```
 
 ---

@@ -9,7 +9,7 @@ from app.core.security import decode_access_token
 from app.db.session import get_db
 from app.schemas.lookup import LookupResponse
 from app.services.cache import save_lookup
-from app.services.geocoding import geocode_address, get_census_tract
+from app.services.geocoding import geocode_address, resolve_census_tract
 from app.services.lookup_store import PostgresLookupStore
 
 router = APIRouter()
@@ -30,14 +30,11 @@ async def lookup_address(
             detail="Could not find that U.S. address. Try a full street address.",
         ) from exc
 
-    geoid: str | None = None
-    try:
-        geoid = await get_census_tract(
-            geocoded["latitude"],
-            geocoded["longitude"],
-        )
-    except ValueError:
-        geoid = None
+    geoid = await resolve_census_tract(
+        session,
+        geocoded["latitude"],
+        geocoded["longitude"],
+    )
 
     user_id: Optional[str] = None
     if credentials and credentials.credentials:

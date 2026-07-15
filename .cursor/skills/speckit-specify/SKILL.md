@@ -267,15 +267,30 @@ Check if `.specify/extensions.yml` exists in the project root.
     To execute: `/{command}`
     ```
 
+## NeighborhoodIQ Git Workflow (required)
+
+Follow `.cursor/skills/speckit-git-workflow.md`.
+
+**This command:** after the feature branch exists and the draft `FEATURE_DIR` / `spec.md` are created (and validation/checklist work for specify is finished):
+
+1. Ensure you are on the feature branch (from `dev`, never `master`).
+2. **Publish immediately:** `git push -u origin HEAD` (request network permissions as needed).
+3. **Do not commit** the draft spec here — Commit #1 (finalized spec) happens at the start of `/speckit-plan` after any `/speckit-clarify` edits.
+4. If push fails, report the error and the exact retry command; still report local paths so clarify/plan can continue.
+
+Tell the user: branch is published; next is optional `/speckit-clarify`, then `/speckit-plan` (which commits the finalized spec).
+
 ## Completion Report
 
 Report completion to the user with:
 - `SPECIFY_FEATURE_DIRECTORY` — the feature directory path
 - `SPEC_FILE` — the spec file path
 - Checklist results summary
+- Branch name + whether `git push -u origin HEAD` succeeded
 - Readiness for the next phase (`/speckit-clarify` or `/speckit-plan`)
+- Reminder: draft spec is uncommitted until `/speckit-plan` starts (Commit #1)
 
-**NOTE:** Branch creation is handled by the `before_specify` hook (git extension). Spec directory and file creation are always handled by this core command.
+**NOTE:** Branch creation is handled by the `before_specify` hook (git extension) when present. Spec directory and file creation are always handled by this core command. NeighborhoodIQ always publishes the branch at the end of specify.
 
 ## Quick Guidelines
 
@@ -341,5 +356,7 @@ Success criteria must be:
 ## Done When
 
 - [ ] Specification written to `SPEC_FILE` and validated against quality checklist
+- [ ] Feature branch published with `git push -u origin HEAD` (or failure reported with retry)
+- [ ] Draft spec left **uncommitted** for clarify / Commit #1 at `/speckit-plan`
 - [ ] Extension hooks dispatched or skipped according to the rules in Mandatory Post-Execution Hooks above
-- [ ] Completion reported to user with feature directory, spec file path, and checklist results
+- [ ] Completion reported to user with feature directory, spec file path, checklist results, and push status

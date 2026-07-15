@@ -113,11 +113,11 @@ The command MAY write only by:
 It MUST NOT:
 
 * create a new spec or feature directory;
-* modify `spec.md`, `plan.md`, `tasks.md`, checklists, or constitution files;
-* modify, create, or delete application source code or tests;
+* modify `spec.md`, `plan.md`, `tasks.md`, checklists, or constitution files **to fake completion**;
+* modify, create, or delete application source code or tests **to make checks pass**;
 * mark incomplete tasks complete;
-* commit, push, merge, rebase, reset, restore, stash, or delete branches;
-* open, approve, or merge a pull request;
+* merge, rebase, reset, restore, stash, or delete branches;
+* **approve or merge** a pull request;
 * archive or delete the completed spec;
 * delete persistent databases, migrations, fixtures, uploads, secrets, or user data;
 * stop Cursor, the user's terminal application, operating-system services, or unrelated
@@ -126,6 +126,12 @@ It MUST NOT:
   node.exe`, or equivalent commands that may affect unrelated projects;
 * use destructive cleanup commands such as `git clean -fd`, `git reset --hard`, or
   `docker system prune`.
+
+**Allowed git publish (success close only):** When the determined outcome is `closed` or
+`closed_with_warnings` (not `not_ready` / `cleanup_only`), this command **MUST** push the
+feature branch and open a draft/open pull request into **`dev`** per Step 12
+(NeighborhoodIQ Git Publish). That is the only exception to the usual no-push rule.
+Never merge or auto-approve the PR.
 
 **Ownership Before Termination**: A process, container, or service MUST NOT be stopped unless
 at least one strong ownership signal connects it to the current repository. Strong signals
@@ -441,7 +447,8 @@ Inspect the final diff only for reporting purposes and flag:
 * unrelated modifications;
 * missing tests or documentation indicated by the existing artifacts.
 
-Do not discard, rewrite, stage, or commit user changes.
+Do not discard, rewrite, or stage user changes **in this review step**. Staging/committing for
+publish is deferred to Step 12 and only runs after a successful close outcome.
 
 ### 10. Determine Close Outcome
 
@@ -536,7 +543,47 @@ Omit the table only when no verification commands were discovered, and explain w
 
 Do not print secrets, raw environment variables, or unnecessarily long command output.
 
-### 12. Provide Next Actions (Handoff)
+### 12. NeighborhoodIQ Git Publish (success close only)
+
+Run this step **only** when the outcome from Step 10 is `closed` or `closed_with_warnings`.
+Skip entirely for `not_ready` and `cleanup_only`.
+
+Follow `.cursor/skills/speckit-git-workflow.md` and the user rules for committing/creating PRs
+(HEREDOC commit/PR bodies; never update git config; never force-push to `master`/`dev`; never
+merge the PR).
+
+1. **Ensure work is committed (so push has content)**
+   * Run `git status`, `git diff`, and `git log` (recent).
+   * Never stage `.env`, credentials, or secret files.
+   * If the feature still has uncommitted changes on this branch, commit them now using the
+     Spec Kit commit protocol:
+     * Prefer completing any missing Commit #1 / #2 / #3 shape when obvious from the diff.
+     * Otherwise create a single well-scoped implementation commit for remaining feature work
+       (message focuses on why).
+   * If everything relevant is already committed, skip with a short note.
+
+2. **Push the feature branch**
+
+   ```bash
+   git push -u origin HEAD
+   ```
+
+   Request network / full permissions as needed. On failure, report the error and exact retry;
+   do **not** claim the PR was created.
+
+3. **Open a pull request into `dev` (do not merge)**
+   * Base branch: **`dev`** (never `master` unless the user is explicitly releasing — not this
+     workflow).
+   * Use `gh pr create` with a HEREDOC body per the creating-pull-requests user rule.
+   * Title: concise feature summary (e.g. `002-data-ingestion-workers: …`).
+   * Body: Summary (what landed) + Test plan (from quickstart / verification just run).
+   * If a PR for this branch → `dev` already exists, reuse it (`gh pr view` / update as needed);
+     do not open a duplicate.
+   * **MUST NOT** merge, approve, or enable auto-merge.
+
+4. **Report in the closeout**: branch, remote tracking, PR URL (or error).
+
+### 13. Provide Next Actions (Handoff)
 
 * On `closed`: report:
 
@@ -544,22 +591,23 @@ Do not print secrets, raw environment variables, or unnecessarily long command o
   development/test services were stopped. The completed spec remains in place for review and
   version control."**
 
-  Recommend reviewing the diff, committing/opening a pull request, and starting the next spec
-  later from the appropriate new branch or feature workflow. Do not perform those actions.
+  Confirm Step 12 ran: push succeeded and include the **PR URL** into `dev`. Remind the user
+  the PR is open for review — **not** merged.
 
 * On `closed_with_warnings`: report:
 
   **"✅ Closed with warnings — the feature is complete and verified, and safe cleanup finished,
   but the warnings below require awareness."**
 
-  List the warnings and recommend manual review before committing or starting the next spec.
+  List the warnings. Confirm Step 12 ran (push + PR URL) unless publish failed — then treat
+  publish failure as an additional warning with retry commands. PR remains unmerged.
 
 * On `not_ready`: report:
 
   **"⛔ Not ready to close — cleanup was performed where safe, but one or more completion gates
   failed."**
 
-  Give the smallest actionable next step. Prefer:
+  **Do not** push or open a PR. Give the smallest actionable next step. Prefer:
 
   * `/speckit-implement` when tasks remain or convergence appended tasks;
   * `/speckit-converge` when convergence was unavailable or failed;
@@ -570,7 +618,9 @@ Do not print secrets, raw environment variables, or unnecessarily long command o
   **"🧹 Cleanup complete — repository-owned development/test services and temporary artifacts
   were handled where ownership was verified. Feature completeness was not assessed."**
 
-### 13. Check for Extension Hooks
+  **Do not** push or open a PR.
+
+### 14. Check for Extension Hooks
 
 After producing a `closed` or `closed_with_warnings` result, check if
 `.specify/extensions.yml` exists in the project root.

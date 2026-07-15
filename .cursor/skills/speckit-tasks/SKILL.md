@@ -86,6 +86,14 @@ You **MUST** consider the user input before proceeding (if not empty).
    - Parallel execution examples per story
    - Implementation strategy section (MVP first, incremental delivery)
 
+## NeighborhoodIQ Git Workflow (required)
+
+Follow `.cursor/skills/speckit-git-workflow.md`.
+
+**This command:** generate/update `tasks.md` only. **Do not commit or push.** Plan + tasks are Commit #2 at the start of `/speckit-implement`.
+
+Remind the user: next is `/speckit-implement`, which commits plan + tasks before coding.
+
 ## Mandatory Post-Execution Hooks
 
 **You MUST complete this section before reporting completion to the user.**
@@ -130,6 +138,7 @@ Output path to generated tasks.md and summary:
 - Independent test criteria for each story
 - Suggested MVP scope (typically just User Story 1)
 - Format validation: Confirm ALL tasks follow the checklist format (checkbox, ID, labels, file paths)
+- Reminder: plan + tasks are **uncommitted** until `/speckit-implement` creates Commit #2
 
 Context for task generation: $ARGUMENTS
 

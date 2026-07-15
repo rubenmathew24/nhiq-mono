@@ -1,6 +1,6 @@
-from typing import Literal
+from typing import Any, Literal
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class Factor(BaseModel):
@@ -14,6 +14,14 @@ class ScoreDimension(BaseModel):
     label: str
     summary: str
     factors: list[Factor]
+
+
+class DimensionSource(BaseModel):
+    """Provenance for one score dimension (future “show sources” UI)."""
+
+    source_id: str
+    reason: str | None = None
+    detail: dict[str, Any] = Field(default_factory=dict)
 
 
 class NeighborhoodReport(BaseModel):
@@ -31,3 +39,5 @@ class NeighborhoodReport(BaseModel):
     narrative: str
     data_vintage: str
     computed_at: str
+    # Machine-readable sources; web may ignore until a showcase feature ships.
+    sources: dict[str, DimensionSource] = Field(default_factory=dict)
