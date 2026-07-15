@@ -35,7 +35,7 @@ def test_fixture_county_fips_default(monkeypatch: pytest.MonkeyPatch):
     assert len(fixture_county_fips()) == 10
 
 
-def test_fixture_county_fips_benton_only(monkeypatch: pytest.MonkeyPatch):
+def test_fixture_county_fips_single_smoke(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setenv("INGEST_COUNTY_ALLOWLIST", "05007")
     assert fixture_county_fips() == frozenset({"05007"})
     assert fixture_state_fips() == frozenset({"05"})
