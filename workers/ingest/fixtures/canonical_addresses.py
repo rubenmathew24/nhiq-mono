@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass
 
 
@@ -127,19 +128,64 @@ FIPS_TO_STATE_ABBR: dict[str, str] = {
     "53": "WA",
 }
 
+# Comma-separated SSCCC FIPS (e.g. "05007" or "05007,17031"). Empty/unset = all fixtures.
+_ALLOWLIST_ENV = "INGEST_COUNTY_ALLOWLIST"
 
-def fixture_county_fips() -> frozenset[str]:
-    """Return SSCCC county FIPS for all fixture addresses."""
+
+def parse_county_allowlist(raw: str | None) -> frozenset[str] | None:
+    """
+    Parse INGEST_COUNTY_ALLOWLIST.
+
+    Returns None when unset/blank (use full fixture set). Otherwise a frozenset of
+    5-digit SSCCC codes. Invalid tokens are ignored.
+    """
+    if raw is None:
+        return None
+    text = raw.strip()
+    if not text:
+        return None
+    codes: set[str] = set()
+    for part in text.split(","):
+        token = part.strip()
+        if len(token) == 5 and token.isdigit():
+            codes.add(token)
+    return frozenset(codes) if codes else None
+
+
+def default_fixture_county_fips() -> frozenset[str]:
+    """Return SSCCC county FIPS for all canonical fixture addresses (no env filter)."""
     return frozenset(a.county_fips for a in CANONICAL_ADDRESSES)
 
 
+def fixture_county_fips() -> frozenset[str]:
+    """
+    Active county allowlist for ingest + scoring.
+
+    If INGEST_COUNTY_ALLOWLIST is set to valid SSCCC codes, intersect with the
+    canonical fixture set (unknown FIPS are dropped). Unset/empty → all fixtures.
+    """
+    defaults = default_fixture_county_fips()
+    override = parse_county_allowlist(os.getenv(_ALLOWLIST_ENV))
+    if override is None:
+        return defaults
+    narrowed = frozenset(override & defaults)
+    # If the env list had only unknown codes, keep full fixtures rather than empty.
+    return narrowed if narrowed else defaults
+
+
+def active_canonical_addresses() -> tuple[CanonicalAddress, ...]:
+    """Canonical addresses whose county is in the active allowlist (FBI, points)."""
+    allow = fixture_county_fips()
+    return tuple(a for a in CANONICAL_ADDRESSES if a.county_fips in allow)
+
+
 def fixture_state_fips() -> frozenset[str]:
-    """Return distinct 2-digit state FIPS for fixture counties."""
+    """Return distinct 2-digit state FIPS for active counties."""
     return frozenset(cf[:2] for cf in fixture_county_fips())
 
 
 def fixture_state_abbrs() -> frozenset[str]:
-    """Return USPS state codes for fixture geography (CMS filter)."""
+    """Return USPS state codes for active geography (CMS filter)."""
     return frozenset(
         FIPS_TO_STATE_ABBR[sf]
         for sf in fixture_state_fips()
@@ -148,5 +194,5 @@ def fixture_state_abbrs() -> frozenset[str]:
 
 
 def county_in_fixture(state_fips: str, county_fips: str) -> bool:
-    """True if STATEFP + COUNTYFP pair is in the fixture allowlist."""
+    """True if STATEFP + COUNTYFP pair is in the active county allowlist."""
     return f"{state_fips}{county_fips}" in fixture_county_fips()

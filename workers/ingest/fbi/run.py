@@ -16,7 +16,7 @@ from psycopg2.extras import Json, execute_batch
 from ingest.base import BaseIngestionWorker
 from ingest.fbi import client as cde
 from ingest.fbi.transform import agencies_to_rows, offense_aggregate_row
-from ingest.fixtures.canonical_addresses import CANONICAL_ADDRESSES
+from ingest.fixtures.canonical_addresses import active_canonical_addresses
 from ingest.fixtures.constants import DATA_VINTAGE
 
 logging.basicConfig(level=logging.INFO)
@@ -79,7 +79,7 @@ class FbiCdeWorker(BaseIngestionWorker):
         seen_counties: set[str] = set()
         counties_with_offenses: set[str] = set()
 
-        for addr in CANONICAL_ADDRESSES:
+        for addr in active_canonical_addresses():
             if addr.county_fips in seen_counties:
                 continue
             seen_counties.add(addr.county_fips)
