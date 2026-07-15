@@ -1,7 +1,10 @@
 .git
 .venv
 **/.venv
+workers/.venv
 **/node_modules
+workers/**/__pycache__
+workers/.pytest_cache
 apps/web/node_modules
 apps/web/.next
 apps/api/.venv

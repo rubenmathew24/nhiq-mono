@@ -52,13 +52,27 @@ You **MUST** consider the user input before proceeding (if not empty).
     After emitting the block above you MUST actually invoke the hook and wait for it to finish before continuing. Run it the same way you would run the command yourself in this agent/session (the invocation may differ from the literal `{command}` id shown above, e.g. a skills-mode agent runs it as `/skill:speckit-...` or `$speckit-...`). Emitting the block alone does not run the hook.
 - If no hooks are registered or `.specify/extensions.yml` does not exist, skip silently
 
+## NeighborhoodIQ Git Workflow (required)
+
+Follow `.cursor/skills/speckit-git-workflow.md`.
+
+**Commit #1 (Spec) — before any plan work:** After Setup resolves paths, and **before** filling `plan.md` / writing `research.md` / `contracts/` / `data-model.md` / `quickstart.md`:
+
+1. Commit the finalized specification (spec.md, checklists, `.specify/feature.json` if changed) per the workflow file.
+2. Do **not** push.
+3. If there is nothing to commit (already committed), say so and continue.
+
+Do **not** wait for `/speckit-tasks` to commit the spec — planning artifacts stay uncommitted until `/speckit-implement` creates Commit #2.
+
 ## Outline
 
 1. **Setup**: Run `.specify/scripts/powershell/setup-plan.ps1 -Json` from repo root and parse JSON for FEATURE_SPEC, IMPL_PLAN, SPECS_DIR, BRANCH. For single quotes in args like "I'm Groot", use escape syntax: e.g 'I'\''m Groot' (or double-quote if possible: "I'm Groot").
 
-2. **Load context**: Read FEATURE_SPEC and `.specify/memory/constitution.md`. Load IMPL_PLAN template (already copied).
+2. **Commit #1 (finalized spec)**: Perform the NeighborhoodIQ Git Workflow Commit #1 above. Halt plan writing until this step completes (or is skipped as no-op).
 
-3. **Execute plan workflow**: Follow the structure in IMPL_PLAN template to:
+3. **Load context**: Read FEATURE_SPEC and `.specify/memory/constitution.md`. Load IMPL_PLAN template (already copied).
+
+4. **Execute plan workflow**: Follow the structure in IMPL_PLAN template to:
    - Fill Technical Context (mark unknowns as "NEEDS CLARIFICATION")
    - Fill Constitution Check section from constitution
    - Evaluate gates (ERROR if violations unjustified)
@@ -105,6 +119,8 @@ Check if `.specify/extensions.yml` exists in the project root.
 ## Completion Report
 
 Command ends after Phase 2 planning. Report branch, IMPL_PLAN path, and generated artifacts.
+
+Also report: Commit #1 created or skipped (spec); reminder that plan artifacts remain uncommitted until `/speckit-tasks` then `/speckit-implement` (Commit #2).
 
 ## Phases
 
@@ -162,6 +178,7 @@ Command ends after Phase 2 planning. Report branch, IMPL_PLAN path, and generate
 
 ## Done When
 
+- [ ] Commit #1 (finalized spec) created or correctly skipped before plan writing
 - [ ] Plan workflow executed and design artifacts generated
 - [ ] Extension hooks dispatched or skipped according to the rules in Mandatory Post-Execution Hooks above
-- [ ] Completion reported to user with branch, plan path, and generated artifacts
+- [ ] Completion reported to user with branch, plan path, generated artifacts, and Commit #1 status

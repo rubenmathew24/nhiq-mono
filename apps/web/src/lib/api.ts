@@ -15,11 +15,13 @@ type ApiOptions = RequestInit & {
 
 export class ApiError extends Error {
   status: number;
+  code?: string;
 
-  constructor(message: string, status: number) {
+  constructor(message: string, status: number, code?: string) {
     super(message);
     this.name = "ApiError";
     this.status = status;
+    this.code = code;
   }
 }
 
@@ -95,7 +97,11 @@ export async function apiFetch<T>(
       (error as { detail?: unknown }).detail,
       `API error ${res.status}`,
     );
-    throw new ApiError(message, res.status);
+    const code =
+      typeof (error as { code?: unknown }).code === "string"
+        ? (error as { code: string }).code
+        : undefined;
+    throw new ApiError(message, res.status, code);
   }
 
   return res.json() as Promise<T>;

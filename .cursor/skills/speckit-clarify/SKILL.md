@@ -266,6 +266,14 @@ Check if `.specify/extensions.yml` exists in the project root.
     To execute: `/{command}`
     ```
 
+## NeighborhoodIQ Git Workflow (required)
+
+Follow `.cursor/skills/speckit-git-workflow.md`.
+
+**This command:** update `spec.md` (and related checklists) only. **Do not create git commits or push.** The finalized spec is committed as Commit #1 at the start of `/speckit-plan`.
+
+Remind the user in the Completion Report that the next step is `/speckit-plan`, which will commit the finalized spec before planning.
+
 ## Completion Report
 
 Report completion (after questioning loop ends or early termination):
@@ -281,5 +289,6 @@ Report completion (after questioning loop ends or early termination):
 
 - [ ] Spec ambiguities identified and clarifications integrated into spec file
 - [ ] Spec quality checklist re-validated against updated spec (if `FEATURE_DIR/checklists/requirements.md` exists)
+- [ ] No git commit/push performed (Commit #1 deferred to `/speckit-plan`)
 - [ ] Extension hooks dispatched or skipped according to the rules in Mandatory Post-Execution Hooks above
 - [ ] Completion reported to user with questions answered, sections touched, checklist status, and coverage summary

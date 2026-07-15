@@ -9,13 +9,17 @@ services:
         NEXT_PUBLIC_API_URL: http://localhost:8000
         NEXT_PUBLIC_MAPBOX_TOKEN: ${NEXT_PUBLIC_MAPBOX_TOKEN:-}
     ports:
-      - "3000:3000"
+      # Loopback only — not reachable from other devices on Wi‑Fi/LAN
+      - "127.0.0.1:3000:3000"
     environment:
       API_INTERNAL_URL: http://api:8000
       NEXT_PUBLIC_API_URL: http://localhost:8000
       NEXT_PUBLIC_MAPBOX_TOKEN: ${NEXT_PUBLIC_MAPBOX_TOKEN:-}
+      AUTH_SECRET: ${AUTH_SECRET:-local-dev-secret-change-me}
       NEXTAUTH_SECRET: ${NEXTAUTH_SECRET:-local-dev-secret-change-me}
       NEXTAUTH_URL: http://localhost:3000
+      # Auth.js rejects localhost session calls in Docker without this
+      AUTH_TRUST_HOST: "true"
     depends_on:
       api:
         condition: service_healthy
@@ -27,7 +31,7 @@ services:
       dockerfile: docker/api.Dockerfile
       target: runtime
     ports:
-      - "8000:8000"
+      - "127.0.0.1:8000:8000"
     environment:
       DATABASE_URL: postgresql://postgres:postgres@db:5432/neighborhoodiq
       REDIS_URL: redis://redis:6379
@@ -59,8 +63,8 @@ services:
       POSTGRES_PASSWORD: postgres
       POSTGRES_DB: neighborhoodiq
     ports:
-      # Host 5433 avoids clashing with a local Windows Postgres on 5432
-      - "5433:5432"
+      # Host 5433 avoids clashing with a local Postgres on 5432; loopback-only
+      - "127.0.0.1:5433:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
       - ./infra/sql/init.sql:/docker-entrypoint-initdb.d/init.sql
@@ -73,7 +77,7 @@ services:
   redis:
     image: redis:7-alpine
     ports:
-      - "6379:6379"
+      - "127.0.0.1:6379:6379"
     volumes:
       - redisdata:/data
     command: redis-server --appendonly yes
@@ -101,6 +105,104 @@ services:
       DATABASE_URL: postgresql://postgres:postgres@db:5432/neighborhoodiq
       CENSUS_API_KEY: ${CENSUS_API_KEY:-}
     command: python -m ingest.census.run
+    depends_on:
+      db:
+        condition: service_healthy
+    profiles:
+      - workers
+
+  worker-cms:
+    build:
+      context: .
+      dockerfile: docker/worker.Dockerfile
+    environment:
+      DATABASE_URL: postgresql://postgres:postgres@db:5432/neighborhoodiq
+    command: python -m ingest.cms.run
+    depends_on:
+      db:
+        condition: service_healthy
+    profiles:
+      - workers
+
+  worker-scoring:
+    build:
+      context: .
+      dockerfile: docker/worker.Dockerfile
+    environment:
+      DATABASE_URL: postgresql://postgres:postgres@db:5432/neighborhoodiq
+      REDIS_URL: redis://redis:6379
+    command: python -m scoring.compute
+    depends_on:
+      db:
+        condition: service_healthy
+    profiles:
+      - workers
+
+  worker-fbi:
+    build:
+      context: .
+      dockerfile: docker/worker.Dockerfile
+    environment:
+      DATABASE_URL: postgresql://postgres:postgres@db:5432/neighborhoodiq
+      FBI_CDE_API_KEY: ${FBI_CDE_API_KEY:-}
+      FBI_CDE_MAX_AGENCY_DISTANCE_MILES: ${FBI_CDE_MAX_AGENCY_DISTANCE_MILES:-}
+      FBI_CDE_CHART_OFFENSES: ${FBI_CDE_CHART_OFFENSES:-}
+      FBI_CDE_CHART_BASE: ${FBI_CDE_CHART_BASE:-}
+    command: python -m ingest.fbi.run
+    depends_on:
+      db:
+        condition: service_healthy
+    profiles:
+      - workers
+
+  worker-nces:
+    build:
+      context: .
+      dockerfile: docker/worker.Dockerfile
+    environment:
+      DATABASE_URL: postgresql://postgres:postgres@db:5432/neighborhoodiq
+    command: python -m ingest.nces.run
+    depends_on:
+      db:
+        condition: service_healthy
+    profiles:
+      - workers
+
+  worker-urban:
+    build:
+      context: .
+      dockerfile: docker/worker.Dockerfile
+    environment:
+      DATABASE_URL: postgresql://postgres:postgres@db:5432/neighborhoodiq
+    command: python -m ingest.urban.run
+    depends_on:
+      db:
+        condition: service_healthy
+    profiles:
+      - workers
+
+  worker-acs:
+    build:
+      context: .
+      dockerfile: docker/worker.Dockerfile
+    environment:
+      DATABASE_URL: postgresql://postgres:postgres@db:5432/neighborhoodiq
+      CENSUS_API_KEY: ${CENSUS_API_KEY:-}
+    command: python -m ingest.acs.run
+    depends_on:
+      db:
+        condition: service_healthy
+    profiles:
+      - workers
+
+  worker-bls:
+    build:
+      context: .
+      dockerfile: docker/worker.Dockerfile
+    environment:
+      DATABASE_URL: postgresql://postgres:postgres@db:5432/neighborhoodiq
+      BLS_API_KEY: ${BLS_API_KEY:-}
+    command: python -m ingest.bls.run
     depends_on:
       db:
         condition: service_healthy

@@ -52,6 +52,18 @@ You **MUST** consider the user input before proceeding (if not empty).
     After emitting the block above you MUST actually invoke the hook and wait for it to finish before continuing. Run it the same way you would run the command yourself in this agent/session (the invocation may differ from the literal `{command}` id shown above, e.g. a skills-mode agent runs it as `/skill:speckit-...` or `$speckit-...`). Emitting the block alone does not run the hook.
 - If no hooks are registered or `.specify/extensions.yml` does not exist, skip silently
 
+## NeighborhoodIQ Git Workflow (required)
+
+Follow `.cursor/skills/speckit-git-workflow.md`.
+
+**Commit #2 (Plan + Tasks) — before coding:** After prerequisites resolve `FEATURE_DIR` and the checklist gate is resolved (pass, or user said proceed), **before** ignore-file work that is not planning-related and **before** implementing any application/worker tasks:
+
+1. Commit planning artifacts (`plan.md`, `tasks.md`, research, data-model, contracts, quickstart, …) per the workflow file.
+2. Do **not** push.
+3. If already committed / nothing to stage, skip and continue.
+
+**Commit #3 (Implementation) — after coding:** When all required tasks are `[x]` and validation is done (before/at Completion Report), commit the implementation per the workflow file. Do **not** push unless the user asks. If not all tasks are done (halted early), do **not** create Commit #3.
+
 ## Outline
 
 1. Run `.specify/scripts/powershell/check-prerequisites.ps1 -Json -RequireTasks -IncludeTasks` from repo root and parse FEATURE_DIR and AVAILABLE_DOCS list. All paths must be absolute. For single quotes in args like "I'm Groot", use escape syntax: e.g 'I'\''m Groot' (or double-quote if possible: "I'm Groot").
@@ -86,6 +98,8 @@ You **MUST** consider the user input before proceeding (if not empty).
    - **If all checklists are complete**:
      - Display the table showing all checklists passed
      - Automatically proceed to step 3
+
+2b. **Commit #2 (Plan + Tasks)**: Perform the NeighborhoodIQ Git Workflow Commit #2. Do not start application changes until this completes (or is skipped as no-op).
 
 3. Load and analyze the implementation context:
    - **REQUIRED**: Read tasks.md for the complete task list and execution plan
@@ -174,6 +188,8 @@ You **MUST** consider the user input before proceeding (if not empty).
    - Validate that tests pass and coverage meets requirements
    - Confirm the implementation follows the technical plan
 
+10. **Commit #3 (Implementation)**: If all required tasks are complete, perform the NeighborhoodIQ Git Workflow Commit #3 (no push unless user asks). Skip if halted early with open tasks.
+
 Note: This command assumes a complete task breakdown exists in tasks.md. If tasks are incomplete or missing, suggest running `/speckit-tasks` first to regenerate the task list.
 
 ## Mandatory Post-Execution Hooks
@@ -215,9 +231,13 @@ Check if `.specify/extensions.yml` exists in the project root.
 
 Report final status with summary of completed work.
 
+Also report: Commit #2 (plan+tasks) and Commit #3 (implementation) created or skipped; remind that **`/speckit-close`** will push and open the PR into `dev` (not merge).
+
 ## Done When
 
+- [ ] Commit #2 (plan + tasks) created or correctly skipped
 - [ ] All tasks in tasks.md completed and marked `[X]`
 - [ ] Implementation validated against specification, plan, and test coverage
+- [ ] Commit #3 (implementation) created when the feature is fully implemented (or skipped with reason if not)
 - [ ] Extension hooks dispatched or skipped according to the rules in Mandatory Post-Execution Hooks above
 - [ ] Completion reported to user with summary of completed work

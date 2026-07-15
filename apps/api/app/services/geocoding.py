@@ -1,6 +1,8 @@
 from urllib.parse import quote
 
 import httpx
+from sqlalchemy import text
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 
@@ -43,6 +45,31 @@ async def geocode_address(address: str) -> dict:
     }
 
 
+async def get_tract_geoid_local(
+    session: AsyncSession,
+    lat: float,
+    lng: float,
+) -> str | None:
+    """Point-in-polygon against local census_tracts (PostGIS)."""
+    result = await session.execute(
+        text(
+            """
+            SELECT geoid
+            FROM census_tracts
+            WHERE geometry IS NOT NULL
+              AND ST_Contains(
+                    geometry,
+                    ST_SetSRID(ST_MakePoint(:lng, :lat), 4326)
+              )
+            LIMIT 1
+            """
+        ),
+        {"lng": lng, "lat": lat},
+    )
+    row = result.first()
+    return row[0] if row else None
+
+
 async def get_census_tract(lat: float, lng: float) -> str:
     """
     Returns 11-digit census tract GEOID using Census Geocoder API.
@@ -72,3 +99,18 @@ async def get_census_tract(lat: float, lng: float) -> str:
         return f"{state}{county}{tract_code}"
     except (KeyError, IndexError) as exc:
         raise ValueError(f"Could not find census tract for ({lat}, {lng})") from exc
+
+
+async def resolve_census_tract(
+    session: AsyncSession,
+    lat: float,
+    lng: float,
+) -> str | None:
+    """Prefer local PostGIS PIP; fall back to Census Geocoder API."""
+    local = await get_tract_geoid_local(session, lat, lng)
+    if local:
+        return local
+    try:
+        return await get_census_tract(lat, lng)
+    except ValueError:
+        return None

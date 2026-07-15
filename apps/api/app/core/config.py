@@ -28,6 +28,9 @@ class Settings(BaseSettings):
     FBI_API_KEY: str = ""
     CENSUS_API_KEY: str = ""
 
+    # Must match workers/ingest/fixtures/constants.py DATA_VINTAGE for live reports.
+    SCORE_DATA_VINTAGE: str = "2026-Q3"
+
     class Config:
         env_file = "../../.env"
         case_sensitive = True

@@ -17,11 +17,11 @@ export default function ReportAiSummary({ narrative }: ReportAiSummaryProps) {
             AI summary
           </p>
           <p className="text-sm text-muted-foreground leading-relaxed">
-            <span className="text-foreground font-medium">Preview:</span>{" "}
+            <span className="text-foreground font-medium">Summary:</span>{" "}
             {narrative}
           </p>
           <p className="mt-3 text-[10px] uppercase tracking-wider text-muted-foreground/70">
-            Sample scores — full neighborhood intelligence coming soon
+            Deterministic preview from live scores — Claude narratives later
           </p>
         </div>
       </div>
