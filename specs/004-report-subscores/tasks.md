@@ -92,3 +92,14 @@ Completed task IDs (T001–T119)
 
 - Rebuild `web` required (no bind-mount)
 - Plan + tasks uncommitted until `/speckit-implement` Commit #2 (this lean round commits plan+tasks then implementation in the same session)
+
+
+
+---
+
+
+
+## Phase 28: Convergence
+
+- [ ] T125 Align published Schools category score with Access sub-score (by-level proximity ≤ `SCHOOL_MAX_EXPAND_MILES`) and exclude PTR/locale staffing from the category while Staffing is limited-data — update `workers/scoring/compute.py` / `workers/scoring/education.py` (and re-score path) so sub-scores explain the category per US1/AC2, Key Entities (Schools), research.md §10.5 (contradicts)
+- [ ] T126 Rewrite Schools category summary when staffing is limited-data so it does not claim “staffing signals” / Urban CCD staffing — `apps/api/app/services/score_service.py` `_education_summary` (and mock copy if needed) per FR-007 / research.md §10.5 (contradicts)
