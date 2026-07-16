@@ -1,0 +1,102 @@
+{
+  "version": "Notebook/1.0",
+  "items": [
+    {
+      "type": 1,
+      "content": {
+        "json": "## NeighborhoodIQ ingest status\n\nScope + per-worker **data completion %** from `INGEST_STATUS_SNAPSHOT` logs (emitted by `niq-worker-status`).\n\nRun: `az containerapp job start --name niq-worker-status --resource-group neighborhoodiq-rg`\n\nPrimary durable source: Postgres table `ingest_status_snapshot`."
+      },
+      "name": "title"
+    },
+    {
+      "type": 9,
+      "content": {
+        "version": "KqlParameterItem/1.0",
+        "parameters": [
+          {
+            "id": "scopeParam",
+            "version": "KqlParameterItem/1.0",
+            "name": "Scope",
+            "type": 2,
+            "description": "Filter snapshot by INGEST_SCOPE",
+            "value": "metro_10",
+            "isRequired": true,
+            "typeSettings": {
+              "additionalResourceOptions": [],
+              "showDefault": false
+            },
+            "jsonData": "[\"smoke\",\"metro_10\",\"national\"]"
+          },
+          {
+            "id": "timeRange",
+            "version": "KqlParameterItem/1.0",
+            "name": "TimeRange",
+            "type": 4,
+            "value": {
+              "durationMs": 604800000
+            },
+            "isRequired": true
+          }
+        ],
+        "style": "pills",
+        "queryType": 0
+      },
+      "name": "parameters"
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "ContainerAppConsoleLogs_CL\n| where TimeGenerated {TimeRange}\n| where Log_s has \"INGEST_STATUS_SNAPSHOT\"\n| extend jsonStart = indexof(Log_s, \"{\")\n| where jsonStart >= 0\n| extend payload = parse_json(substring(Log_s, jsonStart))\n| where tostring(payload.scope) == \"{Scope}\"\n| top 1 by TimeGenerated desc\n| project\n    TimeGenerated,\n    scope = tostring(payload.scope),\n    county_count = toint(payload.county_count),\n    counties = tostring(payload.counties),\n    captured_at = tostring(payload.captured_at)",
+        "size": 0,
+        "title": "Current scope (latest snapshot)",
+        "queryType": 0,
+        "resourceType": "microsoft.operationalinsights/workspaces",
+        "visualization": "table"
+      },
+      "name": "scopeTile"
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "ContainerAppConsoleLogs_CL\n| where TimeGenerated {TimeRange}\n| where Log_s has \"INGEST_STATUS_SNAPSHOT\"\n| extend jsonStart = indexof(Log_s, \"{\")\n| where jsonStart >= 0\n| extend payload = parse_json(substring(Log_s, jsonStart))\n| where tostring(payload.scope) == \"{Scope}\"\n| top 1 by TimeGenerated desc\n| mv-expand job = payload.jobs\n| project\n    job_name = tostring(job.job_name),\n    pct_complete = todouble(job.pct_complete),\n    done = toint(job.done_count),\n    total = toint(job.total_count),\n    detail = tostring(job.detail)\n| order by job_name asc",
+        "size": 0,
+        "title": "Per-job data completion %",
+        "queryType": 0,
+        "resourceType": "microsoft.operationalinsights/workspaces",
+        "visualization": "table",
+        "gridSettings": {
+          "formatters": [
+            {
+              "columnMatch": "pct_complete",
+              "formatter": 8,
+              "formatOptions": {
+                "min": 0,
+                "max": 100,
+                "palette": "green"
+              }
+            }
+          ]
+        }
+      },
+      "name": "jobsTable"
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "ContainerAppConsoleLogs_CL\n| where TimeGenerated {TimeRange}\n| where Log_s has \"INGEST_STATUS_SNAPSHOT\"\n| extend jsonStart = indexof(Log_s, \"{\")\n| where jsonStart >= 0\n| extend payload = parse_json(substring(Log_s, jsonStart))\n| where tostring(payload.scope) == \"{Scope}\"\n| top 1 by TimeGenerated desc\n| mv-expand job = payload.jobs\n| project job_name = tostring(job.job_name), pct_complete = todouble(job.pct_complete)\n| render barchart",
+        "size": 0,
+        "title": "Completion bar chart",
+        "queryType": 0,
+        "resourceType": "microsoft.operationalinsights/workspaces",
+        "visualization": "barchart"
+      },
+      "name": "jobsChart"
+    }
+  ],
+  "fallbackResourceIds": [],
+  "styleSettings": {},
+  "$schema": "https://github.com/Microsoft/Application-Insights-Workbooks/blob/master/schema/workbook.json"
+}

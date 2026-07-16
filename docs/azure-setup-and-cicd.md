@@ -475,14 +475,42 @@ Ingest workers write **directly** to Azure Postgres (`niq-postgres` / `neighborh
 
 ### Manual jobs (resource group `neighborhoodiq-rg`, env `niq-env`)
 
-`niq-worker-census`, `niq-worker-epa`, `niq-worker-cms`, `niq-worker-fbi`, `niq-worker-nces`, `niq-worker-urban`, `niq-worker-acs`, `niq-worker-bls`, `niq-worker-scoring`.
+`niq-worker-census`, `niq-worker-epa`, `niq-worker-cms`, `niq-worker-fbi`, `niq-worker-nces`, `niq-worker-urban`, `niq-worker-acs`, `niq-worker-bls`, `niq-worker-scoring`, **`niq-worker-status`**.
 
-Shape: trigger **Manual**, ~1 CPU / 2Gi, `--replica-timeout` 7200s. Command form: `python` `-m` `<module>` (e.g. `ingest.census.run`, `scoring.compute`).
+Shape: trigger **Manual**, ~1 CPU / 2Gi, `--replica-timeout` 7200s (status job can use 600s). Command form: `python` `-m` `<module>` (e.g. `ingest.census.run`, `scoring.compute`, **`ingest.status`**).
+
+Status job env: `INGEST_SCOPE=metro_10` (or `smoke` / `national`), optional `INGEST_COUNTY_ALLOWLIST`, `DATABASE_URL` → `WORKER-DATABASE-URL`.
+
+### Ingest progress Workbook (ops)
+
+Data completion % is **not** ACA “Running”. Snapshot source of truth:
+
+1. Apply [`infra/sql/005_ingest_status.sql`](../infra/sql/005_ingest_status.sql) on Azure Postgres.
+2. Start status job (writes `ingest_status_snapshot` + prints `INGEST_STATUS_SNAPSHOT {...}` for Log Analytics):
+
+```powershell
+az containerapp job start --name niq-worker-status --resource-group neighborhoodiq-rg
+```
+
+3. Import workbook gallery JSON [`infra/workbook-ingest-status.json`](../infra/workbook-ingest-status.json):
+   - Portal → Log Analytics workspace **`niq-logs`** → **Workbooks** → **New** / **Advanced editor** → paste JSON → **Save** as “NeighborhoodIQ ingest status”.
+   - Bind the workbook to `niq-logs`. Table name may be `ContainerAppConsoleLogs_CL` or `ContainerAppConsoleLogs` depending on diagnostic schema — adjust the KQL if empty.
+4. Spot-check SQL (Docker `psql` as in §7):
+
+```sql
+SELECT job_name, pct_complete, done_count, total_count, captured_at
+FROM ingest_status_snapshot
+WHERE scope = 'metro_10'
+ORDER BY job_name;
+```
+
+Scoring % = tracts with `score_sources.safety.source_id = 'fbi_cde'` / tracts in scope (not merely “row exists”).
 
 ### Run order and resume
 
 ```text
 census → epa → cms → fbi → nces → urban → acs → bls → scoring
+# anytime: status (refresh Workbook)
 ```
 
 Upserts are idempotent — re-start a failed job, then re-run scoring if needed. Do not truncate.
@@ -494,7 +522,7 @@ az containerapp job execution list --name niq-worker-census --resource-group nei
 
 ### Schema on Azure (workers)
 
-Applied manually (in order) when missing: `infra/sql/init.sql`, `002_raw_ingest_tables.sql`, `003_score_sources.sql`, `004_safety_education_economic.sql`. Same Docker `psql` + `sslmode=require` pattern as §7.
+Applied manually (in order) when missing: `infra/sql/init.sql`, `002_raw_ingest_tables.sql`, `003_score_sources.sql`, `004_safety_education_economic.sql`, **`005_ingest_status.sql`**. Same Docker `psql` + `sslmode=require` pattern as §7.
 
 ### Explicitly deferred
 
@@ -502,6 +530,7 @@ Applied manually (in order) when missing: `infra/sql/init.sql`, `002_raw_ingest_
 - Cron schedules on jobs
 - Worker image build in GitHub Actions / promote via `master`
 - Front Door; Key Vault managed-identity wiring to ACA
+- In-app product UI for ingest status (reuse `ingest_status_snapshot` later)
 
 ---
 
