@@ -239,11 +239,15 @@ CREATE TABLE IF NOT EXISTS acs_indicators (
     labor_force NUMERIC(12,2),
     employed NUMERIC(12,2),
     unemployed NUMERIC(12,2),
+    total_population NUMERIC(14,2),
     acs_year VARCHAR(8) NOT NULL,
     payload JSONB,
     updated_at TIMESTAMPTZ DEFAULT NOW(),
     UNIQUE (geoid, geo_level, acs_year)
 );
+
+-- Idempotent for DBs created before total_population existed
+ALTER TABLE acs_indicators ADD COLUMN IF NOT EXISTS total_population NUMERIC(14,2);
 
 CREATE INDEX IF NOT EXISTS idx_acs_geoid ON acs_indicators (geoid);
 

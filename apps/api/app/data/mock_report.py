@@ -79,7 +79,7 @@ def build_mock_report(
             [
                 Factor(
                     name="Violent crime vs state",
-                    value="About 1.0× the state benchmark",
+                    value="Violent crime about the same as the state average (per resident)",
                     impact="neutral",
                     tone_score=60,
                 ),

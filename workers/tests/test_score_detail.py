@@ -10,6 +10,7 @@ from scoring.detail import (
     build_score_detail,
     healthcare_category_score,
     safety_category_score,
+    violent_crime_vs_state_copy,
 )
 from scoring.safety import CountyCrime
 
@@ -24,13 +25,20 @@ def test_healthcare_with_timely():
     assert score == 80.0
 
 
+def test_violent_crime_copy_percent_per_resident():
+    assert "28% lower" in violent_crime_vs_state_copy(0.72)
+    assert "per resident" in violent_crime_vs_state_copy(0.72)
+    assert "15% higher" in violent_crime_vs_state_copy(1.15)
+    assert "same as the state average" in violent_crime_vs_state_copy(1.0)
+
+
 def test_build_detail_ordinal_ers_and_plain_english():
     detail = build_score_detail(
         DetailInputs(
             nearest_ers=[
                 NearestFacility(name="Mercy NW", miles=2.1, star_rating=4, cms_provider_id="100"),
                 NearestFacility(name="Hospital B", miles=4.0, star_rating=3, cms_provider_id="101"),
-                NearestFacility(name="Hospital C", miles=6.0, star_rating=3, cms_provider_id="102"),
+                NearestFacility(name="Hospital C", miles=6.0, star_rating=None, cms_provider_id="102"),
             ],
             avg_stars=4.0,
             nearest_er_miles=2.1,
@@ -43,12 +51,15 @@ def test_build_detail_ordinal_ers_and_plain_english():
             schools_by_level=[
                 SchoolByLevel(level="elementary", name="Central Elem", miles=0.8),
                 SchoolByLevel(level="high", name="Central High", miles=2.0),
+                SchoolByLevel(level="prek", name="Far PreK", miles=457.0),
             ],
             crime=CountyCrime(
                 county_fips="05007",
-                by_offense={"HOM": (1.0, 2.0), "ROB": (10.0, 12.0), "ASS": (20.0, 22.0)},
+                by_offense={"HOM": (1.0, 10.0), "ROB": (2.0, 20.0), "ASS": (3.0, 30.0)},
                 ori_count=2,
             ),
+            county_pop=100_000.0,
+            state_pop=1_000_000.0,
             agencies=[{"agency_name": "Bentonville PD", "ori": "AR001"}, {"agency_name": "County SO"}],
         )
     )
@@ -57,13 +68,21 @@ def test_build_detail_ordinal_ers_and_plain_english():
     assert hc_names[1] == "2nd nearest ER"
     assert hc_names[2] == "3rd nearest ER"
     assert "Also nearby" not in hc_names
+    third = next(s for s in detail["healthcare"]["stats"] if s["name"] == "3rd nearest ER")
+    assert "★-" in third["value"]
+    first = next(s for s in detail["healthcare"]["stats"] if s["name"] == "Nearest ER")
+    assert "★4" in first["value"]
 
     safety_names = [s["name"] for s in detail["safety"]["stats"]]
     assert "Assault" in safety_names
     assert "Homicide" in safety_names
     assert not any(n.startswith("Offense ") for n in safety_names)
     assert any(s["name"] == "About these numbers" for s in detail["safety"]["stats"])
+    violent = next(s for s in detail["safety"]["stats"] if s["name"] == "Violent crime vs state")
+    assert "per resident" in violent["value"]
+    assert "×" not in violent["value"]
     assert detail["safety"]["sub_scores"][0]["label"] == "Crimes against people"
+    assert detail["safety"]["sub_scores"][0]["available"] is True
 
     aqi = next(s for s in detail["environment"]["stats"] if s["name"] == "Average AQI")
     assert "open_meteo" not in aqi["value"]
@@ -73,14 +92,50 @@ def test_build_detail_ordinal_ers_and_plain_english():
     edu_names = [s["name"] for s in detail["education"]["stats"]]
     assert "Nearest elementary" in edu_names
     assert "Nearest high" in edu_names
+    prek = next(s for s in detail["education"]["stats"] if s["name"] == "Nearest Pre-K")
+    assert "No schools found within 25 mi" in prek["value"]
+    assert "457" not in prek["value"]
     assert "Pupil–teacher ratio" not in edu_names
     assert "Locale code" not in edu_names
     staffing = next(s for s in detail["education"]["sub_scores"] if s["id"] == "staffing")
     assert staffing["available"] is False
+    access = next(s for s in detail["education"]["sub_scores"] if s["id"] == "access")
+    assert access["available"] is True
 
     assert any(
         s["name"] == "Share of labor force employed" for s in detail["economic"]["stats"]
     )
+
+
+def test_school_beyond_cutoff_marks_access_unavailable_when_all_far():
+    detail = build_score_detail(
+        DetailInputs(
+            schools_by_level=[
+                SchoolByLevel(level="elementary", name="Far", miles=40.0),
+            ],
+        )
+    )
+    access = next(s for s in detail["education"]["sub_scores"] if s["id"] == "access")
+    assert access["available"] is False
+    elem = next(s for s in detail["education"]["stats"] if s["name"] == "Nearest elementary")
+    assert "No schools found within 25 mi" in elem["value"]
+
+
+def test_safety_missing_pop_unavailable_comparison():
+    detail = build_score_detail(
+        DetailInputs(
+            crime=CountyCrime(
+                county_fips="05007",
+                by_offense={"HOM": (1.0, 100.0)},
+                ori_count=1,
+            ),
+        )
+    )
+    personal = next(s for s in detail["safety"]["sub_scores"] if s["id"] == "personal")
+    assert personal["available"] is False
+    violent = next(s for s in detail["safety"]["stats"] if s["name"] == "Violent crime vs state")
+    assert "Unavailable" in violent["value"]
+    assert "×" not in violent["value"]
 
 
 def test_hazard_and_timely_unavailable_copy():

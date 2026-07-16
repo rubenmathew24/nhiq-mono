@@ -436,6 +436,56 @@ def fetch_cde_by_county(cur, counties: list[str]) -> dict[str, CountyCrime]:
     return out
 
 
+def fetch_acs_population(
+    cur, counties: list[str]
+) -> tuple[dict[str, float], dict[str, float]]:
+    """County (sum of tracts) and state ACS total_population for safety rates.
+
+    Returns (county_pop_by_fips, state_pop_by_state_fips).
+    """
+    county_pop: dict[str, float] = {}
+    state_pop: dict[str, float] = {}
+    cur.execute("SELECT to_regclass('public.acs_indicators') IS NOT NULL")
+    if not cur.fetchone()[0]:
+        return county_pop, state_pop
+
+    cur.execute(
+        """
+        SELECT left(geoid, 5) AS county_fips,
+               SUM(total_population)::float
+        FROM acs_indicators
+        WHERE geo_level = 'tract'
+          AND total_population IS NOT NULL
+          AND left(geoid, 5) = ANY(%s)
+        GROUP BY left(geoid, 5)
+        """,
+        (counties,),
+    )
+    for county_fips, pop in cur.fetchall():
+        if pop is not None and float(pop) > 0:
+            county_pop[str(county_fips)] = float(pop)
+
+    states = sorted({c[:2] for c in counties})
+    if states:
+        cur.execute(
+            """
+            SELECT geoid, total_population::float
+            FROM acs_indicators
+            WHERE geo_level = 'state'
+              AND geoid = ANY(%s)
+              AND total_population IS NOT NULL
+            ORDER BY acs_year DESC
+            """,
+            (states,),
+        )
+        for geoid, pop in cur.fetchall():
+            # First row per state wins (newest year first if multiple)
+            if geoid not in state_pop and pop is not None and float(pop) > 0:
+                state_pop[str(geoid)] = float(pop)
+
+    return county_pop, state_pop
+
+
 def build_open_meteo_by_county(
     counties: list[str],
     centroids: dict[str, tuple[float, float]],
@@ -751,6 +801,7 @@ def run() -> int:
                 counties, centroids, need_fallback=need_fallback
             )
             cde_by_county = fetch_cde_by_county(cur, counties)
+            county_pop_by_fips, state_pop_by_state = fetch_acs_population(cur, counties)
             tables = _source_tables_present(cur)
             has_nces_data = tables["nces"] and _count_table_rows(cur, "schools_nces") > 0
             has_urban_data = tables["urban"] and _count_table_rows(cur, "schools_urban") > 0
@@ -863,13 +914,21 @@ def run() -> int:
                 )
 
                 crime = cde_by_county.get(county)
-                safety_res = safety_from_cde(crime)
+                c_pop = county_pop_by_fips.get(county)
+                s_pop = state_pop_by_state.get(state_fips)
+                safety_res = safety_from_cde(
+                    crime, county_pop=c_pop, state_pop=s_pop
+                )
                 personal = (
                     safety_res.score
-                    if crime is not None and crime.by_offense
+                    if crime is not None
+                    and crime.by_offense
+                    and safety_res.provenance.get("source_id") != SOURCE_DEFAULT
                     else None
                 )
-                property_s = _property_safety(crime)
+                property_s = _property_safety(
+                    crime, county_pop=c_pop, state_pop=s_pop
+                )
                 safety = safety_category_score(personal, property_s)
                 ssid = str(safety_res.provenance.get("source_id", SOURCE_DEFAULT))
                 safety_counts[ssid] = safety_counts.get(ssid, 0) + 1
@@ -967,6 +1026,8 @@ def run() -> int:
                         else None,
                         acs_year=acs_year,
                         laus_period=laus_period,
+                        county_pop=c_pop,
+                        state_pop=s_pop,
                     )
                 )
 

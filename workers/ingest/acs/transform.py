@@ -1,4 +1,4 @@
-"""Normalize ACS tract tabular rows to acs_indicators."""
+"""Normalize ACS tract/state tabular rows to acs_indicators."""
 
 from __future__ import annotations
 
@@ -50,6 +50,34 @@ def transform_acs_rows(
                 "labor_force": _parse_numeric(row.get("B23025_002E")),
                 "employed": _parse_numeric(row.get("B23025_004E")),
                 "unemployed": _parse_numeric(row.get("B23025_005E")),
+                "total_population": _parse_numeric(row.get("B01003_001E")),
+                "acs_year": acs_year,
+                "payload": None,
+            }
+        )
+    return out
+
+
+def transform_acs_state_rows(
+    rows: list[dict[str, Any]],
+    *,
+    acs_year: str,
+) -> list[dict[str, Any]]:
+    """Map Census state rows to acs_indicators (geo_level=state, geoid=state FIPS)."""
+    out: list[dict[str, Any]] = []
+    for row in rows:
+        state = str(row.get("state") or "").zfill(2)
+        if not state or state == "00":
+            continue
+        out.append(
+            {
+                "geoid": state,
+                "geo_level": "state",
+                "median_hh_income": _parse_numeric(row.get("B19013_001E")),
+                "labor_force": _parse_numeric(row.get("B23025_002E")),
+                "employed": _parse_numeric(row.get("B23025_004E")),
+                "unemployed": _parse_numeric(row.get("B23025_005E")),
+                "total_population": _parse_numeric(row.get("B01003_001E")),
                 "acs_year": acs_year,
                 "payload": None,
             }

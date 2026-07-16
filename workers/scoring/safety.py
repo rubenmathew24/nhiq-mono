@@ -54,10 +54,19 @@ def _weighted_local_state(crime: CountyCrime) -> tuple[float, float] | None:
     return local, max(state, 1e-6)
 
 
-def safety_from_cde(crime: CountyCrime | None) -> SafetyResult:
+def safety_from_cde(
+    crime: CountyCrime | None,
+    *,
+    county_pop: float | None = None,
+    state_pop: float | None = None,
+) -> SafetyResult:
     """
-    Map local/state personal-crime intensity ratio to 0–100.
+    Map local/state personal-crime intensity (per resident) to 0–100.
+
+    intensity_ratio = (local/county_pop) / (state/state_pop)
     ratio ≈ 1 → ~75; below state → higher; above state → lower.
+
+    Missing population → default/unavailable (no absolute-share fallback).
     """
     if crime is None or not crime.by_offense:
         return SafetyResult(
@@ -79,18 +88,51 @@ def safety_from_cde(crime: CountyCrime | None) -> SafetyResult:
             },
         )
 
+    if (
+        county_pop is None
+        or state_pop is None
+        or float(county_pop) <= 0
+        or float(state_pop) <= 0
+    ):
+        return SafetyResult(
+            score=DEFAULT_SAFETY_SCORE,
+            provenance={
+                "source_id": SOURCE_DEFAULT,
+                "reason": "population_unavailable",
+                "ori_count": crime.ori_count,
+            },
+        )
+
     local, state = pair
-    ratio = local / state
+    c_pop = float(county_pop)
+    s_pop = float(state_pop)
+    local_rate = local / c_pop
+    state_rate = state / s_pop
+    if state_rate <= 0:
+        return SafetyResult(
+            score=DEFAULT_SAFETY_SCORE,
+            provenance={
+                "source_id": SOURCE_DEFAULT,
+                "reason": "state_rate_zero",
+                "ori_count": crime.ori_count,
+            },
+        )
+
+    ratio = local_rate / state_rate
     # ratio 0 → 100; ratio 1 → 75; ratio 2 → 50; ratio ≥4 → 0
     score = max(0.0, min(100.0, 100.0 - 25.0 * ratio))
     return SafetyResult(
         score=round(score, 1),
         provenance={
             "source_id": SOURCE_FBI_CDE,
-            "reason": "agency_aggregate",
+            "reason": "agency_aggregate_per_resident",
             "ori_count": crime.ori_count,
             "local_weighted": round(local, 2),
             "state_weighted": round(state, 2),
+            "county_pop": round(c_pop, 1),
+            "state_pop": round(s_pop, 1),
+            "local_rate_per_100k": round(local_rate * 100_000.0, 3),
+            "state_rate_per_100k": round(state_rate * 100_000.0, 3),
             "ratio": round(ratio, 3),
         },
     )

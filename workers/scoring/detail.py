@@ -10,6 +10,8 @@ from ingest.fixtures.constants import (
     DEFAULT_HEALTHCARE_SCORE,
     HOSPITAL_FAR_MILES,
     HOSPITAL_NEAR_MILES,
+    SCHOOL_MAX_EXPAND_MILES,
+    SOURCE_FBI_CDE,
 )
 from scoring.economic import income_score_from_median, unemployment_score_from_rate
 from scoring.formulas import distance_score_miles, environment_from_aqi
@@ -106,6 +108,8 @@ class DetailInputs:
     labor_force: float | None = None
     acs_year: str | None = None
     laus_period: str | None = None
+    county_pop: float | None = None
+    state_pop: float | None = None
 
 
 def _sub(sid: str, label: str, score: float | None, *, available: bool) -> dict[str, Any]:
@@ -176,8 +180,20 @@ def _timeliness_score(timely: TimelyMeasure | None) -> float | None:
     return max(0.0, min(100.0, 100.0 - 50.0 * ratio))
 
 
-def _property_safety(crime: CountyCrime | None) -> float | None:
+def _property_safety(
+    crime: CountyCrime | None,
+    *,
+    county_pop: float | None = None,
+    state_pop: float | None = None,
+) -> float | None:
     if crime is None or not crime.by_offense:
+        return None
+    if (
+        county_pop is None
+        or state_pop is None
+        or float(county_pop) <= 0
+        or float(state_pop) <= 0
+    ):
         return None
     local = 0.0
     state = 0.0
@@ -195,8 +211,26 @@ def _property_safety(crime: CountyCrime | None) -> float | None:
         return None
     if not saw:
         state = local if local > 0 else 1.0
-    ratio = local / max(state, 1e-6)
+    local_rate = local / float(county_pop)
+    state_rate = state / float(state_pop)
+    if state_rate <= 0:
+        return None
+    ratio = local_rate / state_rate
     return max(0.0, min(100.0, 100.0 - 25.0 * ratio))
+
+
+def violent_crime_vs_state_copy(ratio: float) -> str:
+    """Fair Housing–neutral percent vs state average per resident."""
+    r = float(ratio)
+    if abs(r - 1.0) < 0.05:
+        return "Violent crime about the same as the state average (per resident)"
+    if r < 1.0:
+        pct = round((1.0 - r) * 100.0)
+        return (
+            f"Violent crime about {pct}% lower than the state average (per resident)"
+        )
+    pct = round((r - 1.0) * 100.0)
+    return f"Violent crime about {pct}% higher than the state average (per resident)"
 
 
 def _hazard_score(fema: FemaInputs | None) -> float | None:
@@ -275,9 +309,13 @@ def _er_ordinal_label(index: int) -> str:
 def _access_from_schools(inputs: DetailInputs) -> float | None:
     miles_list: list[float] = []
     for s in inputs.schools_by_level:
-        if s.miles is not None:
+        if s.miles is not None and float(s.miles) <= SCHOOL_MAX_EXPAND_MILES:
             miles_list.append(float(s.miles))
-    if not miles_list and inputs.nearest_school_miles is not None:
+    if (
+        not miles_list
+        and inputs.nearest_school_miles is not None
+        and float(inputs.nearest_school_miles) <= SCHOOL_MAX_EXPAND_MILES
+    ):
         miles_list.append(float(inputs.nearest_school_miles))
     if not miles_list:
         return None
@@ -306,6 +344,8 @@ def build_score_detail(inputs: DetailInputs) -> dict[str, Any]:
             bits.append(f"{float(er.miles):.1f} mi")
         if er.star_rating is not None:
             bits.append(f"★{er.star_rating}")
+        else:
+            bits.append("★-")
         tone = None
         if er.miles is not None:
             tone = distance_score_miles(float(er.miles))
@@ -337,12 +377,22 @@ def build_score_detail(inputs: DetailInputs) -> dict[str, Any]:
     else:
         hc_stats.append(_stat("ER wait", "Unavailable", "neutral"))
 
-    personal_res = safety_from_cde(inputs.crime)
-    if inputs.crime is None or not inputs.crime.by_offense:
-        personal = None
-    else:
-        personal = personal_res.score
-    property_s = _property_safety(inputs.crime)
+    personal_res = safety_from_cde(
+        inputs.crime,
+        county_pop=inputs.county_pop,
+        state_pop=inputs.state_pop,
+    )
+    personal_ok = (
+        inputs.crime is not None
+        and bool(inputs.crime.by_offense)
+        and personal_res.provenance.get("source_id") == SOURCE_FBI_CDE
+    )
+    personal = personal_res.score if personal_ok else None
+    property_s = _property_safety(
+        inputs.crime,
+        county_pop=inputs.county_pop,
+        state_pop=inputs.state_pop,
+    )
     safety_subs = [
         _sub(
             "personal",
@@ -360,15 +410,23 @@ def build_score_detail(inputs: DetailInputs) -> dict[str, Any]:
     safety_stats: list[dict[str, Any]] = []
     if inputs.crime and inputs.crime.by_offense:
         ratio = personal_res.provenance.get("ratio")
-        if ratio is not None:
+        if personal_ok and ratio is not None:
             r = float(ratio)
-            tone = max(0.0, min(100.0, 100.0 - 25.0 * r))
+            tone = personal if personal is not None else max(0.0, min(100.0, 100.0 - 25.0 * r))
             safety_stats.append(
                 _stat(
                     "Violent crime vs state",
-                    f"About {r:.2f}× the state benchmark",
+                    violent_crime_vs_state_copy(r),
                     _impact_from_tone(tone),
                     tone_score=tone,
+                )
+            )
+        elif personal_res.provenance.get("reason") == "population_unavailable":
+            safety_stats.append(
+                _stat(
+                    "Violent crime vs state",
+                    "Unavailable (population needed for per-resident comparison)",
+                    "neutral",
                 )
             )
         for slug in ("HOM", "ROB", "ASS", "BUR", "LAR"):
@@ -403,9 +461,13 @@ def build_score_detail(inputs: DetailInputs) -> dict[str, Any]:
     ]
     edu_stats: list[dict[str, Any]] = []
     by_level = {s.level: s for s in inputs.schools_by_level if s.level}
+    no_schools_copy = f"No schools found within {int(SCHOOL_MAX_EXPAND_MILES)} mi"
     for level_id, label, _ in SCHOOL_LEVEL_META:
         school = by_level.get(level_id)
         if school is None:
+            continue
+        if school.miles is not None and float(school.miles) > SCHOOL_MAX_EXPAND_MILES:
+            edu_stats.append(_stat(label, no_schools_copy, "neutral"))
             continue
         bits = [school.name or "Public school"]
         tone = None
@@ -416,7 +478,12 @@ def build_score_detail(inputs: DetailInputs) -> dict[str, Any]:
             _stat(label, " · ".join(bits), _impact_from_tone(tone), tone_score=tone)
         )
     if not edu_stats:
-        if inputs.school_name or inputs.nearest_school_miles is not None:
+        if (
+            inputs.nearest_school_miles is not None
+            and float(inputs.nearest_school_miles) > SCHOOL_MAX_EXPAND_MILES
+        ):
+            edu_stats.append(_stat("Nearest public school", no_schools_copy, "neutral"))
+        elif inputs.school_name or inputs.nearest_school_miles is not None:
             bits = [inputs.school_name or "Public school"]
             tone = None
             if inputs.nearest_school_miles is not None:

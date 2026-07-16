@@ -86,7 +86,13 @@ async def test_build_report_maps_score_detail():
                 "safety": {
                     "sub_scores": [],
                     "stats": [
-                        {"name": "Assault", "value": "20 incidents (12 mo)", "impact": "neutral"}
+                        {
+                            "name": "Violent crime vs state",
+                            "value": "Violent crime about 12% lower than the state average (per resident)",
+                            "impact": "positive",
+                            "tone_score": 78,
+                        },
+                        {"name": "Assault", "value": "20 incidents (12 mo)", "impact": "neutral"},
                     ],
                 },
                 "education": {"sub_scores": [], "stats": []},
@@ -113,7 +119,11 @@ async def test_build_report_maps_score_detail():
     assert isinstance(report.healthcare.sub_scores[0], SubScore)
     joined = " ".join(f"{f.name} {f.value}" for f in report.healthcare.factors)
     assert "Also nearby" not in joined
+    assert "★" in report.healthcare.factors[0].value
     assert "ASS" not in " ".join(f.name for f in report.safety.factors)
+    safety_joined = " ".join(f.value for f in report.safety.factors)
+    assert "per resident" in safety_joined
+    assert "0.03×" not in safety_joined
     assert "open_meteo" not in report.environment.factors[0].value
 
 

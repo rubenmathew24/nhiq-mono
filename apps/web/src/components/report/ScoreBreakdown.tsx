@@ -62,48 +62,43 @@ function DimensionRow({
   const factors = dimension.factors ?? [];
 
   return (
-    <div
+    <button
+      type="button"
       className={cn(
-        "rounded-xl border border-border/70 bg-muted/20 p-3.5 transition-colors",
-        open && "border-border bg-muted/35",
+        "w-full text-left rounded-xl border border-border/70 bg-muted/20 p-3.5",
+        "transition-colors cursor-pointer",
+        "hover:bg-muted/55 hover:border-border",
+        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+        open && "border-border bg-muted/40",
       )}
+      aria-expanded={open}
+      aria-controls={panelId}
+      aria-label={`${open ? "Collapse" : "Expand"} ${title} details`}
+      onClick={() => setOpen((v) => !v)}
     >
-      <button
-        type="button"
-        className={cn(
-          "w-full text-left rounded-lg -m-1 p-1",
-          "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-          "hover:bg-muted/40",
-        )}
-        aria-expanded={open}
-        aria-controls={panelId}
-        aria-label={`${open ? "Collapse" : "Expand"} ${title} details`}
-        onClick={() => setOpen((v) => !v)}
-      >
-        <div className="flex items-center justify-between text-xs mb-1.5 gap-2">
-          <span className="text-foreground font-medium flex items-center gap-1.5">
-            {title}
-            <span
-              className={cn(
-                "inline-flex text-muted-foreground transition-transform text-[10px]",
-                open && "rotate-90",
-              )}
-              aria-hidden
-            >
-              ▸
-            </span>
-          </span>
+      <div className="flex items-center justify-between text-xs mb-1.5 gap-2">
+        <span className="text-foreground font-medium flex items-center gap-1.5">
+          {title}
           <span
             className={cn(
-              "font-display font-semibold tabular-nums",
-              scoreTextClass(dimension.score),
+              "inline-flex text-muted-foreground transition-transform text-[10px]",
+              open && "rotate-90",
             )}
+            aria-hidden
           >
-            {Math.round(dimension.score)}
+            ▸
           </span>
-        </div>
-        <ScoreBar score={dimension.score} />
-      </button>
+        </span>
+        <span
+          className={cn(
+            "font-display font-semibold tabular-nums",
+            scoreTextClass(dimension.score),
+          )}
+        >
+          {Math.round(dimension.score)}
+        </span>
+      </div>
+      <ScoreBar score={dimension.score} />
 
       {subs.length > 0 && (
         <div className="mt-3 space-y-2 pl-0.5">
@@ -146,7 +141,7 @@ function DimensionRow({
           )}
         </div>
       )}
-    </div>
+    </button>
   );
 }
 

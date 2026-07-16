@@ -63,8 +63,20 @@ describe("ScoreBreakdown expand", () => {
     expect(
       screen.getByRole("button", { name: /Expand Healthcare details/i }),
     ).toBeInTheDocument();
-    // Category boxes use bordered surfaces
-    expect(container.querySelectorAll(".rounded-xl.border").length).toBeGreaterThanOrEqual(5);
+    // Entire category is one bordered button
+    expect(container.querySelectorAll("button.rounded-xl.border").length).toBeGreaterThanOrEqual(
+      5,
+    );
+    const btn = screen.getByRole("button", { name: /Expand Healthcare details/i });
+    expect(btn.className).toMatch(/hover:bg-muted\/55/);
+  });
+
+  it("expands when clicking sub-score area (full box)", () => {
+    render(<ScoreBreakdown report={report} />);
+    expect(screen.queryByText(/162 min/)).not.toBeInTheDocument();
+    // Click the Access label inside the Healthcare box — whole button toggles
+    fireEvent.click(screen.getAllByText("Access")[0]);
+    expect(screen.getByText(/162 min/)).toBeInTheDocument();
   });
 
   it("expands and collapses healthcare stats", () => {
