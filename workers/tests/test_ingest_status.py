@@ -31,5 +31,7 @@ def test_resolve_scope_metro(monkeypatch: pytest.MonkeyPatch):
     assert resolve_scope_counties("metro_10") == default_fixture_county_fips()
 
 
-def test_resolve_scope_national_empty():
-    assert resolve_scope_counties("national") == frozenset()
+def test_resolve_scope_national_requires_db(monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.delenv("DATABASE_URL", raising=False)
+    with pytest.raises(RuntimeError, match="DATABASE_URL"):
+        resolve_scope_counties("national")

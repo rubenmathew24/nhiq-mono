@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from ingest.fixtures.canonical_addresses import county_in_fixture, fixture_county_fips
+from ingest.fixtures.canonical_addresses import fixture_county_fips
 
 
 def _first(*values: Any) -> str | None:
@@ -71,7 +71,7 @@ def transform_nces_features(
         state_fips, county_fips = _county_parts(attrs.get("CNTY"), attrs.get("STFIP"))
         if not state_fips or not county_fips:
             continue
-        if not county_in_fixture(state_fips, county_fips):
+        if f"{state_fips}{county_fips}" not in allow:
             continue
         lat, lng = _parse_coords(attrs, feature.get("geometry"))
         if lat is None or lng is None:

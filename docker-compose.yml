@@ -209,6 +209,23 @@ services:
     profiles:
       - workers
 
+  worker-geo:
+    build:
+      context: .
+      dockerfile: docker/worker.Dockerfile
+    environment:
+      DATABASE_URL: postgresql://postgres:postgres@db:5432/neighborhoodiq
+      INGEST_SCOPE: ${INGEST_SCOPE:-metro_10}
+      INGEST_STATE_BATCH: ${INGEST_STATE_BATCH:-}
+      INGEST_GEO_LOAD_ALL: ${INGEST_GEO_LOAD_ALL:-}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+    command: python -m ingest.geo.run
+    depends_on:
+      db:
+        condition: service_healthy
+    profiles:
+      - workers
+
   worker-status:
     build:
       context: .

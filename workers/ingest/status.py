@@ -24,10 +24,13 @@ from psycopg2.extras import Json, execute_batch
 from dotenv import load_dotenv
 
 from ingest.fixtures.canonical_addresses import (
-    FIPS_TO_STATE_ABBR,
     default_fixture_county_fips,
     parse_county_allowlist,
 )
+from ingest.geo.jurisdictions import STATE_FIPS_TO_ABBR
+from ingest.geo.scope import load_national_universe_counties
+
+FIPS_TO_STATE_ABBR = STATE_FIPS_TO_ABBR
 
 load_dotenv()
 
@@ -85,16 +88,23 @@ def resolve_scope_name() -> str:
     return raw
 
 
-def resolve_scope_counties(scope: str) -> frozenset[str]:
+def resolve_scope_counties(
+    scope: str, *, database_url: str | None = None
+) -> frozenset[str]:
     """Counties that define completion denominators for this status run."""
     if scope == "national":
-        return frozenset()
-    if scope == "smoke":
+        if not database_url:
+            database_url = os.getenv("DATABASE_URL")
+        if not database_url:
+            raise RuntimeError("DATABASE_URL required for INGEST_SCOPE=national status")
+        base = load_national_universe_counties(database_url)
+        if not base:
+            return frozenset()  # registry empty — caller reports 0%
+    elif scope == "smoke":
         base = frozenset({SMOKE_COUNTY})
     else:
         base = default_fixture_county_fips()
 
-    # Optional allowlist further narrows (must stay within fixtures).
     override = parse_county_allowlist(os.getenv("INGEST_COUNTY_ALLOWLIST"))
     if override is None:
         return base
@@ -113,22 +123,19 @@ def _county_set_from_rows(rows: list[tuple]) -> set[str]:
 
 
 def compute_job_statuses(cur, counties: frozenset[str], scope: str) -> list[JobStatus]:
-    if scope == "national":
-        return [
-            JobStatus(
-                job_name=name,
-                pct_complete=0.0,
-                done_count=0,
-                total_count=0,
-                detail={"reason": "national_not_supported"},
-            )
-            for name in JOB_NAMES
-        ]
-
     county_list = sorted(counties)
     n = len(county_list)
     if n == 0:
-        raise RuntimeError("Scope county list is empty")
+        detail = {"reason": "empty_universe"}
+        if scope == "national":
+            detail = {
+                "reason": "geo_counties_empty",
+                "hint": "Run python -m ingest.geo.run with INGEST_GEO_LOAD_ALL=1",
+            }
+        return [
+            JobStatus(name, 0.0, 0, 0, detail)
+            for name in JOB_NAMES
+        ]
 
     # census — SSCCC = state_fips || county_fips
     cur.execute(
@@ -391,7 +398,7 @@ def main() -> int:
         return 1
     try:
         scope = resolve_scope_name()
-        counties = resolve_scope_counties(scope)
+        counties = resolve_scope_counties(scope, database_url=database_url)
         persist_and_log(database_url, scope, counties)
         return 0
     except Exception as exc:  # noqa: BLE001

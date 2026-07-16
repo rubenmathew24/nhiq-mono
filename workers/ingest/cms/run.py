@@ -8,10 +8,11 @@ import sys
 import psycopg2
 
 from ingest.base import BaseIngestionWorker
+from ingest.checkpoints import log_skip, states_with_hospitals
 from ingest.cms.client import iter_hospital_pages
 from ingest.cms.geocode import fill_missing_coordinates
 from ingest.cms.transform import transform_hospital_records
-from ingest.fixtures.canonical_addresses import fixture_state_abbrs
+from ingest.geo.scope import active_state_abbrs
 
 logger = logging.getLogger("cms")
 
@@ -63,12 +64,19 @@ class CmsHospitalWorker(BaseIngestionWorker):
             self.logger.info("CMS page %s: fetched %s raw rows", page, len(raw_page))
 
     def transform(self) -> None:
-        states = fixture_state_abbrs()
-        self.logger.info("Filtering to fixture states=%s", sorted(states))
+        states = active_state_abbrs(database_url=self.database_url)
+        done = states_with_hospitals(self.database_url, sorted(states))
+        pending = frozenset(states) - done
+        log_skip(self.logger, "cms", len(done), len(pending))
+        if not pending:
+            self._records = []
+            self.logger.info("All target states already have hospitals; skipping CMS load")
+            return
+        self.logger.info("Filtering to states=%s", sorted(pending))
         combined: list[dict] = []
         for raw_page in self._raw_pages:
             combined.extend(
-                transform_hospital_records(raw_page, state_allowlist=states)
+                transform_hospital_records(raw_page, state_allowlist=pending)
             )
         self._records = fill_missing_coordinates(combined)
         self.logger.info("Kept %s hospitals after state filter", len(self._records))
