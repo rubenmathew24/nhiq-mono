@@ -4,7 +4,7 @@
 
 **Created**: 2026-07-16
 
-**Status**: Draft (UX polish revision 2026-07-16)
+**Status**: Draft (UX polish revision 3 — 2026-07-16)
 
 **Input**: User description: "Expand the report page so it shows major scores and sub-scores. Users can click a category to see extra stats. Blend seamlessly with the current UI and make clickability obvious. New workers and schema changes are allowed; document all proposed storage changes and the cost to convert existing data."
 
@@ -38,12 +38,12 @@ A user understands that **each category is an obvious interactive box**, clicks 
 
 **Acceptance Scenarios**:
 
-1. **Given** the score breakdown, **When** the user has not expanded anything yet, **Then** each category is presented as a distinct interactive box (visible border/surface + clear hover highlight) whose **entire surface** is focusable and activatable—not only the title row or a subtle “View details” text link.
-2. **Given** an unexpanded category box, **When** the user activates it (click/tap anywhere on the box), **Then** an in-place expanded section appears under that category with the documented expand stats for that pillar, without navigating away from the report.
+1. **Given** the score breakdown, **When** the user has not expanded anything yet, **Then** each category is presented as a distinct interactive box (visible border/surface + clear hover highlight) whose **entire surface**—including the category title/score/bar, **all sub-score rows**, and the **category summary text**—is focusable and activatable—not only the title row or a subtle “View details” text link.
+2. **Given** an unexpanded category box, **When** the user activates it by clicking/tapping **any** of those regions (title, bar, a sub-score, or the summary), **Then** an in-place expanded section appears under that category with the documented expand stats for that pillar, without navigating away from the report. Hovering **any** of those regions MUST highlight the **whole** box.
 3. **Given** an expanded category, **When** the user activates it again (or chooses collapse), **Then** the detail hides and the compact category + sub-score view remains.
 4. **Given** Healthcare expanded on a fixture address with nearby hospitals, **When** the user reads the detail, **Then** they see the nearest emergency facility plus up to two more ranked ERs labeled as **2nd nearest ER** / **3rd nearest ER** (not “Also nearby”), each with distance and star rating when stored; missing ratings show **`★-`**.
 5. **Given** Healthcare expanded with an ER wait figure, **When** the wait is at or worse than state/national benchmarks (e.g. Bentonville ~162 min slightly above national), **Then** the wait value’s color uses the same good/mid/poor tiering as the score bar—not a misleading “good” (green) tint.
-6. **Given** Schools expanded, **When** the user reads the detail, **Then** they see nearest-distance (and name when available) for each available school level bucket within **25 miles**—not a single “nearest school,” not pupil–teacher ratio or locale codes, and not schools hundreds of miles away.
+6. **Given** Schools expanded, **When** the user reads the detail, **Then** they see nearest-distance (and name when available) for each available school level bucket within **30 miles**—not a single “nearest school,” not pupil–teacher ratio or locale codes, and not schools hundreds of miles away.
 7. **Given** Safety expanded, **When** the user reads the detail, **Then** offense labels are full plain English (e.g. Homicide, Robbery, Assault—never `ASS` / `HOM` codes), the violent-crime comparison describes intensity **vs the state average per resident** (not share of statewide totals), and geography + reporting agencies are condensed.
 8. **Given** Environment expanded, **When** the user reads air-quality stats, **Then** copy does **not** expose internal source ids such as `open_meteo` to the end user.
 9. **Given** Economy expanded, **When** the user reads the detail, **Then** they still see median household income and county unemployment, plus the documented extra glanceable ACS labor stats (plain English).
@@ -91,7 +91,8 @@ An operator runs the documented collection and score-refresh path (including any
 - Touch / keyboard users → category box activate works without hover; expanded region is reachable and dismissible.
 - Safety detail → must remain neutral (no “safe/unsafe” steering language); agency/county grain is disclosed briefly when crime is not tract-level.
 - School level missing for a type → omit that row or show unavailable for that level; do not invent a school.
-- Nearest school for a level beyond 25 miles → treat as not found for expand (no absurd distances).
+- Nearest school for a level beyond 30 miles → treat as not found for expand (no absurd distances).
+- Property-crime sub-score when offenses exist but **no state benchmarks** are stored → limited-data / unavailable (never invent a score of 0 from a fake ratio).
 - Zoning / attendance boundaries → **out of scope**; never imply the listed school is “your assigned school.”
 - Violent crime “× state” absolute share → **not** allowed as user-facing meaning; use per-resident intensity.
 - National vs metro scope → feature targets the **dev/local report experience** first; national ingest (003) may widen geography later without changing the report contract.
@@ -103,10 +104,10 @@ An operator runs the documented collection and score-refresh path (including any
 - **FR-001**: The report MUST display the overall neighborhood score and the five category scores (Healthcare, Safety, Schools/Education, Environment, Economy) consistent with stored scores for that address’s geography and active data vintage.
 - **FR-002**: Each category MUST display its defined **sub-scores** with labels and numeric values (0–100 scale unless a documented exception applies for a specific sub-score).
 - **FR-003**: Category rows MUST be activatable (click/tap/keyboard) to expand and collapse **extra stats** for that category in place on the report page.
-- **FR-004**: Before any expand, each category MUST render as an **obvious interactive box**. The **entire box** (title, score bar, sub-scores, summary, and expanded panel chrome) MUST be one activatable control. Hover MUST apply a clear highlight (stronger than a near-invisible muted wash) so clickability is obvious. Subtle text-only “View details” links are not sufficient.
+- **FR-004**: Before any expand, each category MUST render as an **obvious interactive box**. The **entire box** (title, score bar, **sub-score rows**, **summary copy**, and expanded panel chrome) MUST be one activatable control—clicks on sub-scores or summary MUST toggle expand the same as clicks on the title/bar. Hover MUST highlight the **whole** box (stronger than a near-invisible muted wash) whenever the pointer is over any part of that box. Subtle text-only “View details” links are not sufficient. Local Compose verification MUST use a web image (or bind-mount) that includes this control—not a stale runner build that only activates the header.
 - **FR-005**: Expanded Healthcare MUST include nearest emergency facility identity, distance, and quality rating when stored; up to two additional ERs labeled **2nd nearest ER** / **3rd nearest ER**; and ER wait / timeliness vs benchmark when collected. Wait (and other scored expand values that use tone) MUST use the same good/mid/poor color tiers as the score bar (`scoreTier`: ≥75 / ≥50 / else). When an ER has no star rating, the value MUST still include a star placeholder **`★-`** so rows align visually with rated ERs.
 - **FR-006**: Expanded Safety MUST use plain-English labels for crime types and comparisons (no raw CDE offense codes such as `ASS`); personal/property meaning MUST be glanceable without developer jargon; geography note and reporting agencies MUST be condensed (short combined lines, not a long list of separate agency rows). The violent-crime comparison MUST express **intensity vs the state average on a per-resident basis** (how this area compares to typical places in the state)—NOT the county’s share of statewide absolute incident totals. Wording MUST stay Fair Housing–neutral (e.g. lower/higher than state average per resident; no “safe/unsafe neighborhood” steering).
-- **FR-007**: Expanded Schools MUST list nearest public school **by level** (Pre-K, Elementary, Middle, Junior High, High—whichever levels exist in stored data for the area), with name and distance when available, **only if that school is within `SCHOOL_MAX_EXPAND_MILES` (25 miles)**. Beyond that cutoff, that level MUST show a clear **No schools found** (or equivalent) rather than an absurd distant facility. MUST NOT show pupil–teacher ratio or locale codes. MUST NOT claim zoning/assignment. Staffing sub-score may remain limited-data until a zoning-backed signal exists.
+- **FR-007**: Expanded Schools MUST list nearest public school **by level** (Pre-K, Elementary, Middle, Junior High, High—whichever levels exist in stored data for the area), with name and distance when available, **only if that school is within `SCHOOL_MAX_EXPAND_MILES` (30 miles)**. Beyond that cutoff, that level MUST show a clear **No schools found** (or equivalent) rather than an absurd distant facility. MUST NOT show pupil–teacher ratio or locale codes. MUST NOT claim zoning/assignment. Staffing sub-score may remain limited-data until a zoning-backed signal exists.
 - **FR-008**: Expanded Environment MUST include air-quality summary in plain English (value + human-readable category); MUST NOT surface internal source identifiers such as `open_meteo` in user-visible copy; and hazard risk summary when hazard data has been collected.
 - **FR-009**: Expanded Economy MUST include tract median household income and county unemployment when available, plus **tract employment rate** (share of labor force employed from existing ACS columns) as an additional glanceable labor stat.
 - **FR-010**: Sub-scores and expand stats MUST be served from the product’s precomputed / stored path (no browser or request-time calls to government source APIs for these figures).
@@ -120,6 +121,7 @@ An operator runs the documented collection and score-refresh path (including any
 - **FR-018**: Private listing-market sources (Zillow/Redfin) remain **out of scope**.
 - **FR-019**: All user-visible expand labels and values MUST be plain English suitable for a non-technical buyer glance—no raw API codes, internal source ids, or abbreviations that read as unprofessional (e.g. `ASS` for assault).
 - **FR-020**: Safety personal-crime scoring and expand comparison MUST use a **population-normalized** local-vs-state intensity ratio (incidents per resident / per 100k), not raw county counts divided by raw statewide counts.
+- **FR-021**: Safety **property** sub-score MUST use the same population-normalized intensity pattern **only when** at least one property offense has a usable **state benchmark**. If property incident counts exist but all state benchmarks are missing, the property sub-score MUST be **unavailable / limited data** (not score `0` from synthesizing `state = local` under different county vs state populations).
 
 ### Key Entities
 
@@ -172,8 +174,9 @@ This feature expects **additive** storage where possible so existing score rows 
 - **SC-008**: Non-technical reviewer finds no raw offense codes, locale codes, or `open_meteo`-style source ids in expand panels on the Bentonville fixture report.
 - **SC-009**: Bentonville ER wait that is at/above national average does not render in the score-bar “good” (green) tier.
 - **SC-010**: Bentonville Safety expand does not present violent crime as a tiny “× state” share-of-state-totals figure; comparison reads as vs state average **per resident** (or equivalent plain intensity language).
-- **SC-011**: Schools expand never lists a facility farther than 25 miles; levels beyond cutoff show no-schools-found copy (Bentonville must not show ~457 mi Pre-K).
-- **SC-012**: Hovering a category box shows a clearly stronger highlight than the pre-polish muted wash; clicking outside the title (e.g. on sub-score area) still toggles expand.
+- **SC-011**: Schools expand never lists a facility farther than 30 miles; levels beyond cutoff show no-schools-found copy (Bentonville must not show ~457 mi Pre-K).
+- **SC-012**: Hovering any part of a category box (title, sub-score, or summary) highlights the whole box; clicking a sub-score or the summary toggles expand the same as clicking the title/bar.
+- **SC-013**: Bentonville (and similar counties where property CDE benches are null) MUST NOT show Crimes against property as a scored `0`; it MUST show limited-data / unavailable until benches exist.
 
 ## Assumptions
 
@@ -185,10 +188,11 @@ This feature expects **additive** storage where possible so existing score rows 
 - CMS Timely & Effective Care is in scope for wait/timeliness; HCAHPS and full Hospital Compare catalogs are deferred.
 - NPPES pharmacy/urgent-care directory is deferred (FR-017).
 - School attendance zoning is out of scope; proximity-by-level is the Schools expand contract.
-- **`SCHOOL_MAX_EXPAND_MILES` = 25** for expand listing (access sub-score may still use in-range schools only).
+- **`SCHOOL_MAX_EXPAND_MILES` = 30** for expand listing (access sub-score may still use in-range schools only).
 - Economy extra stats use **existing** ACS columns already in `acs_indicators` (no new Census variable ingest in this polish) except as needed for **county/state population** to normalize safety rates (ACS B01003 or equivalent).
 - National geography expansion remains owned by `003-national-ingest`; this feature defines report contracts and local/metro collection for new sources.
 - Mock demo report, if retained for tests, must not be confused with live detail in acceptance of live paths.
+- Compose `web` currently builds a **runner image without a source bind-mount**; UI affordance changes require **rebuild** (or an explicit bind-mount) before local acceptance.
 
 ## Clarifications
 
@@ -205,5 +209,11 @@ This feature expects **additive** storage where possible so existing score rows 
 
 - Safety violent-crime line → **per-resident vs state average** meaning (not share of statewide absolute totals); update score ratio accordingly.
 - Healthcare → missing ER stars render as **`★-`** for column alignment.
-- Schools → **25 mi** max expand distance; beyond → no schools found for that level.
+- Schools → **25 mi** max expand distance (superseded by round 3 → **30 mi**).
 - Category box → **entire box** clickable; **stronger hover** highlight.
+
+### Session 2026-07-16 (UX polish round 3 — bugfixes)
+
+- **Property sub-score `0`**: Bentonville property offenses (BUR/LAR/…) have null `state_benchmark_12mo`. Round-2 code set `state = local` then applied county vs state populations → intensity ≈ `state_pop/county_pop` → clamped score **0**. Fix: missing property benches → **unavailable**, never synthesize that path.
+- **Schools cutoff** → **`SCHOOL_MAX_EXPAND_MILES` = 30**.
+- **Full-box expand still broken in local UI**: source already wraps the whole category in one control, but Compose `web` serves a **stale built image** (no `./apps/web` volume). Fix: ensure control covers title + sub-scores + summary with whole-box hover; **rebuild web** (and harden Vitest) so local :3000 matches source.
