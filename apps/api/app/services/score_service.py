@@ -168,8 +168,8 @@ def _education_summary(score: float, sources: dict[str, DimensionSource]) -> str
     source_id = src.source_id if src else None
     if source_id == "nces_urban":
         return (
-            f"{_label_for(score)} school access and staffing signals "
-            f"from NCES locations plus Urban Institute CCD stats nearby."
+            f"{_label_for(score)} school access from NCES public-school "
+            f"locations by level (staffing limited until zoning-backed assignment)."
         )
     if source_id == "default":
         return (

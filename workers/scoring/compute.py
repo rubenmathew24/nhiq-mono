@@ -934,16 +934,17 @@ def run() -> int:
                 safety_counts[ssid] = safety_counts.get(ssid, 0) + 1
 
                 if has_nces_data or has_urban_data:
+                    level_miles = [
+                        float(s.miles)
+                        for s in schools_by_level
+                        if s.miles is not None
+                    ]
                     edu_res = education_from_sources(
                         EducationInputs(
                             nearest_miles=float(nearest_school_miles)
                             if nearest_school_miles is not None
                             else None,
-                            locale=locale,
-                            enrollment=int(enrollment) if enrollment is not None else None,
-                            teachers_fte=float(teachers_fte)
-                            if teachers_fte is not None
-                            else None,
+                            level_miles=level_miles,
                             ncessch=ncessch,
                         ),
                         has_nces_table=has_nces_data,
