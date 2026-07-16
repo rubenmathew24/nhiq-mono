@@ -18,7 +18,7 @@ if str(_WORKERS_ROOT) not in sys.path:
 
 from dotenv import load_dotenv
 
-from ingest.fixtures.canonical_addresses import fixture_county_fips
+from ingest.checkpoints import counties_with_fbi_cde_scores, log_skip
 from ingest.fixtures.constants import (
     DATA_VINTAGE,
     EPA_END_LAG_DAYS,
@@ -29,6 +29,7 @@ from ingest.fixtures.constants import (
     SOURCE_DEFAULT,
     SOURCE_PLACEHOLDER,
 )
+from ingest.geo.scope import active_county_fips
 from scoring.economic import EconomicInputs, economic_from_sources
 from scoring.education import EducationInputs, education_from_sources
 from scoring.environment import EpaCountyAqi, resolve_environment
@@ -405,10 +406,16 @@ def run() -> int:
     if not database_url:
         raise RuntimeError("DATABASE_URL is required")
 
-    counties = sorted(fixture_county_fips())
+    allow = active_county_fips(database_url=database_url)
+    done = counties_with_fbi_cde_scores(database_url, sorted(allow))
+    counties = sorted(allow - done)
+    log_skip(logger, "scoring", len(done), len(counties))
+    if not counties:
+        logger.info("All active counties already have fbi_cde safety scores; nothing to do")
+        return 0
     start, end = aqi_window()
     logger.info(
-        "Scoring fixture counties=%s vintage=%s AQI window=%s..%s",
+        "Scoring counties=%s vintage=%s AQI window=%s..%s",
         counties,
         DATA_VINTAGE,
         start,

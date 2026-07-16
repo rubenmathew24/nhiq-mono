@@ -475,11 +475,24 @@ Ingest workers write **directly** to Azure Postgres (`niq-postgres` / `neighborh
 
 ### Manual jobs (resource group `neighborhoodiq-rg`, env `niq-env`)
 
-`niq-worker-census`, `niq-worker-epa`, `niq-worker-cms`, `niq-worker-fbi`, `niq-worker-nces`, `niq-worker-urban`, `niq-worker-acs`, `niq-worker-bls`, `niq-worker-scoring`, **`niq-worker-status`**.
+`niq-worker-geo`, `niq-worker-orchestrate`, `niq-worker-census`, `niq-worker-epa`, `niq-worker-cms`, `niq-worker-fbi`, `niq-worker-nces`, `niq-worker-urban`, `niq-worker-acs`, `niq-worker-bls`, `niq-worker-scoring`, **`niq-worker-status`**.
 
-Shape: trigger **Manual**, ~1 CPU / 2Gi, `--replica-timeout` 7200s (status job can use 600s). Command form: `python` `-m` `<module>` (e.g. `ingest.census.run`, `scoring.compute`, **`ingest.status`**).
+Shape: trigger **Manual**, ~1 CPU / 2Gi, `--replica-timeout` 7200s (status/geo can use 600–3600s). Command form: `python` `-m` `<module>` (e.g. `ingest.geo.run`, `ingest.census.run`, `scoring.compute`, **`ingest.status`**).
 
 Status job env: `INGEST_SCOPE=metro_10` (or `smoke` / `national`), optional `INGEST_COUNTY_ALLOWLIST`, `DATABASE_URL` → `WORKER-DATABASE-URL`.
+
+### National ingest (50 states + DC, phased)
+
+See also [`specs/003-national-ingest/quickstart.md`](../specs/003-national-ingest/quickstart.md).
+
+1. Apply [`infra/sql/006_geo_counties.sql`](../infra/sql/006_geo_counties.sql).
+2. Bootstrap registry (all included jurisdictions): `INGEST_GEO_LOAD_ALL=1` on `niq-worker-geo`, then start it.
+3. **Preferred:** GitHub → Actions → **National ingest** → Run workflow (`max_states`, optional `state_filter`). This starts `niq-worker-orchestrate`, which inventories DB gaps and only starts ACA jobs that still need work.
+4. Manual fallback: set on ingest/scoring jobs `INGEST_SCOPE=national`, `INGEST_STATE_BATCH=<SS>`; run workers in order; re-start to resume (`skip_checkpoint`).
+5. Status with `INGEST_SCOPE=national` for Workbook % against full `geo_counties` universe.
+6. Territories are **not** in v1; enable later by moving FIPS from `TERRITORY_STATE_FIPS` → `INCLUDED_STATE_FIPS` in code.
+
+Orchestrator job: `niq-worker-orchestrate`. GitHub Actions **National ingest** injects the Deploy service principal from `AZURE_CREDENTIALS` into the job env on each run (no separate Key Vault SP required). The SP must be able to start/update jobs in the RG. **Do not** wire national ingest to the `master` Deploy workflow.
 
 ### Ingest progress Workbook (ops)
 
@@ -522,11 +535,11 @@ az containerapp job execution list --name niq-worker-census --resource-group nei
 
 ### Schema on Azure (workers)
 
-Applied manually (in order) when missing: `infra/sql/init.sql`, `002_raw_ingest_tables.sql`, `003_score_sources.sql`, `004_safety_education_economic.sql`, **`005_ingest_status.sql`**. Same Docker `psql` + `sslmode=require` pattern as §7.
+Applied manually (in order) when missing: `infra/sql/init.sql`, `002_raw_ingest_tables.sql`, `003_score_sources.sql`, `004_safety_education_economic.sql`, **`005_ingest_status.sql`**, **`006_geo_counties.sql`**. Same Docker `psql` + `sslmode=require` pattern as §7.
 
 ### Explicitly deferred
 
-- Full national / 50-state allowlist
+- US territories in national universe (registry designed to add later)
 - Cron schedules on jobs
 - Worker image build in GitHub Actions / promote via `master`
 - Front Door; Key Vault managed-identity wiring to ACA

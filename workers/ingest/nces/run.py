@@ -8,7 +8,8 @@ import sys
 import psycopg2
 
 from ingest.base import BaseIngestionWorker
-from ingest.fixtures.canonical_addresses import fixture_state_fips
+from ingest.checkpoints import counties_with_nces, log_skip
+from ingest.geo.scope import active_county_fips
 from ingest.nces.client import iter_state_school_pages
 from ingest.nces.transform import transform_nces_features
 
@@ -44,7 +45,13 @@ class NcesSchoolWorker(BaseIngestionWorker):
 
     def fetch(self) -> None:
         self._raw_features = []
-        for state_fips in sorted(fixture_state_fips()):
+        self._allow = active_county_fips(database_url=self.database_url)
+        done = counties_with_nces(self.database_url, sorted(self._allow))
+        pending = self._allow - done
+        log_skip(self.logger, "nces", len(done), len(pending))
+        self._pending = pending
+        states = frozenset(cf[:2] for cf in pending)
+        for state_fips in sorted(states):
             page = 0
             for raw_page in iter_state_school_pages(state_fips):
                 page += 1
@@ -57,7 +64,10 @@ class NcesSchoolWorker(BaseIngestionWorker):
                 )
 
     def transform(self) -> None:
-        self._records = transform_nces_features(self._raw_features)
+        allow = getattr(self, "_pending", None) or getattr(self, "_allow", frozenset())
+        self._records = transform_nces_features(
+            self._raw_features, county_allowlist=allow
+        )
         self.logger.info(
             "Fixture-county filter kept %s / %s NCES schools",
             len(self._records),
