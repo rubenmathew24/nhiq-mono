@@ -11,7 +11,9 @@ from ingest.base import BaseIngestionWorker
 from ingest.bls.client import fetch_laus_series, laus_series_id
 from ingest.bls.transform import transform_laus_series
 from ingest.checkpoints import counties_with_bls, log_skip
+from ingest.force import force_enabled
 from ingest.geo.scope import active_county_fips
+from ingest.status_pulse import StatusPulse
 
 logger = logging.getLogger("bls")
 
@@ -37,7 +39,11 @@ class BlsLausWorker(BaseIngestionWorker):
 
     def fetch(self) -> None:
         allow = active_county_fips(database_url=self.database_url)
-        done = counties_with_bls(self.database_url, sorted(allow))
+        done = (
+            set()
+            if force_enabled()
+            else counties_with_bls(self.database_url, sorted(allow))
+        )
         counties = sorted(allow - done)
         log_skip(self.logger, "bls", len(done), len(counties))
         series_map = {laus_series_id(cf): cf for cf in counties}
@@ -50,6 +56,7 @@ class BlsLausWorker(BaseIngestionWorker):
             observations_by_series.update(fetch_laus_series(batch))
 
         self._records = []
+        pulse = StatusPulse(self.database_url)
         for series_id, county_fips in series_map.items():
             obs = observations_by_series.get(series_id) or []
             row = transform_laus_series(county_fips, series_id, obs)
@@ -63,6 +70,8 @@ class BlsLausWorker(BaseIngestionWorker):
                 )
             else:
                 self.logger.warning("No LAUS data for county %s", county_fips)
+            pulse.tick()
+        pulse.flush()
 
     def transform(self) -> None:
         # Fetch+transform combined — records ready after fetch.

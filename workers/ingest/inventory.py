@@ -142,20 +142,38 @@ def states_needing_work(
     inventory: dict[str, Any],
     *,
     max_states: int | None = None,
+    force_states: frozenset[str] | None = None,
 ) -> list[str]:
-    """Ordered list of state FIPS that have any pipeline gap."""
+    """Ordered list of state FIPS that have any pipeline gap.
+
+    Forced states are listed first (sorted), then remaining gap states.
+    ``max_states`` caps the combined list.
+    """
     by_state: dict[str, dict[str, list[str]]] = inventory.get("by_state") or {}
     needed: set[str] = set()
     for worker in PIPELINE_WORKERS:
         needed.update((by_state.get(worker) or {}).keys())
-    ordered = sorted(needed)
+    force = frozenset(force_states or ())
+    forced_ordered = sorted(force)
+    gap_ordered = sorted(needed - force)
+    ordered = forced_ordered + gap_ordered
     if max_states is not None and max_states >= 0:
         return ordered[:max_states]
     return ordered
 
 
-def workers_needed_for_state(inventory: dict[str, Any], state_fips: str) -> list[str]:
-    """Pipeline-ordered workers that still have gaps in this state."""
+def workers_needed_for_state(
+    inventory: dict[str, Any],
+    state_fips: str,
+    *,
+    force: bool = False,
+) -> list[str]:
+    """Pipeline-ordered workers that still have gaps in this state.
+
+    When ``force`` is true, return the full pipeline (ignore gaps).
+    """
+    if force:
+        return list(PIPELINE_WORKERS)
     by_state: dict[str, dict[str, list[str]]] = inventory.get("by_state") or {}
     out: list[str] = []
     for worker in PIPELINE_WORKERS:

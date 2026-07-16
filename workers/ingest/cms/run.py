@@ -12,6 +12,7 @@ from ingest.checkpoints import log_skip, states_with_hospitals
 from ingest.cms.client import iter_hospital_pages
 from ingest.cms.geocode import fill_missing_coordinates
 from ingest.cms.transform import transform_hospital_records
+from ingest.force import force_enabled
 from ingest.geo.scope import active_state_abbrs
 
 logger = logging.getLogger("cms")
@@ -65,7 +66,11 @@ class CmsHospitalWorker(BaseIngestionWorker):
 
     def transform(self) -> None:
         states = active_state_abbrs(database_url=self.database_url)
-        done = states_with_hospitals(self.database_url, sorted(states))
+        done = (
+            set()
+            if force_enabled()
+            else states_with_hospitals(self.database_url, sorted(states))
+        )
         pending = frozenset(states) - done
         log_skip(self.logger, "cms", len(done), len(pending))
         if not pending:

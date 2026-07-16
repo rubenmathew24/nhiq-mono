@@ -8,6 +8,7 @@ import sys
 import psycopg2
 
 from ingest.base import BaseIngestionWorker
+from ingest.status_pulse import StatusPulse
 from ingest.urban.client import DEFAULT_YEAR, fetch_directory_for_leaid
 from ingest.urban.transform import transform_urban_records
 
@@ -78,6 +79,7 @@ class UrbanSchoolWorker(BaseIngestionWorker):
             len(self._ncessch_allow),
         )
 
+        pulse = StatusPulse(self.database_url)
         for i, leaid in enumerate(leaids, start=1):
             try:
                 page_rows = fetch_directory_for_leaid(leaid, year=self._year)
@@ -85,6 +87,7 @@ class UrbanSchoolWorker(BaseIngestionWorker):
                 self.logger.warning("Urban LEAID %s failed: %s", leaid, exc)
                 continue
             self._raw_rows.extend(page_rows)
+            pulse.tick()
             if i % 25 == 0 or i == len(leaids):
                 self.logger.info(
                     "Urban LEAID progress %s/%s (raw rows=%s)",
@@ -92,6 +95,7 @@ class UrbanSchoolWorker(BaseIngestionWorker):
                     len(leaids),
                     len(self._raw_rows),
                 )
+        pulse.flush()
 
     def transform(self) -> None:
         self._records = transform_urban_records(

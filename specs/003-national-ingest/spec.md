@@ -89,15 +89,49 @@ An ops operator starts a manual GitHub Actions workflow that triggers an Azure o
 
 ---
 
+### User Story 6 - Force re-ingest specified states (Priority: P2)
+
+An ops operator wants to refresh data for one or more states that inventory already marks complete (schema/scoring change, bad prior pull, vintage refresh). They supply `force_states` on the Actions workflow (or `ORCH_FORCE_STATES` on the orchestrator). The orchestrator schedules those states and all pipeline workers regardless of gaps, and workers re-run the batch without skip-done (upserts only—no table wipe).
+
+**Why this priority**: Gap-only orchestration cannot refresh “done” states; force is the ops escape hatch.
+
+**Independent Test**: With a state fully complete in inventory, run orchestrator with that state in `force_states`; confirm every pipeline worker is started with `INGEST_FORCE=1` and skip counts are zero for that batch.
+
+**Acceptance Scenarios**:
+
+1. **Given** state S is complete for all workers, **When** the operator runs with `force_states=S`, **Then** the orchestrator still queues S and starts all pipeline workers for S.
+2. **Given** `INGEST_FORCE=1` on a worker, **When** that worker runs, **Then** it does not skip counties that already have stored rows (re-upserts instead).
+3. **Given** a non-forced state with no gaps, **When** the orchestrator runs without that state in force, **Then** it still skips complete worker/state pairs as in US5.
+
+---
+
+### User Story 7 - Mid-run status monitoring (Priority: P2)
+
+While a long national job runs, the Workbook updates more often than once per state: the orchestrator emits an `INGEST_STATUS_SNAPSHOT` after each worker completes, and long unit-loop workers emit a snapshot every N counties (or LEAIDs for Urban), default N=15.
+
+**Why this priority**: Per-state-only status leaves ops blind during multi-hour workers (rate limits, hangs).
+
+**Independent Test**: Run a multi-county worker with N=15; confirm multiple `INGEST_STATUS_SNAPSHOT` lines appear in logs before the worker finishes; after each pipeline worker in a state, an additional snapshot is emitted.
+
+**Acceptance Scenarios**:
+
+1. **Given** a state with multiple workers queued, **When** each worker finishes, **Then** a status snapshot is emitted before the next worker starts (or immediately after).
+2. **Given** a county-loop worker processing more than N counties, **When** it processes counties, **Then** it emits a status snapshot at least every N completed units.
+3. **Given** a status emit fails, **When** ingest continues, **Then** the worker/orchestrator does not hard-fail solely because of the status emit.
+
+---
+
 ### Edge Cases
 
 - What happens when a state FIPS in the batch is unknown or not in the 50+DC list? Job fails clearly before fetch work.
 - How does the system handle a territory FIPS if someone adds it before territories are enabled? Either ignored with a clear log or rejected until the extensible registry explicitly includes that jurisdiction.
 - What if Census geography for a county has no usable centroid? Safety ingest skips that county with logged reason; status stays honest.
 - What if upstream APIs rate-limit mid-batch? Job may fail or exit incomplete; restart resumes via checkpoints without wiping prior counties.
-- What if operator re-runs an already-complete state batch? Workers mostly skip-done and exit successfully (or report nothing new to do).
-- What if inventory shows all workers complete for selected states? Orchestrator exits successfully without starting ingest jobs (may still refresh status).
+- What if operator re-runs an already-complete state batch? Workers mostly skip-done and exit successfully (or report nothing new to do)—unless `force_states` / `INGEST_FORCE` is set, in which case they re-upsert.
+- What if inventory shows all workers complete for selected states? Orchestrator exits successfully without starting ingest jobs (may still refresh status)—unless forced states are supplied.
 - What if GitHub Actions times out while the Azure orchestrator is still running? Operator re-dispatches; inventory-driven queue resumes from gaps.
+- What if Azure ARM returns 500 when patching/starting a job? Orchestrator retries with backoff before failing that worker.
+- What if `force_states` and `state_filter` both set? Forced states are processed (priority); filter still limits inventory for non-forced gap work as documented in the contract.
 
 ## Requirements *(mandatory)*
 
@@ -121,6 +155,11 @@ An ops operator starts a manual GitHub Actions workflow that triggers an Azure o
 - **FR-016**: An orchestrator MUST start only ACA worker jobs for worker/state pairs that inventory marks as incomplete, and MUST NOT start jobs for pairs with zero gaps.
 - **FR-017**: Operators MUST be able to trigger the orchestrator via a manual GitHub Actions workflow that does not run on ordinary master Deploy pushes.
 - **FR-018**: Orchestrator runs MUST be time-bounded (configurable max states per run) so re-runs continue filling remaining gaps.
+- **FR-019**: Operators MUST be able to force re-ingest of specified state FIPS via Actions/`ORCH_FORCE_STATES`, causing the orchestrator to run all pipeline workers for those states and set `INGEST_FORCE=1` (always set `0` when not forcing so force does not stick on the ACA job).
+- **FR-020**: When `INGEST_FORCE` is enabled, workers MUST NOT skip units already stored; they MUST re-process and upsert.
+- **FR-021**: The orchestrator MUST emit a national status snapshot (`INGEST_STATUS_SNAPSHOT` + durable snapshot row) after each worker completes for a state.
+- **FR-022**: County/unit-loop workers (at least FBI, ACS, BLS, Urban) MUST emit a status snapshot every N units (default 15, configurable via `INGEST_STATUS_EVERY_N`); status emit failures MUST NOT fail the ingest job.
+- **FR-023**: Orchestrator ARM calls that patch or start ACA jobs MUST retry transient control-plane failures (HTTP 429/500/502/503) with exponential backoff before treating the call as failed.
 
 ### Key Entities
 
@@ -131,18 +170,22 @@ An ops operator starts a manual GitHub Actions workflow that triggers an Azure o
 - **National status snapshot**: Per-worker done/total/% against the full national universe (independent of the current batch size).
 - **Gap inventory**: Per-worker list of incomplete counties (or states) derived from database contents.
 - **Orchestrator run**: Bounded Azure job that inventories gaps, starts only needed worker jobs in pipeline order per state, and refreshes status.
+- **Force state set**: Operator-supplied state FIPS that bypass inventory skip and worker skip-done for one run.
 
 ## Success Criteria *(mandatory)*
 
 ### Measurable Outcomes
 
 - **SC-001**: An operator can complete at least one non-fixture state end-to-end (ingest through scoring) using an explicit state batch, with national status % increasing for that state’s counties.
-- **SC-002**: After interrupting a worker mid-batch and restarting with the same batch, at least 95% of already-complete counties in that batch are skipped (no full re-fetch), verified by skip counts / logs and stable row identities.
+- **SC-002**: After interrupting a worker mid-batch and restarting with the same batch, at least 95% of already-complete counties in that batch are skipped (no full re-fetch), verified by skip counts / logs and stable row identities—unless force is enabled.
 - **SC-003**: National status denominator equals the county count for 50 states + DC; territories are not required to reach “national complete” for v1.
 - **SC-004**: Smoke and metro_10 status and a fixture-scoped worker re-run still succeed without a national state batch.
 - **SC-005**: Attempting national scope with no state batch fails fast with an actionable message in under 30 seconds (no multi-hour accidental run).
-- **SC-006**: When inventory shows worker W complete for state S, an orchestrator run for S does not start the ACA job for W.
-- **SC-007**: A second orchestrator run after partial completion queues fewer (or equal) gap units than the first, never re-queueing worker/state pairs that became complete.
+- **SC-006**: When inventory shows worker W complete for state S, an orchestrator run for S does not start the ACA job for W—unless S is in the force set.
+- **SC-007**: A second orchestrator run after partial completion queues fewer (or equal) gap units than the first, never re-queueing worker/state pairs that became complete (force runs excepted).
+- **SC-008**: With `force_states` set for a complete state, all pipeline workers for that state are started in one orchestrator run.
+- **SC-009**: During a long county-loop worker, at least one mid-job `INGEST_STATUS_SNAPSHOT` appears in logs when more than N counties are processed (N default 15).
+- **SC-010**: A single transient ARM 500 on job PATCH does not fail the orchestrator if a subsequent retry succeeds within the retry budget.
 
 ## Assumptions
 

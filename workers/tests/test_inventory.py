@@ -93,3 +93,23 @@ def test_states_needing_work_respects_max():
     }
     assert states_needing_work(inv, max_states=1) == ["06"]
     assert states_needing_work(inv, max_states=5) == ["06", "44"]
+
+
+def test_force_states_included_even_when_complete():
+    inv = {
+        "by_state": {
+            "census": {},
+            "epa": {},
+            "cms": {},
+            "fbi": {},
+            "nces": {},
+            "urban": {},
+            "acs": {},
+            "bls": {},
+            "scoring": {},
+        }
+    }
+    assert states_needing_work(inv, max_states=5, force_states=frozenset({"25"})) == [
+        "25"
+    ]
+    assert workers_needed_for_state(inv, "25", force=True)[0] == "census"

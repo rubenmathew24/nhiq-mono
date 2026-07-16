@@ -9,9 +9,13 @@
 ## Preferred: GitHub Actions orchestrator
 
 1. GitHub → Actions → **National ingest** → **Run workflow**
-2. Inputs: `max_states` (default 5), optional `state_filter` (e.g. `44` for Rhode Island)
-3. Watch the Actions log; refresh the Workbook (`INGEST_SCOPE=national`)
-4. Re-run the workflow to continue — inventory skips workers/states that are already complete
+2. Inputs: `max_states` (default 5), optional `state_filter` (e.g. `44` for Rhode Island), optional `force_states` (e.g. `25` to re-run Massachusetts even if complete)
+3. Watch the Actions log; Workbook refreshes after each worker and every ~15 counties mid-job (`INGEST_SCOPE=national`)
+4. Re-run the workflow to continue — inventory skips workers/states that are already complete (unless forced)
+
+### Force re-ingest
+
+Use `force_states` when you need upserts for states inventory already marks done (bad prior data, scoring formula change). Workers get `INGEST_FORCE=1` for that run only.
 
 ## Manual one state batch (fallback)
 

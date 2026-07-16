@@ -22,12 +22,14 @@ from ingest.fixtures.canonical_addresses import (
     active_canonical_addresses,
 )
 from ingest.fixtures.constants import DATA_VINTAGE
+from ingest.force import force_enabled
 from ingest.geo.scope import (
     CountyPoint,
     active_county_fips,
     load_county_points,
     resolve_ingest_scope,
 )
+from ingest.status_pulse import StatusPulse
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("fbi")
@@ -103,7 +105,11 @@ def _points_for_run(database_url: str) -> list[CanonicalAddress | CountyPoint]:
     if scope != "national":
         return list(active_canonical_addresses())
     counties = active_county_fips(database_url=database_url)
-    done = counties_with_fbi_agencies(database_url, sorted(counties))
+    done = (
+        set()
+        if force_enabled()
+        else counties_with_fbi_agencies(database_url, sorted(counties))
+    )
     pending = counties - done
     log_skip(logging.getLogger("fbi"), "fbi", len(done), len(pending))
     points = load_county_points(database_url, pending)
@@ -147,9 +153,9 @@ class FbiCdeWorker(BaseIngestionWorker):
         offenses = cde.chart_offenses()
         from_mm, to_mm = cde.chart_window()
 
-        # Metro: also skip counties that already have agencies
+        # Metro: also skip counties that already have agencies (unless forced)
         points = _points_for_run(self.database_url)
-        if resolve_ingest_scope() != "national":
+        if resolve_ingest_scope() != "national" and not force_enabled():
             counties = {p.county_fips for p in points}
             done = counties_with_fbi_agencies(self.database_url, sorted(counties))
             if done:
@@ -157,6 +163,7 @@ class FbiCdeWorker(BaseIngestionWorker):
                 points = [p for p in points if p.county_fips not in done]
                 log_skip(self.logger, "fbi", before - len(points), len(points))
 
+        pulse = StatusPulse(self.database_url)
         for addr in points:
             if addr.county_fips in self._seen_counties:
                 continue
@@ -266,7 +273,9 @@ class FbiCdeWorker(BaseIngestionWorker):
 
             self._agency_rows.extend(county_agency_rows)
             self._offense_rows.extend(county_offense_rows)
+            pulse.tick()
 
+        pulse.flush()
         total_counties = len(self._seen_counties)
         ok_counties = len(self._counties_with_offenses)
         self.logger.info(

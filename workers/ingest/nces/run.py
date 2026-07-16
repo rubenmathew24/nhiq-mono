@@ -9,6 +9,7 @@ import psycopg2
 
 from ingest.base import BaseIngestionWorker
 from ingest.checkpoints import counties_with_nces, log_skip
+from ingest.force import force_enabled
 from ingest.geo.scope import active_county_fips
 from ingest.nces.client import iter_state_school_pages
 from ingest.nces.transform import transform_nces_features
@@ -46,7 +47,11 @@ class NcesSchoolWorker(BaseIngestionWorker):
     def fetch(self) -> None:
         self._raw_features = []
         self._allow = active_county_fips(database_url=self.database_url)
-        done = counties_with_nces(self.database_url, sorted(self._allow))
+        done = (
+            set()
+            if force_enabled()
+            else counties_with_nces(self.database_url, sorted(self._allow))
+        )
         pending = self._allow - done
         log_skip(self.logger, "nces", len(done), len(pending))
         self._pending = pending

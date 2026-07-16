@@ -11,7 +11,9 @@ from ingest.acs.client import DEFAULT_ACS_YEAR, fetch_county_tract_rows, tabular
 from ingest.acs.transform import transform_acs_rows
 from ingest.base import BaseIngestionWorker
 from ingest.checkpoints import counties_with_acs, log_skip
+from ingest.force import force_enabled
 from ingest.geo.scope import active_county_fips
+from ingest.status_pulse import StatusPulse
 
 logger = logging.getLogger("acs")
 
@@ -43,9 +45,14 @@ class AcsTractWorker(BaseIngestionWorker):
     def fetch(self) -> None:
         self._raw_rows = []
         allow = active_county_fips(database_url=self.database_url)
-        done = counties_with_acs(self.database_url, sorted(allow))
+        done = (
+            set()
+            if force_enabled()
+            else counties_with_acs(self.database_url, sorted(allow))
+        )
         pending = sorted(allow - done)
         log_skip(self.logger, "acs", len(done), len(pending))
+        pulse = StatusPulse(self.database_url)
         for county_fips in pending:
             state_fips = county_fips[:2]
             county = county_fips[2:]
@@ -62,6 +69,8 @@ class AcsTractWorker(BaseIngestionWorker):
             rows = tabular_to_dicts(tabular)
             self._raw_rows.extend(rows)
             self.logger.info("  Got %s tract rows", len(rows))
+            pulse.tick()
+        pulse.flush()
 
     def transform(self) -> None:
         acs_year_label = str(self._acs_year)
