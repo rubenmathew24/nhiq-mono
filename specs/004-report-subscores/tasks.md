@@ -48,12 +48,12 @@ Completed task IDs (T001–T119)
 
 ### Tests for User Story 2
 
-- [ ] T120 [P] [US2] Vitest: simple click still expands; mousedown→mouseup with large pointer delta does not expand in `apps/web/src/__tests__/score-breakdown-expand.test.tsx`
+- [X] T120 [P] [US2] Vitest: simple click still expands; mousedown→mouseup with large pointer delta does not expand in `apps/web/src/__tests__/score-breakdown-expand.test.tsx`
 
 ### Implementation for User Story 2
 
-- [ ] T121 [US2] Update `apps/web/src/components/report/ScoreBreakdown.tsx`: allow text selection; toggle only on click without drag/selection; keep whole-box hover + keyboard toggle
-- [ ] T122 [US2] Rebuild Compose web: `docker compose build web && docker compose up -d web`
+- [X] T121 [US2] Update `apps/web/src/components/report/ScoreBreakdown.tsx`: allow text selection; toggle only on click without drag/selection; keep whole-box hover + keyboard toggle
+- [X] T122 [US2] Rebuild Compose web: `docker compose build web && docker compose up -d web`
 
 **Checkpoint**: Localhost allows copy-select and click-to-expand
 
@@ -65,8 +65,8 @@ Completed task IDs (T001–T119)
 
 ## Phase 27: Polish
 
-- [ ] T123 [P] Confirm `SCORE_UNAVAILABLE` unchanged in `apps/web/src/__tests__/report-score-unavailable.test.tsx`
-- [ ] T124 Align `specs/004-report-subscores/quickstart.md` V2 drag-select note if needed after implement
+- [X] T123 [P] Confirm `SCORE_UNAVAILABLE` unchanged in `apps/web/src/__tests__/report-score-unavailable.test.tsx`
+- [X] T124 Align `specs/004-report-subscores/quickstart.md` V2 drag-select note if needed after implement
 
 
 

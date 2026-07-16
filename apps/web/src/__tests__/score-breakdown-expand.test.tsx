@@ -90,6 +90,14 @@ describe("ScoreBreakdown expand", () => {
     expect(screen.getByText(/162 min/)).toBeInTheDocument();
   });
 
+  it("does not expand when pointer is dragged (text selection gesture)", () => {
+    render(<ScoreBreakdown report={report} />);
+    const box = screen.getByRole("button", { name: /Expand Healthcare details/i });
+    fireEvent.pointerDown(box, { clientX: 10, clientY: 10 });
+    fireEvent.click(box, { clientX: 40, clientY: 10 });
+    expect(screen.queryByText(/162 min/)).not.toBeInTheDocument();
+  });
+
   it("expands and collapses healthcare stats", () => {
     render(<ScoreBreakdown report={report} />);
     const btn = screen.getByRole("button", { name: /Expand Healthcare details/i });
