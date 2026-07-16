@@ -87,8 +87,13 @@ def run() -> int:
     logger.info("Inventory summary %s", inv["summary"])
     if force_states:
         logger.info("Force states=%s", sorted(force_states))
+    # Explicit force and/or state_filter lists are exclusive (no gap padding).
+    exclusive = bool(force_states) or bool(state_filter)
     states = states_needing_work(
-        inv, max_states=max_states, force_states=force_states
+        inv,
+        max_states=max_states,
+        force_states=force_states,
+        exclusive=exclusive,
     )
     if not states:
         logger.info("No gaps for selected universe — nothing to start")

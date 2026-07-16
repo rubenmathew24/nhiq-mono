@@ -27,3 +27,12 @@
 - [x] T034 ARM retries on PATCH/START (429/500/502/503) in `azure_jobs.py`
 - [x] T035 [P] Unit tests: force scheduling, StatusPulse, ARM retry
 - [x] T036 Update `docs/azure-setup-and-cicd.md` + quickstart
+
+## Phase 10: Slim LA snapshots + exclusive state lists
+
+- [x] T037 Extend `spec.md` / `plan.md` / `contracts/worker-env.md` for slim log contract + exclusive force/filter
+- [x] T038 Slim `persist_and_log` console payload; keep full detail in Postgres
+- [x] T039 Make `states_needing_work` exclusive when force and/or state_filter set (no gap padding)
+- [x] T040 Update Workbook gallery JSON (default Scope=national; no counties string dependency)
+- [x] T041 [P] Unit tests: slim payload size; force-only does not pad
+- [x] T042 Docs + quickstart; rebuild worker image after merge

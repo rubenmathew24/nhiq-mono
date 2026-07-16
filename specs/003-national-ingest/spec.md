@@ -99,7 +99,7 @@ An ops operator wants to refresh data for one or more states that inventory alre
 
 **Acceptance Scenarios**:
 
-1. **Given** state S is complete for all workers, **When** the operator runs with `force_states=S`, **Then** the orchestrator still queues S and starts all pipeline workers for S.
+1. **Given** state S is complete for all workers, **When** the operator runs with `force_states=S` and `max_states` greater than 1, **Then** the orchestrator queues **only** S (no gap padding from other states) and starts all pipeline workers for S.
 2. **Given** `INGEST_FORCE=1` on a worker, **When** that worker runs, **Then** it does not skip counties that already have stored rows (re-upserts instead).
 3. **Given** a non-forced state with no gaps, **When** the orchestrator runs without that state in force, **Then** it still skips complete worker/state pairs as in US5.
 
@@ -107,17 +107,18 @@ An ops operator wants to refresh data for one or more states that inventory alre
 
 ### User Story 7 - Mid-run status monitoring (Priority: P2)
 
-While a long national job runs, the Workbook updates more often than once per state: the orchestrator emits an `INGEST_STATUS_SNAPSHOT` after each worker completes, and long unit-loop workers emit a snapshot every N counties (or LEAIDs for Urban), default N=15.
+While a long national job runs, the Workbook updates more often than once per state: the orchestrator emits an `INGEST_STATUS_SNAPSHOT` after each worker completes, and long unit-loop workers emit a snapshot every N counties (or LEAIDs for Urban), default N=15. Console log lines MUST stay small enough for Log Analytics to store a complete parseable JSON (metrics only); full missing-county detail remains in Postgres.
 
 **Why this priority**: Per-state-only status leaves ops blind during multi-hour workers (rate limits, hangs).
 
-**Independent Test**: Run a multi-county worker with N=15; confirm multiple `INGEST_STATUS_SNAPSHOT` lines appear in logs before the worker finishes; after each pipeline worker in a state, an additional snapshot is emitted.
+**Independent Test**: Run a multi-county worker with N=15; confirm multiple `INGEST_STATUS_SNAPSHOT` lines appear in logs before the worker finishes and Workbook KQL can parse `payload.jobs` for `scope=national`; after each pipeline worker in a state, an additional snapshot is emitted.
 
 **Acceptance Scenarios**:
 
 1. **Given** a state with multiple workers queued, **When** each worker finishes, **Then** a status snapshot is emitted before the next worker starts (or immediately after).
 2. **Given** a county-loop worker processing more than N counties, **When** it processes counties, **Then** it emits a status snapshot at least every N completed units.
 3. **Given** a status emit fails, **When** ingest continues, **Then** the worker/orchestrator does not hard-fail solely because of the status emit.
+4. **Given** a national-scope snapshot, **When** the console log line is ingested by Log Analytics, **Then** the JSON includes `scope`, `county_count`, and `jobs` metrics and does **not** embed the full county FIPS list or per-job missing lists.
 
 ---
 
@@ -131,7 +132,9 @@ While a long national job runs, the Workbook updates more often than once per st
 - What if inventory shows all workers complete for selected states? Orchestrator exits successfully without starting ingest jobs (may still refresh status)—unless forced states are supplied.
 - What if GitHub Actions times out while the Azure orchestrator is still running? Operator re-dispatches; inventory-driven queue resumes from gaps.
 - What if Azure ARM returns 500 when patching/starting a job? Orchestrator retries with backoff before failing that worker.
-- What if `force_states` and `state_filter` both set? Forced states are processed (priority); filter still limits inventory for non-forced gap work as documented in the contract.
+- What if `force_states` is set (with or without `state_filter`)? Only the forced FIPS list runs (capped by `max_states`)—no padding with other gap states.
+- What if only `state_filter` is set? Only gap states within that filter run (capped by `max_states`)—no states outside the filter.
+- What if both force and filter are empty? Gap-fill across the national inventory up to `max_states` (unscoped national continue).
 
 ## Requirements *(mandatory)*
 
@@ -155,11 +158,13 @@ While a long national job runs, the Workbook updates more often than once per st
 - **FR-016**: An orchestrator MUST start only ACA worker jobs for worker/state pairs that inventory marks as incomplete, and MUST NOT start jobs for pairs with zero gaps.
 - **FR-017**: Operators MUST be able to trigger the orchestrator via a manual GitHub Actions workflow that does not run on ordinary master Deploy pushes.
 - **FR-018**: Orchestrator runs MUST be time-bounded (configurable max states per run) so re-runs continue filling remaining gaps.
-- **FR-019**: Operators MUST be able to force re-ingest of specified state FIPS via Actions/`ORCH_FORCE_STATES`, causing the orchestrator to run all pipeline workers for those states and set `INGEST_FORCE=1` (always set `0` when not forcing so force does not stick on the ACA job).
+- **FR-019**: Operators MUST be able to force re-ingest of specified state FIPS via Actions/`ORCH_FORCE_STATES`, causing the orchestrator to run all pipeline workers for those states and set `INGEST_FORCE=1` (always set `0` when not forcing so force does not stick on the ACA job). When `ORCH_FORCE_STATES` is non-empty, the orchestrator MUST process only that list (capped by `ORCH_MAX_STATE_UNITS`) and MUST NOT pad with other gap states.
 - **FR-020**: When `INGEST_FORCE` is enabled, workers MUST NOT skip units already stored; they MUST re-process and upsert.
 - **FR-021**: The orchestrator MUST emit a national status snapshot (`INGEST_STATUS_SNAPSHOT` + durable snapshot row) after each worker completes for a state.
 - **FR-022**: County/unit-loop workers (at least FBI, ACS, BLS, Urban) MUST emit a status snapshot every N units (default 15, configurable via `INGEST_STATUS_EVERY_N`); status emit failures MUST NOT fail the ingest job.
 - **FR-023**: Orchestrator ARM calls that patch or start ACA jobs MUST retry transient control-plane failures (HTTP 429/500/502/503) with exponential backoff before treating the call as failed.
+- **FR-024**: The console `INGEST_STATUS_SNAPSHOT` line MUST be Workbook-safe: metrics only (`scope`, `county_count`, `captured_at`, per-job pct/done/total). It MUST NOT embed the full county FIPS list or large missing-county detail. Full detail MUST remain in Postgres `ingest_status_snapshot`.
+- **FR-025**: When `ORCH_STATE_FILTER` is non-empty and `ORCH_FORCE_STATES` is empty, the orchestrator MUST process only gap states within that filter (capped by max), never states outside the filter.
 
 ### Key Entities
 
@@ -183,9 +188,10 @@ While a long national job runs, the Workbook updates more often than once per st
 - **SC-005**: Attempting national scope with no state batch fails fast with an actionable message in under 30 seconds (no multi-hour accidental run).
 - **SC-006**: When inventory shows worker W complete for state S, an orchestrator run for S does not start the ACA job for W—unless S is in the force set.
 - **SC-007**: A second orchestrator run after partial completion queues fewer (or equal) gap units than the first, never re-queueing worker/state pairs that became complete (force runs excepted).
-- **SC-008**: With `force_states` set for a complete state, all pipeline workers for that state are started in one orchestrator run.
+- **SC-008**: With `force_states` set for a complete state, all pipeline workers for that state are started in one orchestrator run, and no other state FIPS are queued solely to fill `max_states`.
 - **SC-009**: During a long county-loop worker, at least one mid-job `INGEST_STATUS_SNAPSHOT` appears in logs when more than N counties are processed (N default 15).
 - **SC-010**: A single transient ARM 500 on job PATCH does not fail the orchestrator if a subsequent retry succeeds within the retry budget.
+- **SC-011**: A national-scope `INGEST_STATUS_SNAPSHOT` console line is under 8KB and Workbook KQL can parse `payload.jobs` for scope `national`.
 
 ## Assumptions
 

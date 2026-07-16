@@ -28,7 +28,7 @@ def test_force_enabled_from_dict():
     assert force_enabled({"INGEST_FORCE": ""}) is False
 
 
-def test_states_needing_work_force_priority():
+def test_states_needing_work_force_exclusive_no_pad():
     inv = {
         "by_state": {
             "census": {"06": ["06001"]},
@@ -42,12 +42,29 @@ def test_states_needing_work_force_priority():
             "scoring": {},
         }
     }
-    # Forced 25 first even with no gaps; then 06 from inventory
+    # Forced 25 only — must not pad with gap state 06 even when max_states=5
     ordered = states_needing_work(
-        inv, max_states=5, force_states=frozenset({"25"})
+        inv, max_states=5, force_states=frozenset({"25"}), exclusive=True
     )
-    assert ordered[0] == "25"
-    assert "06" in ordered
+    assert ordered == ["25"]
+
+
+def test_states_needing_work_unscoped_still_pads():
+    inv = {
+        "by_state": {
+            "census": {"06": ["06001"], "44": ["44001"]},
+            "epa": {},
+            "cms": {},
+            "fbi": {},
+            "nces": {},
+            "urban": {},
+            "acs": {},
+            "bls": {},
+            "scoring": {},
+        }
+    }
+    ordered = states_needing_work(inv, max_states=5, exclusive=False)
+    assert ordered == ["06", "44"]
 
 
 def test_workers_needed_force_returns_full_pipeline():

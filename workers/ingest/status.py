@@ -367,7 +367,7 @@ def persist_and_log(database_url: str, scope: str, counties: frozenset[str]) -> 
 
     payload = {
         "scope": scope,
-        "counties": sorted(counties),
+        "counties": [],  # omitted from LA (too large for national); use county_count
         "county_count": len(counties),
         "captured_at": captured.isoformat(),
         "jobs": [
@@ -376,12 +376,12 @@ def persist_and_log(database_url: str, scope: str, counties: frozenset[str]) -> 
                 "pct_complete": j.pct_complete,
                 "done_count": j.done_count,
                 "total_count": j.total_count,
-                "detail": j.detail,
             }
             for j in jobs
         ],
     }
-    # Single parseable line for Log Analytics / Workbook.
+    # Single parseable metrics-only line for Log Analytics / Workbook.
+    # Full missing-county detail remains in Postgres only (avoids ~16KB LA truncation).
     print("INGEST_STATUS_SNAPSHOT " + json.dumps(payload, separators=(",", ":")))
     logger.info(
         "Status snapshot scope=%s jobs=%s",
