@@ -37,6 +37,12 @@ export interface ScoreDimension {
   factors: Factor[];
 }
 
+export interface DimensionSource {
+  source_id: string;
+  reason?: string | null;
+  detail?: Record<string, unknown>;
+}
+
 export interface NeighborhoodReport {
   address: string;
   address_normalized: string;
@@ -52,6 +58,8 @@ export interface NeighborhoodReport {
   narrative: string;
   data_vintage: string;
   computed_at: string;
+  /** Provenance map for future source showcase UI; optional on older payloads. */
+  sources?: Record<string, DimensionSource>;
 }
 
 export interface LookupResponse {

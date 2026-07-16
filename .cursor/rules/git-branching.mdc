@@ -14,3 +14,16 @@ When starting `/speckit-specify` or `create-new-feature.ps1`:
 1. Ensure you are branching from up-to-date `dev` (script uses `feature_base_branch` in `.specify/init-options.json`, default `dev`).
 2. Do not create feature branches from `master`.
 3. After feature close, merge to `dev` first; promote `dev` → `master` as a separate release step.
+
+## Spec Kit commit rhythm (3 commits)
+
+Full rules: `.cursor/skills/speckit-git-workflow.md`. Summary:
+
+1. **`/speckit-specify`**: create branch from `dev`, write draft spec, **`git push -u origin HEAD` immediately**. Do **not** commit the draft yet.
+2. **`/speckit-clarify`**: edit only — **no commit**.
+3. **`/speckit-plan`**: **Commit #1 (finalized spec)** before writing the plan. No push.
+4. **`/speckit-tasks`**: write `tasks.md` — **no commit**.
+5. **`/speckit-implement`**: **Commit #2 (plan + tasks)** before coding; **Commit #3 (implementation)** when all tasks are done. No push unless asked.
+6. **`/speckit-close`** (outcome `closed` or `closed_with_warnings`): push the feature branch and open a PR into **`dev`**. Do **not** merge/approve. Skip publish on `not_ready` / `cleanup-only`.
+
+Typical branch history: `docs(spec): …` → `docs(plan): …` → `feat(…): …` → (close) PR → `dev`.
