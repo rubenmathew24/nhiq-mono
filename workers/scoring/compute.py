@@ -7,6 +7,7 @@ import os
 import sys
 from datetime import date, timedelta
 from pathlib import Path
+from typing import Any
 
 import psycopg2
 from psycopg2.extras import Json, execute_batch
@@ -27,14 +28,30 @@ from ingest.fixtures.constants import (
     PLACEHOLDER_ECONOMIC_SCORE,
     PLACEHOLDER_EDUCATION_SCORE,
     SOURCE_CMS_HOSPITALS,
+    SOURCE_CMS_TIMELY,
     SOURCE_DEFAULT,
+    SOURCE_FEMA_NRI,
     SOURCE_PLACEHOLDER,
 )
 from ingest.geo.scope import active_county_fips
+from scoring.detail import (
+    DetailInputs,
+    FemaInputs,
+    NearestFacility,
+    TimelyMeasure,
+    build_score_detail,
+    environment_category_score,
+    healthcare_category_score,
+    safety_category_score,
+    _hazard_score,
+    _property_safety,
+    _star_score,
+    _timeliness_score,
+)
 from scoring.economic import EconomicInputs, economic_from_sources
 from scoring.education import EducationInputs, education_from_sources
 from scoring.environment import EpaCountyAqi, resolve_environment
-from scoring.formulas import healthcare_from_nearest, weighted_overall
+from scoring.formulas import distance_score_miles, weighted_overall
 from scoring.open_meteo import fetch_mean_us_aqi
 from scoring.safety import CountyCrime, safety_from_cde
 
@@ -62,7 +79,9 @@ SELECT
     t.county_fips,
     n.avg_stars,
     n.nearest_er_miles,
+    n.nearest_ers,
     edu.ncessch,
+    edu.school_name,
     edu.nearest_school_miles,
     edu.locale,
     edu.enrollment,
@@ -75,10 +94,21 @@ FROM census_tracts t
 LEFT JOIN LATERAL (
     SELECT
         AVG(nn.star_rating)::float AS avg_stars,
-        MIN(nn.miles)::float AS nearest_er_miles
+        MIN(nn.miles)::float AS nearest_er_miles,
+        json_agg(
+            json_build_object(
+                'name', nn.name,
+                'miles', round(nn.miles::numeric, 2),
+                'star_rating', nn.star_rating,
+                'cms_provider_id', nn.cms_provider_id
+            )
+            ORDER BY nn.miles
+        ) AS nearest_ers
     FROM (
         SELECT
+            h.name,
             h.star_rating,
+            h.cms_provider_id,
             ST_Distance(
                 h.geometry::geography,
                 ST_Centroid(t.geometry)::geography
@@ -101,6 +131,7 @@ _EDUCATION_JOIN_TEMPLATE = """
 LEFT JOIN LATERAL (
     SELECT
         s.ncessch,
+        s.name AS school_name,
         s.locale,
         ST_Distance(
             s.geometry::geography,
@@ -153,6 +184,7 @@ _NULL_EDUCATION_JOIN = """
 LEFT JOIN LATERAL (
     SELECT
         NULL::varchar AS ncessch,
+        NULL::varchar AS school_name,
         NULL::varchar AS locale,
         NULL::float AS nearest_school_miles,
         NULL::int AS enrollment,
@@ -208,11 +240,11 @@ UPSERT_SCORE_SQL = """
 INSERT INTO neighborhood_scores (
     geoid, healthcare_score, safety_score, environment_score,
     education_score, economic_score, overall_score, data_vintage,
-    score_sources, computed_at
+    score_sources, score_detail, computed_at
 ) VALUES (
     %(geoid)s, %(healthcare)s, %(safety)s, %(environment)s,
     %(education)s, %(economic)s, %(overall)s, %(vintage)s,
-    %(score_sources)s, NOW()
+    %(score_sources)s, %(score_detail)s, NOW()
 )
 ON CONFLICT (geoid, data_vintage) DO UPDATE SET
     healthcare_score = EXCLUDED.healthcare_score,
@@ -222,6 +254,7 @@ ON CONFLICT (geoid, data_vintage) DO UPDATE SET
     economic_score = EXCLUDED.economic_score,
     overall_score = EXCLUDED.overall_score,
     score_sources = EXCLUDED.score_sources,
+    score_detail = EXCLUDED.score_detail,
     computed_at = NOW()
 """
 
@@ -346,14 +379,151 @@ def build_open_meteo_by_county(
     return out
 
 
-def _healthcare_provenance(nearest_miles: float | None) -> dict:
+def fetch_agencies_by_county(cur, counties: list[str]) -> dict[str, list[dict]]:
+    cur.execute(
+        """
+        SELECT to_regclass('public.crime_agency_selection') IS NOT NULL
+        """
+    )
+    if not cur.fetchone()[0]:
+        return {}
+    cur.execute(
+        """
+        SELECT county_fips, agency_name, ori, distance_miles
+        FROM crime_agency_selection
+        WHERE data_vintage = %s AND county_fips = ANY(%s)
+        ORDER BY distance_miles NULLS LAST
+        """,
+        (DATA_VINTAGE, counties),
+    )
+    out: dict[str, list[dict]] = {}
+    for county_fips, name, ori, dist in cur.fetchall():
+        out.setdefault(county_fips, []).append(
+            {
+                "agency_name": name,
+                "ori": ori,
+                "distance_miles": float(dist) if dist is not None else None,
+            }
+        )
+    return out
+
+
+def fetch_fema_by_geoid(cur, geoids: list[str]) -> dict[str, FemaInputs]:
+    cur.execute("SELECT to_regclass('public.fema_nri_tracts') IS NOT NULL")
+    if not cur.fetchone()[0] or not geoids:
+        return {}
+    cur.execute(
+        """
+        SELECT geoid, risk_score, risk_rating, hazards
+        FROM fema_nri_tracts
+        WHERE geoid = ANY(%s)
+        """,
+        (geoids,),
+    )
+    out: dict[str, FemaInputs] = {}
+    for geoid, risk_score, risk_rating, hazards in cur.fetchall():
+        haz = hazards if isinstance(hazards, dict) else {}
+        out[geoid] = FemaInputs(
+            risk_score=float(risk_score) if risk_score is not None else None,
+            risk_rating=risk_rating,
+            hazards=haz,
+        )
+    return out
+
+
+def fetch_timely_by_provider(cur, provider_ids: list[str]) -> dict[str, TimelyMeasure]:
+    cur.execute("SELECT to_regclass('public.hospital_timely_measures') IS NOT NULL")
+    if not cur.fetchone()[0] or not provider_ids:
+        return {}
+    # Prefer OP_18b, then OP_18c, OP_18a, EDV
+    cur.execute(
+        """
+        SELECT DISTINCT ON (cms_provider_id)
+            cms_provider_id, measure_id, measure_name,
+            score_value, state_score, national_score
+        FROM hospital_timely_measures
+        WHERE cms_provider_id = ANY(%s)
+          AND data_vintage = %s
+          AND score_value IS NOT NULL
+        ORDER BY cms_provider_id,
+          CASE measure_id
+            WHEN 'OP_18b' THEN 1
+            WHEN 'OP_18c' THEN 2
+            WHEN 'OP_18a' THEN 3
+            WHEN 'EDV' THEN 4
+            ELSE 9
+          END
+        """,
+        (provider_ids, DATA_VINTAGE),
+    )
+    out: dict[str, TimelyMeasure] = {}
+    for pid, mid, mname, sval, state_s, nat_s in cur.fetchall():
+        out[str(pid)] = TimelyMeasure(
+            measure_id=str(mid),
+            measure_name=mname,
+            score_value=float(sval) if sval is not None else None,
+            state_score=float(state_s) if state_s is not None else None,
+            national_score=float(nat_s) if nat_s is not None else None,
+        )
+    return out
+
+
+def _parse_nearest_ers(raw: Any) -> list[NearestFacility]:
+    if not raw:
+        return []
+    if isinstance(raw, str):
+        import json
+
+        try:
+            raw = json.loads(raw)
+        except json.JSONDecodeError:
+            return []
+    out: list[NearestFacility] = []
+    if not isinstance(raw, list):
+        return out
+    for item in raw:
+        if not isinstance(item, dict):
+            continue
+        stars = item.get("star_rating")
+        try:
+            star_i = int(stars) if stars is not None else None
+        except (TypeError, ValueError):
+            star_i = None
+        miles = item.get("miles")
+        try:
+            miles_f = float(miles) if miles is not None else None
+        except (TypeError, ValueError):
+            miles_f = None
+        out.append(
+            NearestFacility(
+                name=item.get("name"),
+                miles=miles_f,
+                star_rating=star_i,
+                cms_provider_id=str(item["cms_provider_id"])
+                if item.get("cms_provider_id")
+                else None,
+            )
+        )
+    return out
+
+
+def _healthcare_provenance(
+    nearest_miles: float | None,
+    *,
+    timely: TimelyMeasure | None = None,
+) -> dict:
     if nearest_miles is None:
-        return {"source_id": SOURCE_DEFAULT, "reason": "no_nearby_er"}
-    return {
-        "source_id": SOURCE_CMS_HOSPITALS,
-        "reason": "nearest_er",
-        "nearest_er_miles": round(float(nearest_miles), 2),
-    }
+        base = {"source_id": SOURCE_DEFAULT, "reason": "no_nearby_er"}
+    else:
+        base = {
+            "source_id": SOURCE_CMS_HOSPITALS,
+            "reason": "nearest_er",
+            "nearest_er_miles": round(float(nearest_miles), 2),
+        }
+    if timely is not None and timely.score_value is not None:
+        base["timely_source_id"] = SOURCE_CMS_TIMELY
+        base["timely_measure_id"] = timely.measure_id
+    return base
 
 
 def _placeholder_prov(name: str) -> dict:
@@ -413,6 +583,27 @@ def run() -> int:
         if force_enabled()
         else counties_with_fbi_cde_scores(database_url, sorted(allow))
     )
+    # Always re-score counties that lack score_detail (004 report expand).
+    if not force_enabled() and done:
+        conn_chk = psycopg2.connect(database_url)
+        try:
+            with conn_chk.cursor() as cur:
+                cur.execute(
+                    """
+                    SELECT DISTINCT left(geoid, 5)
+                    FROM neighborhood_scores
+                    WHERE data_vintage = %s
+                      AND left(geoid, 5) = ANY(%s)
+                      AND (score_detail IS NULL OR score_detail = '{}'::jsonb)
+                    """,
+                    (DATA_VINTAGE, sorted(done)),
+                )
+                need_detail = {r[0] for r in cur.fetchall()}
+        except Exception:
+            need_detail = set()
+        finally:
+            conn_chk.close()
+        done = done - need_detail
     counties = sorted(allow - done)
     log_skip(logger, "scoring", len(done), len(counties))
     if not counties:
@@ -465,19 +656,34 @@ def run() -> int:
                 )
                 return 1
 
+            geoids = [r[0] for r in tracts]
+            agencies_by_county = fetch_agencies_by_county(cur, counties)
+            fema_by_geoid = fetch_fema_by_geoid(cur, geoids)
+            provider_ids: list[str] = []
+            parsed_ers_by_idx: list[list[NearestFacility]] = []
+            for row in tracts:
+                ers = _parse_nearest_ers(row[5])  # nearest_ers column
+                parsed_ers_by_idx.append(ers)
+                for er in ers:
+                    if er.cms_provider_id:
+                        provider_ids.append(er.cms_provider_id)
+            timely_by_provider = fetch_timely_by_provider(cur, sorted(set(provider_ids)))
+
             rows: list[dict] = []
             env_counts: dict[str, int] = {}
             safety_counts: dict[str, int] = {}
             education_counts: dict[str, int] = {}
             economic_counts: dict[str, int] = {}
-            for row in tracts:
+            for idx, row in enumerate(tracts):
                 (
                     geoid,
                     state_fips,
                     county_fips,
                     avg_stars,
                     nearest_miles,
+                    _nearest_ers_raw,
                     ncessch,
+                    school_name,
                     nearest_school_miles,
                     locale,
                     enrollment,
@@ -488,15 +694,63 @@ def run() -> int:
                     laus_period,
                 ) = row
                 county = f"{state_fips}{county_fips}"
-                healthcare = healthcare_from_nearest(avg_stars, nearest_miles)
+                nearest_ers = parsed_ers_by_idx[idx]
+                primary_provider = (
+                    nearest_ers[0].cms_provider_id if nearest_ers else None
+                )
+                timely = (
+                    timely_by_provider.get(primary_provider)
+                    if primary_provider
+                    else None
+                )
+                fema = fema_by_geoid.get(geoid)
+
+                access_s = (
+                    distance_score_miles(float(nearest_miles))
+                    if nearest_miles is not None
+                    else None
+                )
+                quality_s = _star_score(
+                    float(avg_stars) if avg_stars is not None else None
+                )
+                timely_s = _timeliness_score(timely)
+                healthcare = healthcare_category_score(access_s, quality_s, timely_s)
+
                 env = resolve_environment(
                     epa=epa_by_county.get(county),
                     open_meteo_avg=om_by_county.get(county),
                 )
+                air_s = (
+                    env.score
+                    if env.provenance.get("source_id") != SOURCE_DEFAULT
+                    or env.provenance.get("avg_aqi") is not None
+                    else None
+                )
+                # Prefer explicit AQI from provenance when present
+                avg_aqi = env.provenance.get("avg_aqi")
+                if avg_aqi is not None:
+                    from scoring.formulas import environment_from_aqi
+
+                    air_s = environment_from_aqi(float(avg_aqi))
+                hazard_s = _hazard_score(fema)
+                environment_score = environment_category_score(air_s, hazard_s)
                 sid = str(env.provenance.get("source_id", SOURCE_DEFAULT))
-                env_counts[sid] = env_counts.get(sid, 0) + 1
-                safety_res = safety_from_cde(cde_by_county.get(county))
-                safety = safety_res.score
+                if fema is not None:
+                    sid = f"{sid}+{SOURCE_FEMA_NRI}" if sid != SOURCE_DEFAULT else SOURCE_FEMA_NRI
+                env_counts[str(env.provenance.get("source_id", SOURCE_DEFAULT))] = (
+                    env_counts.get(str(env.provenance.get("source_id", SOURCE_DEFAULT)), 0)
+                    + 1
+                )
+
+                crime = cde_by_county.get(county)
+                safety_res = safety_from_cde(crime)
+                personal = (
+                    safety_res.score
+                    if crime is not None and crime.by_offense
+                    else None
+                )
+                property_s = _property_safety(crime)
+                safety = safety_category_score(personal, property_s)
                 ssid = str(safety_res.provenance.get("source_id", SOURCE_DEFAULT))
                 safety_counts[ssid] = safety_counts.get(ssid, 0) + 1
 
@@ -549,12 +803,52 @@ def run() -> int:
                 economic_counts[ecsid] = economic_counts.get(ecsid, 0) + 1
 
                 overall = weighted_overall(
-                    healthcare, safety, education, env.score, economic
+                    healthcare, safety, education, environment_score, economic
                 )
+
+                env_prov = dict(env.provenance)
+                if fema is not None:
+                    env_prov["hazard_source_id"] = SOURCE_FEMA_NRI
+                    if fema.risk_rating:
+                        env_prov["risk_rating"] = fema.risk_rating
+
+                detail = build_score_detail(
+                    DetailInputs(
+                        nearest_ers=nearest_ers,
+                        avg_stars=float(avg_stars) if avg_stars is not None else None,
+                        nearest_er_miles=float(nearest_miles)
+                        if nearest_miles is not None
+                        else None,
+                        timely=timely,
+                        crime=crime,
+                        agencies=agencies_by_county.get(county, []),
+                        school_name=school_name,
+                        nearest_school_miles=float(nearest_school_miles)
+                        if nearest_school_miles is not None
+                        else None,
+                        locale=locale,
+                        enrollment=int(enrollment) if enrollment is not None else None,
+                        teachers_fte=float(teachers_fte)
+                        if teachers_fte is not None
+                        else None,
+                        avg_aqi=float(avg_aqi) if avg_aqi is not None else None,
+                        aqi_source=str(env.provenance.get("source_id", "")),
+                        fema=fema,
+                        median_hh_income=float(median_hh_income)
+                        if median_hh_income is not None
+                        else None,
+                        unemployment_rate=float(unemployment_rate)
+                        if unemployment_rate is not None
+                        else None,
+                        acs_year=acs_year,
+                        laus_period=laus_period,
+                    )
+                )
+
                 score_sources = {
-                    "healthcare": _healthcare_provenance(nearest_miles),
+                    "healthcare": _healthcare_provenance(nearest_miles, timely=timely),
                     "safety": safety_res.provenance,
-                    "environment": env.provenance,
+                    "environment": env_prov,
                     "education": education_prov,
                     "economic": economic_prov,
                 }
@@ -563,12 +857,13 @@ def run() -> int:
                         "geoid": geoid,
                         "healthcare": healthcare,
                         "safety": safety,
-                        "environment": env.score,
+                        "environment": environment_score,
                         "education": education,
                         "economic": economic,
                         "overall": overall,
                         "vintage": DATA_VINTAGE,
                         "score_sources": Json(score_sources),
+                        "score_detail": Json(detail),
                     }
                 )
 

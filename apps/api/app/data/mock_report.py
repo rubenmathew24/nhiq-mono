@@ -1,6 +1,6 @@
 from datetime import datetime, timezone
 
-from app.schemas.score import Factor, NeighborhoodReport, ScoreDimension
+from app.schemas.score import Factor, NeighborhoodReport, ScoreDimension, SubScore
 
 # Stable demo lookups for local report smoke tests when Redis has no entry.
 DEMO_LOOKUPS: dict[str, dict] = {
@@ -14,17 +14,25 @@ DEMO_LOOKUPS: dict[str, dict] = {
 }
 
 
+def _subs(*pairs: tuple[str, str, float]) -> list[SubScore]:
+    return [
+        SubScore(id=i, label=lab, score=sc, available=True) for i, lab, sc in pairs
+    ]
+
+
 def _dimension(
     score: float,
     label: str,
     summary: str,
     factors: list[Factor],
+    sub_scores: list[SubScore] | None = None,
 ) -> ScoreDimension:
     return ScoreDimension(
         score=score,
         label=label,
         summary=summary,
         factors=factors,
+        sub_scores=sub_scores or [],
     )
 
 
@@ -60,6 +68,7 @@ def build_mock_report(
                     impact="positive",
                 ),
             ],
+            _subs(("access", "Access", 90), ("quality", "Quality", 88), ("timeliness", "Timeliness", 80)),
         ),
         safety=_dimension(
             74,
@@ -77,6 +86,7 @@ def build_mock_report(
                     impact="positive",
                 ),
             ],
+            _subs(("personal", "Personal crime", 76), ("property", "Property crime", 70)),
         ),
         environment=_dimension(
             74,
@@ -94,6 +104,7 @@ def build_mock_report(
                     impact="negative",
                 ),
             ],
+            _subs(("air_quality", "Air quality", 80), ("hazard", "Hazard risk", 55)),
         ),
         education=_dimension(
             91,
@@ -111,6 +122,7 @@ def build_mock_report(
                     impact="positive",
                 ),
             ],
+            _subs(("access", "Access", 95), ("staffing", "Staffing", 86)),
         ),
         economic=_dimension(
             68,
@@ -128,6 +140,7 @@ def build_mock_report(
                     impact="negative",
                 ),
             ],
+            _subs(("income", "Income", 72), ("labor", "Labor", 62)),
         ),
         narrative=(
             "Strong hospital access and top-rated schools, with moderate flood "

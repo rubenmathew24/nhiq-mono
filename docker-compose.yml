@@ -124,6 +124,34 @@ services:
     profiles:
       - workers
 
+  worker-fema:
+    build:
+      context: .
+      dockerfile: docker/worker.Dockerfile
+    environment:
+      DATABASE_URL: postgresql://postgres:postgres@db:5432/neighborhoodiq
+      INGEST_SCOPE: ${INGEST_SCOPE:-metro_10}
+    command: python -m ingest.fema.run
+    depends_on:
+      db:
+        condition: service_healthy
+    profiles:
+      - workers
+
+  worker-cms-timely:
+    build:
+      context: .
+      dockerfile: docker/worker.Dockerfile
+    environment:
+      DATABASE_URL: postgresql://postgres:postgres@db:5432/neighborhoodiq
+      INGEST_SCOPE: ${INGEST_SCOPE:-metro_10}
+    command: python -m ingest.cms_timely.run
+    depends_on:
+      db:
+        condition: service_healthy
+    profiles:
+      - workers
+
   worker-scoring:
     build:
       context: .

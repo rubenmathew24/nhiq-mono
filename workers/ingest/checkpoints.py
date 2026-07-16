@@ -161,6 +161,16 @@ def counties_with_fbi_cde_scores(database_url: str, counties: list[str]) -> set[
     )
 
 
+def geoids_with_fema_nri(database_url: str, geoids: list[str]) -> set[str]:
+    if not geoids:
+        return set()
+    return _fetch_set(
+        database_url,
+        "SELECT geoid FROM fema_nri_tracts WHERE geoid = ANY(%s)",
+        (geoids,),
+    )
+
+
 def log_skip(logger: logging.Logger, worker: str, skipped: int, remaining: int) -> None:
     logger.info(
         "skip_checkpoint worker=%s skipped=%s remaining=%s",

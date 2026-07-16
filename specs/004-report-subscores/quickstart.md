@@ -15,6 +15,8 @@ Validate expanded report UI against **local Compose** with `INGEST_SCOPE=smoke` 
 
 ```bash
 export INGEST_SCOPE=smoke
+# Prefer force so score_detail is rewritten even if scores already exist
+export INGEST_FORCE=1
 # apply 007_report_detail.sql (filename per implementation)
 docker compose --profile workers run --rm worker-fema
 docker compose --profile workers run --rm worker-cms-timely
@@ -35,6 +37,7 @@ docker compose --profile workers run --rm worker-scoring
 
 ```bash
 export INGEST_SCOPE=metro_10
+export INGEST_FORCE=1
 docker compose --profile workers run --rm worker-fema
 docker compose --profile workers run --rm worker-cms-timely
 docker compose --profile workers run --rm worker-scoring

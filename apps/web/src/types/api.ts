@@ -30,11 +30,19 @@ export interface Factor {
   impact: "positive" | "negative" | "neutral";
 }
 
+export interface SubScore {
+  id: string;
+  label: string;
+  score: number;
+  available?: boolean;
+}
+
 export interface ScoreDimension {
   score: number;
   label: string;
   summary: string;
   factors: Factor[];
+  sub_scores?: SubScore[];
 }
 
 export interface DimensionSource {

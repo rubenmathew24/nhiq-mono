@@ -9,11 +9,19 @@ class Factor(BaseModel):
     impact: Literal["positive", "negative", "neutral"]
 
 
+class SubScore(BaseModel):
+    id: str
+    label: str
+    score: float
+    available: bool = True
+
+
 class ScoreDimension(BaseModel):
     score: float
     label: str
     summary: str
     factors: list[Factor]
+    sub_scores: list[SubScore] = Field(default_factory=list)
 
 
 class DimensionSource(BaseModel):
@@ -39,5 +47,4 @@ class NeighborhoodReport(BaseModel):
     narrative: str
     data_vintage: str
     computed_at: str
-    # Machine-readable sources; web may ignore until a showcase feature ships.
     sources: dict[str, DimensionSource] = Field(default_factory=dict)
