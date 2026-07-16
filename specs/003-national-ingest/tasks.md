@@ -44,8 +44,8 @@
 
 ## Phase 7: Polish
 
-- [ ] T019 Apply 006 on Azure Postgres; create/update `niq-worker-geo` ACA job; rebuild worker image
-- [ ] T020 Open PR into `dev`; document first state-batch ops steps in PR body
+- [x] T019 Apply 006 on Azure Postgres; create/update `niq-worker-geo` ACA job; rebuild worker image
+- [x] T020 Open PR into `dev`; document first state-batch ops steps in PR body
 
 ## Dependencies
 
