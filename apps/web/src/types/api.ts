@@ -28,6 +28,8 @@ export interface Factor {
   name: string;
   value: string;
   impact: "positive" | "negative" | "neutral";
+  /** 0–100; when set, UI colors value with ScoreBar tiers */
+  tone_score?: number;
 }
 
 export interface SubScore {

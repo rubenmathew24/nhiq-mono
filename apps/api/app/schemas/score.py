@@ -7,6 +7,7 @@ class Factor(BaseModel):
     name: str
     value: str
     impact: Literal["positive", "negative", "neutral"]
+    tone_score: float | None = None
 
 
 class SubScore(BaseModel):

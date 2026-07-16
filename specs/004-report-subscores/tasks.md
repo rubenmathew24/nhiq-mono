@@ -51,10 +51,10 @@ All tasks T001–T044 from the original plan are done (`[x]`). Schema, FEMA/Time
 
 **⚠️ CRITICAL**: Complete before polishing expand value colors (US2/US3)
 
-- [ ] T045 [P] Add optional `tone_score: float | None` to Pydantic `Factor` in `apps/api/app/schemas/score.py`
-- [ ] T046 [P] Add optional `tone_score?: number` to `Factor` in `apps/web/src/types/api.ts`
-- [ ] T047 Pass through `tone_score` from `score_detail.stats` → API `factors` in `apps/api/app/services/score_service.py` (omit or null when absent; never invent)
-- [ ] T048 [P] Extend mock report factors with sample `tone_score` where useful in `apps/api/app/data/mock_report.py`
+- [x] T045 [P] Add optional `tone_score: float | None` to Pydantic `Factor` in `apps/api/app/schemas/score.py`
+- [x] T046 [P] Add optional `tone_score?: number` to `Factor` in `apps/web/src/types/api.ts`
+- [x] T047 Pass through `tone_score` from `score_detail.stats` → API `factors` in `apps/api/app/services/score_service.py` (omit or null when absent; never invent)
+- [x] T048 [P] Extend mock report factors with sample `tone_score` where useful in `apps/api/app/data/mock_report.py`
 
 **Checkpoint**: Contract supports ScoreBar-aligned factor coloring
 
@@ -68,13 +68,13 @@ All tasks T001–T044 from the original plan are done (`[x]`). Schema, FEMA/Time
 
 ### Tests for User Story 1
 
-- [ ] T049 [P] [US1] Update/extend unit tests for safety sub-score labels + staffing `available: false` in `workers/tests/test_score_detail.py`
+- [x] T049 [P] [US1] Update/extend unit tests for safety sub-score labels + staffing `available: false` in `workers/tests/test_score_detail.py`
 
 ### Implementation for User Story 1
 
-- [ ] T050 [US1] Rename safety sub-score user labels to “Crimes against people” / “Crimes against property” in `workers/scoring/detail.py` (keep ids `personal` / `property`)
-- [ ] T051 [US1] Mark education staffing sub-score `available: false` (do not use pupil–teacher as staffing) and adjust access blend inputs for schools-by-level when available in `workers/scoring/detail.py`
-- [ ] T052 [US1] Confirm web still renders limited-data sub-scores correctly in `apps/web/src/components/report/ScoreBreakdown.tsx` (no code change if already correct)
+- [x] T050 [US1] Rename safety sub-score user labels to “Crimes against people” / “Crimes against property” in `workers/scoring/detail.py` (keep ids `personal` / `property`)
+- [x] T051 [US1] Mark education staffing sub-score `available: false` (do not use pupil–teacher as staffing) and adjust access blend inputs for schools-by-level when available in `workers/scoring/detail.py`
+- [x] T052 [US1] Confirm web still renders limited-data sub-scores correctly in `apps/web/src/components/report/ScoreBreakdown.tsx` (no code change if already correct)
 
 **Checkpoint**: US1 labels honest for non-technical readers
 
@@ -88,19 +88,19 @@ All tasks T001–T044 from the original plan are done (`[x]`). Schema, FEMA/Time
 
 ### Tests for User Story 2
 
-- [ ] T053 [P] [US2] Unit tests for ER ordinal labels, safety plain-English names, AQI without source id, schools-by-level stats, employment rate, no PTR/locale in `workers/tests/test_score_detail_stats.py` (extend or sibling)
-- [ ] T054 [P] [US2] Vitest: category renders as interactive box (no “View details”-only affordance); expand/collapse; factor value uses `scoreTextClass(tone_score)` when present in `apps/web/src/__tests__/score-breakdown-expand.test.tsx`
-- [ ] T055 [P] [US2] API assertions that factors omit raw offense codes / `open_meteo` / “Also nearby” and may include `tone_score` in `apps/api/tests/test_score_subscores.py`
+- [x] T053 [P] [US2] Unit tests for ER ordinal labels, safety plain-English names, AQI without source id, schools-by-level stats, employment rate, no PTR/locale in `workers/tests/test_score_detail_stats.py` (extend or sibling)
+- [x] T054 [P] [US2] Vitest: category renders as interactive box (no “View details”-only affordance); expand/collapse; factor value uses `scoreTextClass(tone_score)` when present in `apps/web/src/__tests__/score-breakdown-expand.test.tsx`
+- [x] T055 [P] [US2] API assertions that factors omit raw offense codes / `open_meteo` / “Also nearby” and may include `tone_score` in `apps/api/tests/test_score_subscores.py`
 
 ### Implementation for User Story 2
 
-- [ ] T056 [US2] Rewrite Healthcare expand stats in `workers/scoring/detail.py`: labels `Nearest ER` / `2nd nearest ER` / `3rd nearest ER`; set ER wait `tone_score` from timeliness score; tighten `_timeliness_score` / impact so wait ≈/above national (and vs primary bench) is not ScoreBar “good” (≥75)
-- [ ] T057 [US2] Rewrite Safety expand stats in `workers/scoring/detail.py`: full offense names (Homicide, Robbery, Assault, Burglary, Larceny); user-friendly vs-state line; single condensed geography + agencies line (not many agency rows)
-- [ ] T058 [US2] Rewrite Environment AQI expand value in `workers/scoring/detail.py` to `"{aqi} · {category}"` only (no `open_meteo` / `epa_aqs`); set `tone_score` from air sub-score when useful
-- [ ] T059 [US2] Implement schools-by-level nearest stats (Pre-K / Elementary / Middle / Junior High / High when data distinguishes) in `workers/scoring/detail.py` + gather per-level nearests in `workers/scoring/compute.py`; remove PTR and locale expand stats; no zoning claim copy
-- [ ] T060 [US2] Add Economy “Share of labor force employed” from ACS `employed` / `labor_force` in `workers/scoring/detail.py` + pass fields from `workers/scoring/compute.py`
-- [ ] T061 [US2] Restyle `ScoreBreakdown` categories as interactive boxes (border/surface, full-control activate, chevron ok) and remove reliance on “View details” microcopy in `apps/web/src/components/report/ScoreBreakdown.tsx`
-- [ ] T062 [US2] Color expanded factor **values** with `scoreTextClass(tone_score)` when `tone_score` present (else `impact` fallback) in `apps/web/src/components/report/ScoreBreakdown.tsx`
+- [x] T056 [US2] Rewrite Healthcare expand stats in `workers/scoring/detail.py`: labels `Nearest ER` / `2nd nearest ER` / `3rd nearest ER`; set ER wait `tone_score` from timeliness score; tighten `_timeliness_score` / impact so wait ≈/above national (and vs primary bench) is not ScoreBar “good” (≥75)
+- [x] T057 [US2] Rewrite Safety expand stats in `workers/scoring/detail.py`: full offense names (Homicide, Robbery, Assault, Burglary, Larceny); user-friendly vs-state line; single condensed geography + agencies line (not many agency rows)
+- [x] T058 [US2] Rewrite Environment AQI expand value in `workers/scoring/detail.py` to `"{aqi} · {category}"` only (no `open_meteo` / `epa_aqs`); set `tone_score` from air sub-score when useful
+- [x] T059 [US2] Implement schools-by-level nearest stats (Pre-K / Elementary / Middle / Junior High / High when data distinguishes) in `workers/scoring/detail.py` + gather per-level nearests in `workers/scoring/compute.py`; remove PTR and locale expand stats; no zoning claim copy
+- [x] T060 [US2] Add Economy “Share of labor force employed” from ACS `employed` / `labor_force` in `workers/scoring/detail.py` + pass fields from `workers/scoring/compute.py`
+- [x] T061 [US2] Restyle `ScoreBreakdown` categories as interactive boxes (border/surface, full-control activate, chevron ok) and remove reliance on “View details” microcopy in `apps/web/src/components/report/ScoreBreakdown.tsx`
+- [x] T062 [US2] Color expanded factor **values** with `scoreTextClass(tone_score)` when `tone_score` present (else `impact` fallback) in `apps/web/src/components/report/ScoreBreakdown.tsx`
 
 **Checkpoint**: Polish MVP — plain-English expand + obvious boxes on existing smoke data after re-score
 
@@ -114,13 +114,13 @@ All tasks T001–T044 from the original plan are done (`[x]`). Schema, FEMA/Time
 
 ### Tests for User Story 3
 
-- [ ] T063 [P] [US3] Unit test: local wait ≥ national bench → `tone_score` &lt; 75 in `workers/tests/test_score_detail.py` or `workers/tests/test_cms_timely_transform.py`
-- [ ] T064 [P] [US3] API/fixture assertions for wait `tone_score` + hazard unavailable copy in `apps/api/tests/test_score_hazard_timely.py` (extend)
+- [x] T063 [P] [US3] Unit test: local wait ≥ national bench → `tone_score` &lt; 75 in `workers/tests/test_score_detail.py` or `workers/tests/test_cms_timely_transform.py`
+- [x] T064 [P] [US3] API/fixture assertions for wait `tone_score` + hazard unavailable copy in `apps/api/tests/test_score_hazard_timely.py` (extend)
 
 ### Implementation for User Story 3
 
-- [ ] T065 [US3] Finalize ER wait expand copy (minutes + state/national in plain English) and `tone_score` wiring when timely present in `workers/scoring/detail.py`
-- [ ] T066 [US3] Ensure hazard expand stats remain plain English / unavailable path unchanged (no fabricated flood) in `workers/scoring/detail.py`
+- [x] T065 [US3] Finalize ER wait expand copy (minutes + state/national in plain English) and `tone_score` wiring when timely present in `workers/scoring/detail.py`
+- [x] T066 [US3] Ensure hazard expand stats remain plain English / unavailable path unchanged (no fabricated flood) in `workers/scoring/detail.py`
 
 **Checkpoint**: SC-005 / SC-009 satisfied when data present or absent
 
@@ -134,12 +134,12 @@ All tasks T001–T044 from the original plan are done (`[x]`). Schema, FEMA/Time
 
 ### Tests for User Story 4
 
-- [ ] T067 [P] [US4] Confirm national refuse tests still pass in `workers/tests/test_scope_refuse_national.py` (no regression)
+- [x] T067 [P] [US4] Confirm national refuse tests still pass in `workers/tests/test_scope_refuse_national.py` (no regression)
 
 ### Implementation for User Story 4
 
-- [ ] T068 [US4] Align `specs/004-report-subscores/quickstart.md` polish checklist with final labels / `tone_score` behavior after implementation
-- [ ] T069 [US4] Run `INGEST_SCOPE=smoke INGEST_FORCE=1` scoring (and timely if needed) via Compose `worker-scoring` / `worker-cms-timely` so local DB `score_detail` matches polish; spot-check Bentonville
+- [x] T068 [US4] Align `specs/004-report-subscores/quickstart.md` polish checklist with final labels / `tone_score` behavior after implementation
+- [x] T069 [US4] Run `INGEST_SCOPE=smoke INGEST_FORCE=1` scoring (and timely if needed) via Compose `worker-scoring` / `worker-cms-timely` so local DB `score_detail` matches polish; spot-check Bentonville
 
 **Checkpoint**: Operator path refreshes polish JSON on fixture DB
 
@@ -149,11 +149,11 @@ All tasks T001–T044 from the original plan are done (`[x]`). Schema, FEMA/Time
 
 **Purpose**: End-to-end confidence for UX polish
 
-- [ ] T070 [P] Run worker pytest subset for detail/stats/tone/timely in `workers/tests/`
-- [ ] T071 [P] Run API pytest for score/subscores/hazard-timely in `apps/api/tests/`
-- [ ] T072 [P] Run web Vitest for `score-breakdown-expand` (+ related report tests) in `apps/web/src/__tests__/`
-- [ ] T073 Manual Bentonville checklist: boxes, ordinals, wait color, safety English, no `open_meteo`, schools-by-level, employment rate (`quickstart.md` V2)
-- [ ] T074 [P] Confirm `SCORE_UNAVAILABLE` unchanged in `apps/web/src/__tests__/report-score-unavailable.test.tsx`
+- [x] T070 [P] Run worker pytest subset for detail/stats/tone/timely in `workers/tests/`
+- [x] T071 [P] Run API pytest for score/subscores/hazard-timely in `apps/api/tests/`
+- [x] T072 [P] Run web Vitest for `score-breakdown-expand` (+ related report tests) in `apps/web/src/__tests__/`
+- [x] T073 Manual Bentonville checklist: boxes, ordinals, wait color, safety English, no `open_meteo`, schools-by-level, employment rate (`quickstart.md` V2)
+- [x] T074 [P] Confirm `SCORE_UNAVAILABLE` unchanged in `apps/web/src/__tests__/report-score-unavailable.test.tsx`
 
 ---
 

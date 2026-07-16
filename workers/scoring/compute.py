@@ -38,6 +38,7 @@ from scoring.detail import (
     DetailInputs,
     FemaInputs,
     NearestFacility,
+    SchoolByLevel,
     TimelyMeasure,
     build_score_detail,
     environment_category_score,
@@ -86,7 +87,10 @@ SELECT
     edu.locale,
     edu.enrollment,
     edu.teachers_fte,
+    levels.schools_by_level,
     acs.median_hh_income,
+    acs.employed,
+    acs.labor_force,
     acs.acs_year,
     bls.unemployment_rate,
     bls.laus_period
@@ -121,6 +125,7 @@ LEFT JOIN LATERAL (
     ) nn
 ) n ON true
 {education_join}
+{schools_by_level_join}
 {acs_join}
 {bls_join}
 WHERE (t.state_fips || t.county_fips) = ANY(%s)
@@ -155,10 +160,78 @@ _URBAN_JOIN = """
         )
 """
 
+# Nearest school per CCD level bucket (Urban school_level). Junior high only when
+# the school name indicates it; otherwise middle covers that age band.
+_SCHOOLS_BY_LEVEL_JOIN = """
+LEFT JOIN LATERAL (
+    SELECT COALESCE(
+        json_agg(
+            json_build_object(
+                'level', x.lvl,
+                'name', x.name,
+                'miles', round(x.miles::numeric, 2)
+            )
+            ORDER BY x.ord
+        ),
+        '[]'::json
+    ) AS schools_by_level
+    FROM (
+        SELECT DISTINCT ON (lvl)
+            lvl,
+            ord,
+            name,
+            miles
+        FROM (
+            SELECT
+                CASE
+                    WHEN lower(s.name) LIKE '%%junior high%%' THEN 'junior_high'
+                    WHEN coalesce(u.school_level::text, '') IN ('0') THEN 'prek'
+                    WHEN coalesce(u.school_level::text, '') IN ('1') THEN 'elementary'
+                    WHEN coalesce(u.school_level::text, '') IN ('2') THEN 'middle'
+                    WHEN coalesce(u.school_level::text, '') IN ('3') THEN 'high'
+                    ELSE NULL
+                END AS lvl,
+                CASE
+                    WHEN lower(s.name) LIKE '%%junior high%%' THEN 4
+                    WHEN coalesce(u.school_level::text, '') IN ('0') THEN 1
+                    WHEN coalesce(u.school_level::text, '') IN ('1') THEN 2
+                    WHEN coalesce(u.school_level::text, '') IN ('2') THEN 3
+                    WHEN coalesce(u.school_level::text, '') IN ('3') THEN 5
+                    ELSE 99
+                END AS ord,
+                s.name,
+                ST_Distance(
+                    s.geometry::geography,
+                    ST_Centroid(t.geometry)::geography
+                ) / 1609.34 AS miles
+            FROM schools_nces s
+            INNER JOIN schools_urban u ON u.ncessch = s.ncessch
+                AND u.year = (
+                    SELECT MAX(u2.year)
+                    FROM schools_urban u2
+                    WHERE u2.ncessch = s.ncessch
+                )
+            WHERE s.geometry IS NOT NULL
+        ) raw
+        WHERE lvl IS NOT NULL
+        ORDER BY lvl, miles ASC
+    ) x
+) levels ON true
+"""
+
+_NULL_SCHOOLS_BY_LEVEL_JOIN = """
+LEFT JOIN LATERAL (
+    SELECT '[]'::json AS schools_by_level
+    WHERE true
+) levels ON true
+"""
+
 _ACS_JOIN = """
 LEFT JOIN LATERAL (
     SELECT
         a.median_hh_income,
+        a.employed,
+        a.labor_force,
         a.acs_year
     FROM acs_indicators a
     WHERE a.geoid = t.geoid
@@ -195,7 +268,11 @@ LEFT JOIN LATERAL (
 
 _NULL_ACS_JOIN = """
 LEFT JOIN LATERAL (
-    SELECT NULL::numeric AS median_hh_income, NULL::varchar AS acs_year
+    SELECT
+        NULL::numeric AS median_hh_income,
+        NULL::numeric AS employed,
+        NULL::numeric AS labor_force,
+        NULL::varchar AS acs_year
     WHERE false
 ) acs ON true
 """
@@ -218,10 +295,15 @@ def _tract_inputs_sql(tables: dict[str, bool]) -> str:
             ),
             urban_join=_URBAN_JOIN if tables["urban"] else "",
         )
+        schools_by_level_join = (
+            _SCHOOLS_BY_LEVEL_JOIN if tables["urban"] else _NULL_SCHOOLS_BY_LEVEL_JOIN
+        )
     else:
         education_join = _NULL_EDUCATION_JOIN
+        schools_by_level_join = _NULL_SCHOOLS_BY_LEVEL_JOIN
     return TRACT_INPUTS_SQL.format(
         education_join=education_join,
+        schools_by_level_join=schools_by_level_join,
         acs_join=_ACS_JOIN if tables["acs"] else _NULL_ACS_JOIN,
         bls_join=_BLS_JOIN if tables["bls"] else _NULL_BLS_JOIN,
     )
@@ -507,6 +589,40 @@ def _parse_nearest_ers(raw: Any) -> list[NearestFacility]:
     return out
 
 
+def _parse_schools_by_level(raw: Any) -> list[SchoolByLevel]:
+    if not raw:
+        return []
+    if isinstance(raw, str):
+        import json
+
+        try:
+            raw = json.loads(raw)
+        except json.JSONDecodeError:
+            return []
+    if not isinstance(raw, list):
+        return []
+    out: list[SchoolByLevel] = []
+    for item in raw:
+        if not isinstance(item, dict):
+            continue
+        level = item.get("level")
+        if not level:
+            continue
+        miles = item.get("miles")
+        try:
+            miles_f = float(miles) if miles is not None else None
+        except (TypeError, ValueError):
+            miles_f = None
+        out.append(
+            SchoolByLevel(
+                level=str(level),
+                name=item.get("name"),
+                miles=miles_f,
+            )
+        )
+    return out
+
+
 def _healthcare_provenance(
     nearest_miles: float | None,
     *,
@@ -688,13 +804,17 @@ def run() -> int:
                     locale,
                     enrollment,
                     teachers_fte,
+                    schools_by_level_raw,
                     median_hh_income,
+                    employed,
+                    labor_force,
                     acs_year,
                     unemployment_rate,
                     laus_period,
                 ) = row
                 county = f"{state_fips}{county_fips}"
                 nearest_ers = parsed_ers_by_idx[idx]
+                schools_by_level = _parse_schools_by_level(schools_by_level_raw)
                 primary_provider = (
                     nearest_ers[0].cms_provider_id if nearest_ers else None
                 )
@@ -831,11 +951,16 @@ def run() -> int:
                         teachers_fte=float(teachers_fte)
                         if teachers_fte is not None
                         else None,
+                        schools_by_level=schools_by_level,
                         avg_aqi=float(avg_aqi) if avg_aqi is not None else None,
                         aqi_source=str(env.provenance.get("source_id", "")),
                         fema=fema,
                         median_hh_income=float(median_hh_income)
                         if median_hh_income is not None
+                        else None,
+                        employed=float(employed) if employed is not None else None,
+                        labor_force=float(labor_force)
+                        if labor_force is not None
                         else None,
                         unemployment_rate=float(unemployment_rate)
                         if unemployment_rate is not None

@@ -1,10 +1,12 @@
-"""Unit tests for score_detail builders."""
+"""Unit tests for score_detail builders (UX polish)."""
 
 from scoring.detail import (
     DetailInputs,
     FemaInputs,
     NearestFacility,
+    SchoolByLevel,
     TimelyMeasure,
+    _timeliness_score,
     build_score_detail,
     healthcare_category_score,
     safety_category_score,
@@ -22,35 +24,63 @@ def test_healthcare_with_timely():
     assert score == 80.0
 
 
-def test_build_detail_nearest_er_stats():
+def test_build_detail_ordinal_ers_and_plain_english():
     detail = build_score_detail(
         DetailInputs(
             nearest_ers=[
                 NearestFacility(name="Mercy NW", miles=2.1, star_rating=4, cms_provider_id="100"),
+                NearestFacility(name="Hospital B", miles=4.0, star_rating=3, cms_provider_id="101"),
+                NearestFacility(name="Hospital C", miles=6.0, star_rating=3, cms_provider_id="102"),
             ],
             avg_stars=4.0,
             nearest_er_miles=2.1,
             median_hh_income=80000,
             unemployment_rate=3.2,
+            employed=4500,
+            labor_force=4700,
             avg_aqi=42.0,
-            aqi_source="epa_aqs",
-            school_name="Central Elem",
-            nearest_school_miles=0.8,
-            enrollment=400,
-            teachers_fte=25.0,
+            aqi_source="open_meteo",
+            schools_by_level=[
+                SchoolByLevel(level="elementary", name="Central Elem", miles=0.8),
+                SchoolByLevel(level="high", name="Central High", miles=2.0),
+            ],
             crime=CountyCrime(
                 county_fips="05007",
                 by_offense={"HOM": (1.0, 2.0), "ROB": (10.0, 12.0), "ASS": (20.0, 22.0)},
                 ori_count=2,
             ),
+            agencies=[{"agency_name": "Bentonville PD", "ori": "AR001"}, {"agency_name": "County SO"}],
         )
     )
-    assert detail["healthcare"]["sub_scores"][0]["available"] is True
-    assert "Mercy" in detail["healthcare"]["stats"][0]["value"]
-    assert detail["education"]["stats"][0]["name"] == "Nearest school"
-    assert detail["economic"]["sub_scores"][0]["id"] == "income"
-    assert detail["environment"]["sub_scores"][0]["available"] is True
-    assert detail["safety"]["sub_scores"][0]["available"] is True
+    hc_names = [s["name"] for s in detail["healthcare"]["stats"]]
+    assert hc_names[0] == "Nearest ER"
+    assert hc_names[1] == "2nd nearest ER"
+    assert hc_names[2] == "3rd nearest ER"
+    assert "Also nearby" not in hc_names
+
+    safety_names = [s["name"] for s in detail["safety"]["stats"]]
+    assert "Assault" in safety_names
+    assert "Homicide" in safety_names
+    assert not any(n.startswith("Offense ") for n in safety_names)
+    assert any(s["name"] == "About these numbers" for s in detail["safety"]["stats"])
+    assert detail["safety"]["sub_scores"][0]["label"] == "Crimes against people"
+
+    aqi = next(s for s in detail["environment"]["stats"] if s["name"] == "Average AQI")
+    assert "open_meteo" not in aqi["value"]
+    assert "epa_aqs" not in aqi["value"]
+    assert "42" in aqi["value"]
+
+    edu_names = [s["name"] for s in detail["education"]["stats"]]
+    assert "Nearest elementary" in edu_names
+    assert "Nearest high" in edu_names
+    assert "Pupil–teacher ratio" not in edu_names
+    assert "Locale code" not in edu_names
+    staffing = next(s for s in detail["education"]["sub_scores"] if s["id"] == "staffing")
+    assert staffing["available"] is False
+
+    assert any(
+        s["name"] == "Share of labor force employed" for s in detail["economic"]["stats"]
+    )
 
 
 def test_hazard_and_timely_unavailable_copy():
@@ -71,21 +101,30 @@ def test_fema_hazard_subscore():
     assert hazard["score"] == 55.0
 
 
-def test_timely_stat():
+def test_timely_stat_tone_below_good_when_at_national():
+    """Bentonville-style: wait ≈ national must not be ScoreBar good (≥75)."""
+    timely = TimelyMeasure(
+        measure_id="OP_18b",
+        measure_name="ED wait",
+        score_value=162.0,
+        state_score=120.0,
+        national_score=161.0,
+    )
+    tone = _timeliness_score(timely)
+    assert tone is not None
+    assert tone < 75
+
     detail = build_score_detail(
         DetailInputs(
             nearest_ers=[NearestFacility(name="H", miles=3.0, star_rating=3)],
             avg_stars=3.0,
             nearest_er_miles=3.0,
-            timely=TimelyMeasure(
-                measure_id="OP_18b",
-                measure_name="ED wait",
-                score_value=28.0,
-                state_score=35.0,
-            ),
+            timely=timely,
         )
     )
-    assert any("28" in s["value"] for s in detail["healthcare"]["stats"])
+    wait = next(s for s in detail["healthcare"]["stats"] if s["name"] == "ER wait")
+    assert wait["tone_score"] < 75
+    assert "162" in wait["value"]
     assert detail["healthcare"]["sub_scores"][2]["id"] == "timeliness"
     assert detail["healthcare"]["sub_scores"][2]["available"] is True
 

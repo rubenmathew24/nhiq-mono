@@ -12,7 +12,12 @@ function dim(
     label: "X",
     summary: "Summary text",
     factors: [
-      { name: "Nearest ER", value: "Mercy · 2.1 mi · ★4", impact: "positive" },
+      {
+        name: "Nearest ER",
+        value: "Mercy · 2.1 mi · ★4",
+        impact: "positive",
+        tone_score: 90,
+      },
     ],
     sub_scores: [
       { id: "access", label: "Access", score: 90, available: true },
@@ -29,8 +34,19 @@ const report: NeighborhoodReport = {
   latitude: 36,
   longitude: -94,
   overall_score: 80,
-  healthcare: dim(87),
-  safety: dim(74, { factors: [{ name: "Crime", value: "Near average", impact: "neutral" }] }),
+  healthcare: dim(87, {
+    factors: [
+      {
+        name: "ER wait",
+        value: "162 min (national 161)",
+        impact: "negative",
+        tone_score: 49,
+      },
+    ],
+  }),
+  safety: dim(74, {
+    factors: [{ name: "Assault", value: "20 incidents (12 mo)", impact: "neutral" }],
+  }),
   environment: dim(74),
   education: dim(91),
   economic: dim(68),
@@ -40,22 +56,27 @@ const report: NeighborhoodReport = {
 };
 
 describe("ScoreBreakdown expand", () => {
-  it("shows sub-scores and expand affordance", () => {
-    render(<ScoreBreakdown report={report} />);
-    expect(screen.getByText("Access")).toBeInTheDocument();
-    expect(screen.getAllByText(/View details/).length).toBeGreaterThanOrEqual(1);
+  it("shows sub-scores and interactive category boxes without View details", () => {
+    const { container } = render(<ScoreBreakdown report={report} />);
+    expect(screen.getAllByText("Access").length).toBeGreaterThanOrEqual(1);
+    expect(screen.queryByText(/View details/i)).not.toBeInTheDocument();
     expect(
       screen.getByRole("button", { name: /Expand Healthcare details/i }),
     ).toBeInTheDocument();
+    // Category boxes use bordered surfaces
+    expect(container.querySelectorAll(".rounded-xl.border").length).toBeGreaterThanOrEqual(5);
   });
 
   it("expands and collapses healthcare stats", () => {
     render(<ScoreBreakdown report={report} />);
     const btn = screen.getByRole("button", { name: /Expand Healthcare details/i });
-    expect(screen.queryByText(/Mercy/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/162 min/)).not.toBeInTheDocument();
     fireEvent.click(btn);
-    expect(screen.getByText(/Mercy/)).toBeInTheDocument();
+    expect(screen.getByText(/162 min/)).toBeInTheDocument();
+    // tone_score < 50 → score-poor text class
+    const waitValue = screen.getByText(/162 min/);
+    expect(waitValue.className).toMatch(/score-poor|text-score-poor/);
     fireEvent.click(screen.getByRole("button", { name: /Collapse Healthcare details/i }));
-    expect(screen.queryByText(/Mercy/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/162 min/)).not.toBeInTheDocument();
   });
 });

@@ -3,7 +3,7 @@
 import { useId, useState } from "react";
 import ScoreBar from "@/components/ui/ScoreBar";
 import { cn, scoreTextClass } from "@/lib/utils";
-import type { NeighborhoodReport, ScoreDimension, SubScore } from "@/types/api";
+import type { Factor, NeighborhoodReport, ScoreDimension, SubScore } from "@/types/api";
 
 interface ScoreBreakdownProps {
   report: NeighborhoodReport;
@@ -16,6 +16,15 @@ const DIMENSIONS: { key: keyof NeighborhoodReport; title: string }[] = [
   { key: "education", title: "Schools" },
   { key: "economic", title: "Economy" },
 ];
+
+function factorValueClass(f: Factor): string {
+  if (typeof f.tone_score === "number") {
+    return scoreTextClass(f.tone_score);
+  }
+  if (f.impact === "positive") return "text-score-good";
+  if (f.impact === "negative") return "text-score-poor";
+  return "text-foreground/80";
+}
 
 function SubScoreRow({ sub }: { sub: SubScore }) {
   const muted = sub.available === false;
@@ -53,17 +62,26 @@ function DimensionRow({
   const factors = dimension.factors ?? [];
 
   return (
-    <div className="border-b border-border/60 last:border-0 pb-4 last:pb-0">
+    <div
+      className={cn(
+        "rounded-xl border border-border/70 bg-muted/20 p-3.5 transition-colors",
+        open && "border-border bg-muted/35",
+      )}
+    >
       <button
         type="button"
-        className="w-full text-left group"
+        className={cn(
+          "w-full text-left rounded-lg -m-1 p-1",
+          "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+          "hover:bg-muted/40",
+        )}
         aria-expanded={open}
         aria-controls={panelId}
         aria-label={`${open ? "Collapse" : "Expand"} ${title} details`}
         onClick={() => setOpen((v) => !v)}
       >
-        <div className="flex items-center justify-between text-xs mb-1 gap-2">
-          <span className="text-foreground/70 font-medium flex items-center gap-1.5">
+        <div className="flex items-center justify-between text-xs mb-1.5 gap-2">
+          <span className="text-foreground font-medium flex items-center gap-1.5">
             {title}
             <span
               className={cn(
@@ -73,9 +91,6 @@ function DimensionRow({
               aria-hidden
             >
               ▸
-            </span>
-            <span className="text-[10px] font-normal text-muted-foreground group-hover:text-foreground/60">
-              View details
             </span>
           </span>
           <span
@@ -105,7 +120,7 @@ function DimensionRow({
       {open && (
         <div
           id={panelId}
-          className="mt-3 rounded-xl bg-muted/40 border border-border/50 px-3 py-2.5 space-y-2"
+          className="mt-3 rounded-lg bg-card/80 border border-border/50 px-3 py-2.5 space-y-2"
         >
           {factors.length === 0 ? (
             <p className="text-xs text-muted-foreground">
@@ -120,10 +135,8 @@ function DimensionRow({
                 <span className="text-muted-foreground shrink-0">{f.name}</span>
                 <span
                   className={cn(
-                    "text-right font-medium",
-                    f.impact === "positive" && "text-emerald-700 dark:text-emerald-400",
-                    f.impact === "negative" && "text-amber-800 dark:text-amber-400",
-                    f.impact === "neutral" && "text-foreground/80",
+                    "text-right font-medium tabular-nums",
+                    factorValueClass(f),
                   )}
                 >
                   {f.value}
@@ -139,12 +152,12 @@ function DimensionRow({
 
 export default function ScoreBreakdown({ report }: ScoreBreakdownProps) {
   return (
-    <div className="rounded-2xl bg-card border border-border p-6 space-y-5">
+    <div className="rounded-2xl bg-card border border-border p-6 space-y-3">
       <h2 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">
         Score breakdown
       </h2>
-      <p className="text-xs text-muted-foreground -mt-3">
-        Tap a category to see supporting stats.
+      <p className="text-xs text-muted-foreground -mt-1 mb-2">
+        Tap a category box to see supporting stats.
       </p>
       {DIMENSIONS.map(({ key, title }) => (
         <DimensionRow

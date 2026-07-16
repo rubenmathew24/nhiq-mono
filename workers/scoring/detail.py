@@ -12,7 +12,6 @@ from ingest.fixtures.constants import (
     HOSPITAL_NEAR_MILES,
 )
 from scoring.economic import income_score_from_median, unemployment_score_from_rate
-from scoring.education import access_score_from_distance, staffing_score_from_ratio
 from scoring.formulas import distance_score_miles, environment_from_aqi
 from scoring.safety import CountyCrime, safety_from_cde
 
@@ -24,6 +23,24 @@ SAFETY_PROPERTY_W = 0.30
 ENV_AIR_W = 0.60
 ENV_HAZARD_W = 0.40
 PROPERTY_OFFENSES = ("BUR", "LAR", "MVT", "ARS")
+
+OFFENSE_LABELS = {
+    "HOM": "Homicide",
+    "ROB": "Robbery",
+    "ASS": "Assault",
+    "BUR": "Burglary",
+    "LAR": "Larceny (theft)",
+    "MVT": "Motor vehicle theft",
+    "ARS": "Arson",
+}
+
+SCHOOL_LEVEL_META: list[tuple[str, str, str]] = [
+    ("prek", "Nearest Pre-K", "prek"),
+    ("elementary", "Nearest elementary", "elementary"),
+    ("middle", "Nearest middle", "middle"),
+    ("junior_high", "Nearest junior high", "junior_high"),
+    ("high", "Nearest high", "high"),
+]
 
 HAZARD_RATING_SCORES = {
     "very low": 95.0,
@@ -59,6 +76,13 @@ class FemaInputs:
 
 
 @dataclass
+class SchoolByLevel:
+    level: str  # prek | elementary | middle | junior_high | high
+    name: str | None = None
+    miles: float | None = None
+
+
+@dataclass
 class DetailInputs:
     nearest_ers: list[NearestFacility] = field(default_factory=list)
     avg_stars: float | None = None
@@ -71,12 +95,15 @@ class DetailInputs:
     locale: str | None = None
     enrollment: int | None = None
     teachers_fte: float | None = None
+    schools_by_level: list[SchoolByLevel] = field(default_factory=list)
     avg_aqi: float | None = None
     aqi_source: str | None = None
     aqi_category: str | None = None
     fema: FemaInputs | None = None
     median_hh_income: float | None = None
     unemployment_rate: float | None = None
+    employed: float | None = None
+    labor_force: float | None = None
     acs_year: str | None = None
     laus_period: str | None = None
 
@@ -90,8 +117,27 @@ def _sub(sid: str, label: str, score: float | None, *, available: bool) -> dict[
     }
 
 
-def _stat(name: str, value: str, impact: str = "neutral") -> dict[str, str]:
-    return {"name": name, "value": value, "impact": impact}
+def _impact_from_tone(tone: float | None) -> str:
+    """Match ScoreBar tiers: ≥75 good, ≥50 mid, else poor."""
+    if tone is None:
+        return "neutral"
+    if tone >= 75:
+        return "positive"
+    if tone >= 50:
+        return "neutral"
+    return "negative"
+
+
+def _stat(
+    name: str,
+    value: str,
+    impact: str = "neutral",
+    tone_score: float | None = None,
+) -> dict[str, Any]:
+    row: dict[str, Any] = {"name": name, "value": value, "impact": impact}
+    if tone_score is not None:
+        row["tone_score"] = round(float(tone_score), 1)
+    return row
 
 
 def _blend(parts: list[tuple[float, float]]) -> float | None:
@@ -110,14 +156,24 @@ def _star_score(avg_stars: float | None) -> float | None:
 
 
 def _timeliness_score(timely: TimelyMeasure | None) -> float | None:
+    """Map ER wait minutes vs benchmark to 0–100 (higher = better).
+
+    At parity with the primary bench → ~50 (mid tier), so waits at/above
+    national average are never ScoreBar \"good\" (≥75).
+    """
     if timely is None or timely.score_value is None:
         return None
     local = float(timely.score_value)
-    bench = timely.state_score if timely.state_score is not None else timely.national_score
-    if bench is None or bench <= 0:
-        return max(10.0, min(95.0, 95.0 - (local - 15.0) * (55.0 / 45.0)))
-    ratio = local / float(bench)
-    return max(0.0, min(100.0, 100.0 - 25.0 * ratio))
+    # Prefer national when present for SC-009; else state; else absolute heuristic
+    if timely.national_score is not None and float(timely.national_score) > 0:
+        bench = float(timely.national_score)
+    elif timely.state_score is not None and float(timely.state_score) > 0:
+        bench = float(timely.state_score)
+    else:
+        # Absolute: 15 min → ~85, 60 min → ~50, 120+ → poor
+        return max(0.0, min(100.0, 100.0 - (local - 15.0) * (50.0 / 45.0)))
+    ratio = local / bench
+    return max(0.0, min(100.0, 100.0 - 50.0 * ratio))
 
 
 def _property_safety(crime: CountyCrime | None) -> float | None:
@@ -206,6 +262,29 @@ def environment_category_score(air: float | None, hazard: float | None) -> float
     return round(blended, 1) if blended is not None else DEFAULT_ENVIRONMENT_SCORE
 
 
+def _er_ordinal_label(index: int) -> str:
+    if index == 0:
+        return "Nearest ER"
+    if index == 1:
+        return "2nd nearest ER"
+    if index == 2:
+        return "3rd nearest ER"
+    return f"{index + 1}th nearest ER"
+
+
+def _access_from_schools(inputs: DetailInputs) -> float | None:
+    miles_list: list[float] = []
+    for s in inputs.schools_by_level:
+        if s.miles is not None:
+            miles_list.append(float(s.miles))
+    if not miles_list and inputs.nearest_school_miles is not None:
+        miles_list.append(float(inputs.nearest_school_miles))
+    if not miles_list:
+        return None
+    scores = [distance_score_miles(m) for m in miles_list]
+    return sum(scores) / len(scores)
+
+
 def build_score_detail(inputs: DetailInputs) -> dict[str, Any]:
     access = (
         distance_score_miles(float(inputs.nearest_er_miles))
@@ -219,20 +298,23 @@ def build_score_detail(inputs: DetailInputs) -> dict[str, Any]:
         _sub("quality", "Quality", quality, available=quality is not None),
         _sub("timeliness", "Timeliness", timely_s, available=timely_s is not None),
     ]
-    hc_stats: list[dict[str, str]] = []
+    hc_stats: list[dict[str, Any]] = []
     for i, er in enumerate(inputs.nearest_ers[:3]):
-        label = "Nearest ER" if i == 0 else "Also nearby"
+        label = _er_ordinal_label(i)
         bits = [er.name or "Emergency facility"]
         if er.miles is not None:
             bits.append(f"{float(er.miles):.1f} mi")
         if er.star_rating is not None:
             bits.append(f"★{er.star_rating}")
-        impact = "neutral"
-        if er.miles is not None and er.miles <= HOSPITAL_NEAR_MILES:
+        tone = None
+        if er.miles is not None:
+            tone = distance_score_miles(float(er.miles))
+        impact = _impact_from_tone(tone)
+        if er.miles is not None and er.miles <= HOSPITAL_NEAR_MILES and tone is None:
             impact = "positive"
-        elif er.miles is not None and er.miles >= HOSPITAL_FAR_MILES:
+        elif er.miles is not None and er.miles >= HOSPITAL_FAR_MILES and tone is None:
             impact = "negative"
-        hc_stats.append(_stat(label, " · ".join(bits), impact))
+        hc_stats.append(_stat(label, " · ".join(bits), impact, tone_score=tone))
     if not hc_stats:
         hc_stats.append(_stat("Nearest ER", "Unavailable", "neutral"))
     if inputs.timely and inputs.timely.score_value is not None:
@@ -243,16 +325,17 @@ def build_score_detail(inputs: DetailInputs) -> dict[str, Any]:
             cmp_bits.append(f"state {inputs.timely.state_score:g}")
         if inputs.timely.national_score is not None:
             cmp_bits.append(f"national {inputs.timely.national_score:g}")
-        cmp = f" ({' / '.join(cmp_bits)})" if cmp_bits else ""
+        cmp = f" ({' · '.join(cmp_bits)})" if cmp_bits else ""
         hc_stats.append(
             _stat(
-                "ER wait / timely care",
+                "ER wait",
                 f"{wait}{unit}{cmp}",
-                "positive" if timely_s and timely_s >= 70 else "neutral",
+                _impact_from_tone(timely_s),
+                tone_score=timely_s,
             )
         )
     else:
-        hc_stats.append(_stat("ER wait / timely care", "Unavailable", "neutral"))
+        hc_stats.append(_stat("ER wait", "Unavailable", "neutral"))
 
     personal_res = safety_from_cde(inputs.crime)
     if inputs.crime is None or not inputs.crime.by_offense:
@@ -261,18 +344,31 @@ def build_score_detail(inputs: DetailInputs) -> dict[str, Any]:
         personal = personal_res.score
     property_s = _property_safety(inputs.crime)
     safety_subs = [
-        _sub("personal", "Personal crime", personal, available=personal is not None),
-        _sub("property", "Property crime", property_s, available=property_s is not None),
+        _sub(
+            "personal",
+            "Crimes against people",
+            personal,
+            available=personal is not None,
+        ),
+        _sub(
+            "property",
+            "Crimes against property",
+            property_s,
+            available=property_s is not None,
+        ),
     ]
-    safety_stats: list[dict[str, str]] = []
+    safety_stats: list[dict[str, Any]] = []
     if inputs.crime and inputs.crime.by_offense:
         ratio = personal_res.provenance.get("ratio")
         if ratio is not None:
+            r = float(ratio)
+            tone = max(0.0, min(100.0, 100.0 - 25.0 * r))
             safety_stats.append(
                 _stat(
-                    "Personal crime vs state",
-                    f"{float(ratio):.2f}× state benchmark (agency aggregate)",
-                    "positive" if float(ratio) <= 1.0 else "negative",
+                    "Violent crime vs state",
+                    f"About {r:.2f}× the state benchmark",
+                    _impact_from_tone(tone),
+                    tone_score=tone,
                 )
             )
         for slug in ("HOM", "ROB", "ASS", "BUR", "LAR"):
@@ -280,54 +376,62 @@ def build_score_detail(inputs: DetailInputs) -> dict[str, Any]:
             if not pair:
                 continue
             inc, bench = pair
+            label = OFFENSE_LABELS.get(slug, slug)
             val = f"{inc:g} incidents (12 mo)"
             if bench is not None:
                 val += f" · state bench {bench:g}"
-            safety_stats.append(_stat(f"Offense {slug}", val, "neutral"))
-        safety_stats.append(
-            _stat(
-                "Geography note",
-                "Crime stats are county/agency grain — same input for tracts in this county.",
-                "neutral",
-            )
-        )
+            safety_stats.append(_stat(label, val, "neutral"))
+        agency_names: list[str] = []
+        for ag in inputs.agencies[:4]:
+            nm = ag.get("agency_name") or ag.get("ori")
+            if nm:
+                agency_names.append(str(nm))
+        about = "County/agency grain — same for tracts in this county."
+        if agency_names:
+            about += " Reported by: " + "; ".join(agency_names)
+            if len(inputs.agencies) > 4:
+                about += "; …"
+        safety_stats.append(_stat("About these numbers", about, "neutral"))
     else:
         safety_stats.append(_stat("Crime data", "Unavailable", "neutral"))
-    for ag in inputs.agencies[:5]:
-        nm = ag.get("agency_name") or ag.get("ori") or "Agency"
-        dist = ag.get("distance_miles")
-        val = str(nm)
-        if dist is not None:
-            val += f" · {float(dist):.1f} mi"
-        safety_stats.append(_stat("Reporting agency", val, "neutral"))
 
-    access_e = access_score_from_distance(inputs.nearest_school_miles, inputs.locale)
-    staffing = staffing_score_from_ratio(inputs.enrollment, inputs.teachers_fte)
+    access_e = _access_from_schools(inputs)
+    # Staffing limited until zoning-backed assignment exists (no PTR proxy)
     edu_subs = [
         _sub("access", "Access", access_e, available=access_e is not None),
-        _sub("staffing", "Staffing", staffing, available=staffing is not None),
+        _sub("staffing", "Staffing", None, available=False),
     ]
-    edu_stats: list[dict[str, str]] = []
-    if inputs.school_name or inputs.nearest_school_miles is not None:
-        bits = [inputs.school_name or "Public school"]
-        if inputs.nearest_school_miles is not None:
-            bits.append(f"{float(inputs.nearest_school_miles):.1f} mi")
-        edu_stats.append(_stat("Nearest school", " · ".join(bits), "positive"))
-    else:
-        edu_stats.append(_stat("Nearest school", "Unavailable", "neutral"))
-    if inputs.enrollment is not None and inputs.teachers_fte and inputs.teachers_fte > 0:
-        ratio = float(inputs.enrollment) / float(inputs.teachers_fte)
+    edu_stats: list[dict[str, Any]] = []
+    by_level = {s.level: s for s in inputs.schools_by_level if s.level}
+    for level_id, label, _ in SCHOOL_LEVEL_META:
+        school = by_level.get(level_id)
+        if school is None:
+            continue
+        bits = [school.name or "Public school"]
+        tone = None
+        if school.miles is not None:
+            bits.append(f"{float(school.miles):.1f} mi")
+            tone = distance_score_miles(float(school.miles))
         edu_stats.append(
-            _stat(
-                "Pupil–teacher ratio",
-                f"{ratio:.1f} ({inputs.enrollment} students / {float(inputs.teachers_fte):.1f} FTE)",
-                "positive" if 14 <= ratio <= 18 else "neutral",
-            )
+            _stat(label, " · ".join(bits), _impact_from_tone(tone), tone_score=tone)
         )
-    else:
-        edu_stats.append(_stat("Pupil–teacher ratio", "Unavailable", "neutral"))
-    if inputs.locale:
-        edu_stats.append(_stat("Locale code", str(inputs.locale), "neutral"))
+    if not edu_stats:
+        if inputs.school_name or inputs.nearest_school_miles is not None:
+            bits = [inputs.school_name or "Public school"]
+            tone = None
+            if inputs.nearest_school_miles is not None:
+                bits.append(f"{float(inputs.nearest_school_miles):.1f} mi")
+                tone = distance_score_miles(float(inputs.nearest_school_miles))
+            edu_stats.append(
+                _stat(
+                    "Nearest public school",
+                    " · ".join(bits),
+                    _impact_from_tone(tone),
+                    tone_score=tone,
+                )
+            )
+        else:
+            edu_stats.append(_stat("Nearby schools", "Unavailable", "neutral"))
 
     air_available = inputs.avg_aqi is not None
     air_score = environment_from_aqi(inputs.avg_aqi) if air_available else None
@@ -336,15 +440,16 @@ def build_score_detail(inputs: DetailInputs) -> dict[str, Any]:
         _sub("air_quality", "Air quality", air_score, available=air_available),
         _sub("hazard", "Hazard risk", hazard, available=hazard is not None),
     ]
-    env_stats: list[dict[str, str]] = []
+    env_stats: list[dict[str, Any]] = []
     if air_available:
         cat = inputs.aqi_category or _aqi_category(inputs.avg_aqi)
-        src = inputs.aqi_source or "unknown"
+        # Plain English only — never append internal source ids (open_meteo, epa_aqs)
         env_stats.append(
             _stat(
                 "Average AQI",
-                f"{float(inputs.avg_aqi):.0f} · {cat} ({src})",
-                "positive" if float(inputs.avg_aqi) <= 50 else "neutral",
+                f"{float(inputs.avg_aqi):.0f} · {cat}",
+                _impact_from_tone(air_score),
+                tone_score=air_score,
             )
         )
     else:
@@ -360,7 +465,8 @@ def build_score_detail(inputs: DetailInputs) -> dict[str, Any]:
             _stat(
                 "Composite hazard rating",
                 rating + extra,
-                "negative" if "high" in rating.lower() else "neutral",
+                _impact_from_tone(hazard),
+                tone_score=hazard,
             )
         )
         for slug, block in list((inputs.fema.hazards or {}).items())[:5]:
@@ -370,9 +476,8 @@ def build_score_detail(inputs: DetailInputs) -> dict[str, Any]:
                 (v for k, v in block.items() if str(k).endswith("_RISKR")),
                 "elevated",
             )
-            env_stats.append(
-                _stat(f"Hazard · {str(slug).replace('_', ' ')}", str(riskr), "negative")
-            )
+            nice = str(slug).replace("_", " ").title()
+            env_stats.append(_stat(f"Hazard · {nice}", str(riskr), "negative"))
     else:
         env_stats.append(_stat("Hazard risk", "Unavailable", "neutral"))
 
@@ -382,14 +487,15 @@ def build_score_detail(inputs: DetailInputs) -> dict[str, Any]:
         _sub("income", "Income", income_s, available=income_s is not None),
         _sub("labor", "Labor", labor_s, available=labor_s is not None),
     ]
-    econ_stats: list[dict[str, str]] = []
+    econ_stats: list[dict[str, Any]] = []
     if inputs.median_hh_income is not None:
         yr = f" ({inputs.acs_year})" if inputs.acs_year else ""
         econ_stats.append(
             _stat(
                 "Median household income",
                 f"${float(inputs.median_hh_income):,.0f}{yr}",
-                "positive" if float(inputs.median_hh_income) >= 75000 else "neutral",
+                _impact_from_tone(income_s),
+                tone_score=income_s,
             )
         )
     else:
@@ -400,11 +506,28 @@ def build_score_detail(inputs: DetailInputs) -> dict[str, Any]:
             _stat(
                 "County unemployment",
                 f"{float(inputs.unemployment_rate):.1f}%{per}",
-                "positive" if float(inputs.unemployment_rate) <= 4 else "negative",
+                _impact_from_tone(labor_s),
+                tone_score=labor_s,
             )
         )
     else:
         econ_stats.append(_stat("County unemployment", "Unavailable", "neutral"))
+    if (
+        inputs.employed is not None
+        and inputs.labor_force is not None
+        and float(inputs.labor_force) > 0
+    ):
+        rate = 100.0 * float(inputs.employed) / float(inputs.labor_force)
+        # Rough tone: ≥95 good, ≥90 mid, else poorer
+        emp_tone = max(0.0, min(100.0, (rate - 80.0) * 5.0))
+        econ_stats.append(
+            _stat(
+                "Share of labor force employed",
+                f"{rate:.1f}%",
+                _impact_from_tone(emp_tone),
+                tone_score=emp_tone,
+            )
+        )
 
     return {
         "healthcare": {"sub_scores": hc_subs, "stats": hc_stats},

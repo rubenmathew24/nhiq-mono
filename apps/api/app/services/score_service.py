@@ -71,7 +71,13 @@ def _parse_stats_factors(raw: Any) -> list[Factor]:
             continue
         if impact not in ("positive", "negative", "neutral"):
             impact = "neutral"
-        out.append(Factor(name=name, value=value, impact=impact))
+        tone_raw = item.get("tone_score")
+        tone_score: float | None = None
+        if isinstance(tone_raw, (int, float)):
+            tone_score = float(tone_raw)
+        out.append(
+            Factor(name=name, value=value, impact=impact, tone_score=tone_score)
+        )
     return out
 
 

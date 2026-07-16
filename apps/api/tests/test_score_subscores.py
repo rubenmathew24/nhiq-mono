@@ -63,12 +63,39 @@ async def test_build_report_maps_score_detail():
                         {"id": "access", "label": "Access", "score": 90, "available": True}
                     ],
                     "stats": [
-                        {"name": "Nearest ER", "value": "Mercy · 2.0 mi · ★4", "impact": "positive"}
+                        {
+                            "name": "Nearest ER",
+                            "value": "Mercy · 2.0 mi · ★4",
+                            "impact": "positive",
+                            "tone_score": 85,
+                        },
+                        {
+                            "name": "2nd nearest ER",
+                            "value": "Other · 4.0 mi · ★3",
+                            "impact": "neutral",
+                            "tone_score": 55,
+                        },
+                        {
+                            "name": "ER wait",
+                            "value": "162 min (national 161)",
+                            "impact": "negative",
+                            "tone_score": 49,
+                        },
                     ],
                 },
-                "safety": {"sub_scores": [], "stats": []},
+                "safety": {
+                    "sub_scores": [],
+                    "stats": [
+                        {"name": "Assault", "value": "20 incidents (12 mo)", "impact": "neutral"}
+                    ],
+                },
                 "education": {"sub_scores": [], "stats": []},
-                "environment": {"sub_scores": [], "stats": []},
+                "environment": {
+                    "sub_scores": [],
+                    "stats": [
+                        {"name": "Average AQI", "value": "57 · Moderate", "impact": "neutral"}
+                    ],
+                },
                 "economic": {"sub_scores": [], "stats": []},
             },
         }
@@ -81,7 +108,13 @@ async def test_build_report_maps_score_detail():
 
     assert report.healthcare.sub_scores[0].id == "access"
     assert report.healthcare.factors[0].name == "Nearest ER"
+    assert report.healthcare.factors[1].name == "2nd nearest ER"
+    assert report.healthcare.factors[2].tone_score == 49
     assert isinstance(report.healthcare.sub_scores[0], SubScore)
+    joined = " ".join(f"{f.name} {f.value}" for f in report.healthcare.factors)
+    assert "Also nearby" not in joined
+    assert "ASS" not in " ".join(f.name for f in report.safety.factors)
+    assert "open_meteo" not in report.environment.factors[0].value
 
 
 def test_mock_report_shape():
@@ -93,3 +126,6 @@ def test_mock_report_shape():
         geoid="05007020101",
     )
     assert len(r.healthcare.sub_scores) >= 2
+    assert r.healthcare.factors[0].tone_score is not None
+    assert r.education.sub_scores[-1].available is False
+    assert any(f.name == "Share of labor force employed" for f in r.economic.factors)
