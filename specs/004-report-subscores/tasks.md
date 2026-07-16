@@ -103,3 +103,14 @@ Completed task IDs (T001–T119)
 
 - [X] T125 Align published Schools category score with Access sub-score (by-level proximity ≤ `SCHOOL_MAX_EXPAND_MILES`) and exclude PTR/locale staffing from the category while Staffing is limited-data — update `workers/scoring/compute.py` / `workers/scoring/education.py` (and re-score path) so sub-scores explain the category per US1/AC2, Key Entities (Schools), research.md §10.5 (contradicts)
 - [X] T126 Rewrite Schools category summary when staffing is limited-data so it does not claim “staffing signals” / Urban CCD staffing — `apps/api/app/services/score_service.py` `_education_summary` (and mock copy if needed) per FR-007 / research.md §10.5 (contradicts)
+
+
+
+---
+
+
+
+## Phase 29: Convergence
+
+- [ ] T127 CRITICAL: When personal-crime (people) offenses exist but state benchmarks are missing, mark Crimes against people / personal safety unavailable (do not synthesize `state = local` under population normalization) — update `workers/scoring/safety.py` `_weighted_local_state` / `safety_from_cde` and wire detail limited-data the same way as property (`workers/scoring/detail.py` `_property_safety` pattern); add regression test in `workers/tests/` per FR-011 (and FR-021 failure mode) (contradicts)
+- [ ] T128 Allow expand-panel chrome clicks to collapse the category (remove or replace `stopPropagation` on the expanded panel in `apps/web/src/components/report/ScoreBreakdown.tsx`) while keeping SC-014 text-selection / drag-without-toggle behavior; extend Vitest if needed per FR-004 / US2/AC3 (partial)
