@@ -12,6 +12,7 @@ from psycopg2.extras import execute_values
 
 from ingest.base import BaseIngestionWorker
 from ingest.checkpoints import counties_with_geo, log_skip
+from ingest.force import force_enabled
 from ingest.geo.jurisdictions import INCLUDED_STATE_FIPS, STATE_FIPS_TO_ABBR
 from ingest.geo.scope import parse_state_batch, require_national_state_batch, resolve_ingest_scope
 
@@ -87,7 +88,11 @@ class GeoCountyWorker(BaseIngestionWorker):
             raw.append((cf, state_fp, name, abbr, lat_f, lon_f, "tiger2023"))
 
         all_cf = [r[0] for r in raw]
-        done = counties_with_geo(self.database_url, all_cf) if all_cf else set()
+        done = (
+            set()
+            if force_enabled()
+            else (counties_with_geo(self.database_url, all_cf) if all_cf else set())
+        )
         self._rows = [r for r in raw if r[0] not in done]
         log_skip(self.logger, "geo", len(done & set(all_cf)), len(self._rows))
 

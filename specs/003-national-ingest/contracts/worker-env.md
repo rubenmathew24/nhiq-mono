@@ -14,6 +14,8 @@
 | `INGEST_STATE_BATCH` | Comma-separated 2-digit state FIPS. **Required** when `INGEST_SCOPE=national` for ingest/scoring workers. |
 | `INGEST_COUNTY_ALLOWLIST` | Optional SSCCC narrow within active county set |
 | `INGEST_GEO_LOAD_ALL` | `1` only on `ingest.geo` — load county registry for all included 50+DC states (bootstrap denominator) |
+| `INGEST_FORCE` | `1` / `true` / `yes` — skip-done checkpoints disabled; re-upsert full batch. Orchestrator always sets `1` or `0` when patching jobs so force cannot stick. |
+| `INGEST_STATUS_EVERY_N` | Emit mid-job `INGEST_STATUS_SNAPSHOT` every N units (default `15`). Used by FBI/ACS/BLS/Urban loops. |
 
 ## Orchestrator (`niq-worker-orchestrate`)
 
@@ -21,6 +23,7 @@
 |----------|---------|
 | `ORCH_MAX_STATE_UNITS` | Max states to process this run (default `5`) |
 | `ORCH_STATE_FILTER` | Optional comma state FIPS to limit inventory |
+| `ORCH_FORCE_STATES` | Optional comma state FIPS to force full pipeline re-run (priority over gap-only scheduling) |
 | `AZURE_RESOURCE_GROUP` | e.g. `neighborhoodiq-rg` |
 | `AZURE_SUBSCRIPTION_ID` | Subscription for ARM calls |
 | `AZURE_TENANT_ID` / `AZURE_CLIENT_ID` / `AZURE_CLIENT_SECRET` | SP that can start/update ACA jobs |
@@ -37,10 +40,10 @@
 |---------|------|
 | `python -m ingest.geo.run` | Upsert `geo_counties` from TIGER for batch or load-all |
 | `python -m ingest.inventory` | Print gap inventory JSON |
-| `python -m ingest.orchestrate.run` | Inventory → start only gap ACA jobs |
-| Existing `ingest.*.run` / `scoring.compute` | Honor scope + checkpoints |
-| `python -m ingest.status` | Real national % |
+| `python -m ingest.orchestrate.run` | Inventory → start gap (or forced) ACA jobs; status after each worker |
+| Existing `ingest.*.run` / `scoring.compute` | Honor scope + checkpoints + force + status pulse |
+| `python -m ingest.status` | Real national % (also called in-process for mid-run pulses) |
 
 ## GitHub Actions
 
-Workflow `.github/workflows/national-ingest.yml`: `workflow_dispatch` only (inputs `max_states`, `state_filter`). Does not run on push to `master`.
+Workflow `.github/workflows/national-ingest.yml`: `workflow_dispatch` only (inputs `max_states`, `state_filter`, `force_states`). Does not run on push to `master`.

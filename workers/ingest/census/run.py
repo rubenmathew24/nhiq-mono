@@ -14,6 +14,7 @@ from shapely import wkt
 from ingest.base import BaseIngestionWorker
 from ingest.checkpoints import counties_with_census_tracts, log_skip
 from ingest.census.transform import filter_tract_records
+from ingest.force import force_enabled
 from ingest.geo.scope import active_county_fips
 
 logger = logging.getLogger("census")
@@ -42,7 +43,13 @@ class CensusTractWorker(BaseIngestionWorker):
 
     def fetch(self) -> None:
         self._allow = active_county_fips(database_url=self.database_url)
-        done = counties_with_census_tracts(self.database_url, sorted(self._allow))
+        done = (
+            set()
+            if force_enabled()
+            else counties_with_census_tracts(
+                self.database_url, sorted(self._allow)
+            )
+        )
         pending_counties = self._allow - done
         log_skip(self.logger, "census", len(done), len(pending_counties))
         pending_states = frozenset(cf[:2] for cf in pending_counties)
