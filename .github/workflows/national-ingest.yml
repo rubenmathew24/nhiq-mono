@@ -23,25 +23,46 @@ jobs:
         with:
           creds: ${{ secrets.AZURE_CREDENTIALS }}
 
-      - name: Configure orchestrator inputs
+      - name: Configure orchestrator inputs + SP env
         env:
           MAX_STATES: ${{ github.event.inputs.max_states }}
           STATE_FILTER: ${{ github.event.inputs.state_filter }}
+          AZURE_CREDENTIALS: ${{ secrets.AZURE_CREDENTIALS }}
+          AZURE_RESOURCE_GROUP: ${{ secrets.AZURE_RESOURCE_GROUP }}
         run: |
           set -euo pipefail
-          RG="${{ secrets.AZURE_RESOURCE_GROUP }}"
-          JOB=niq-worker-orchestrate
-          ARGS=("ORCH_MAX_STATE_UNITS=${MAX_STATES:-5}")
-          if [ -n "${STATE_FILTER}" ]; then
-            ARGS+=("ORCH_STATE_FILTER=${STATE_FILTER}")
-          else
-            ARGS+=("ORCH_STATE_FILTER=")
-          fi
-          az containerapp job update \
-            --name "$JOB" \
-            --resource-group "$RG" \
-            --set-env-vars "${ARGS[@]}" \
-            -o none
+          python3 <<'PY'
+          import json, os, subprocess
+          creds = json.loads(os.environ["AZURE_CREDENTIALS"])
+          # azure/login JSON keys
+          client_id = creds.get("clientId") or creds.get("appId")
+          secret = creds.get("clientSecret") or creds.get("password")
+          tenant = creds.get("tenantId") or creds.get("tenant")
+          sub = creds.get("subscriptionId")
+          if not all([client_id, secret, tenant, sub]):
+              raise SystemExit(f"AZURE_CREDENTIALS missing fields: {sorted(creds)}")
+          max_states = os.environ.get("MAX_STATES") or "5"
+          state_filter = os.environ.get("STATE_FILTER") or ""
+          rg = os.environ["AZURE_RESOURCE_GROUP"]
+          env_vars = [
+              f"ORCH_MAX_STATE_UNITS={max_states}",
+              f"ORCH_STATE_FILTER={state_filter}",
+              f"AZURE_RESOURCE_GROUP={rg}",
+              f"AZURE_SUBSCRIPTION_ID={sub}",
+              f"AZURE_TENANT_ID={tenant}",
+              f"AZURE_CLIENT_ID={client_id}",
+              f"AZURE_CLIENT_SECRET={secret}",
+          ]
+          cmd = [
+              "az", "containerapp", "job", "update",
+              "--name", "niq-worker-orchestrate",
+              "--resource-group", rg,
+              "--set-env-vars", *env_vars,
+              "-o", "none",
+          ]
+          subprocess.check_call(cmd)
+          print("Orchestrator env updated (SP injected from AZURE_CREDENTIALS)")
+          PY
 
       - name: Start orchestrator job
         id: start
@@ -50,7 +71,7 @@ jobs:
           RG="${{ secrets.AZURE_RESOURCE_GROUP }}"
           JOB=niq-worker-orchestrate
           OUT=$(az containerapp job start --name "$JOB" --resource-group "$RG" -o json)
-          NAME=$(echo "$OUT" | python -c "import sys,json; print(json.load(sys.stdin).get('name',''))")
+          NAME=$(echo "$OUT" | python3 -c "import sys,json; print(json.load(sys.stdin).get('name',''))")
           echo "execution=$NAME" >> "$GITHUB_OUTPUT"
           echo "Started execution: $NAME"
 

@@ -492,7 +492,7 @@ See also [`specs/003-national-ingest/quickstart.md`](../specs/003-national-inges
 5. Status with `INGEST_SCOPE=national` for Workbook % against full `geo_counties` universe.
 6. Territories are **not** in v1; enable later by moving FIPS from `TERRITORY_STATE_FIPS` → `INCLUDED_STATE_FIPS` in code.
 
-Orchestrator job env (Key Vault secret refs): `AZURE_TENANT_ID`, `AZURE_CLIENT_ID`, `AZURE_CLIENT_SECRET`, `AZURE_SUBSCRIPTION_ID`, plus `AZURE_RESOURCE_GROUP=neighborhoodiq-rg`. Use the same service principal as GitHub `AZURE_CREDENTIALS` (must be able to start/update jobs in the RG). **Do not** wire national ingest to the `master` Deploy workflow.
+Orchestrator job: `niq-worker-orchestrate`. GitHub Actions **National ingest** injects the Deploy service principal from `AZURE_CREDENTIALS` into the job env on each run (no separate Key Vault SP required). The SP must be able to start/update jobs in the RG. **Do not** wire national ingest to the `master` Deploy workflow.
 
 ### Ingest progress Workbook (ops)
 

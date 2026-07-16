@@ -14,5 +14,5 @@
 - [x] T024 [P] Unit tests: `workers/tests/test_inventory.py`, `test_orchestrate_queue.py`
 - [x] T025 Add `.github/workflows/national-ingest.yml` (`workflow_dispatch` only)
 - [x] T026 Document orchestrator in `docs/azure-setup-and-cicd.md` + quickstart
-- [ ] T027 Create ACA `niq-worker-orchestrate`; rebuild worker image; wire SP secrets
-- [ ] T028 Push branch; update PR #7 body; **do not merge**
+- [x] T027 Create ACA `niq-worker-orchestrate`; rebuild worker image; wire SP secrets
+- [x] T028 Push branch; update PR #7 body; **do not merge**
