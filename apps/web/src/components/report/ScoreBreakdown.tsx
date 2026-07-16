@@ -1,6 +1,6 @@
 "use client";
 
-import { useId, useState } from "react";
+import { useId, useState, type KeyboardEvent } from "react";
 import ScoreBar from "@/components/ui/ScoreBar";
 import { cn, scoreTextClass } from "@/lib/utils";
 import type { Factor, NeighborhoodReport, ScoreDimension, SubScore } from "@/types/api";
@@ -29,7 +29,7 @@ function factorValueClass(f: Factor): string {
 function SubScoreRow({ sub }: { sub: SubScore }) {
   const muted = sub.available === false;
   return (
-    <div className={cn("space-y-1", muted && "opacity-60")}>
+    <div className={cn("space-y-1 pointer-events-none", muted && "opacity-60")}>
       <div className="flex items-center justify-between text-[11px]">
         <span className="text-muted-foreground">
           {sub.label}
@@ -61,12 +61,26 @@ function DimensionRow({
   const subs = dimension.sub_scores ?? [];
   const factors = dimension.factors ?? [];
 
+  const toggle = () => setOpen((v) => !v);
+
+  const onKeyDown = (e: KeyboardEvent<HTMLDivElement>) => {
+    if (e.key === "Enter" || e.key === " ") {
+      e.preventDefault();
+      toggle();
+    }
+  };
+
+  // Single activatable surface (div+role) so the whole box — title, bar,
+  // sub-scores, and summary — shares one hover/click hit target. Compose web
+  // has no bind-mount; rebuild the image after changing this.
   return (
-    <button
-      type="button"
+    <div
+      role="button"
+      tabIndex={0}
+      data-category-box={title}
       className={cn(
         "w-full text-left rounded-xl border border-border/70 bg-muted/20 p-3.5",
-        "transition-colors cursor-pointer",
+        "transition-colors cursor-pointer select-none",
         "hover:bg-muted/55 hover:border-border",
         "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
         open && "border-border bg-muted/40",
@@ -74,7 +88,8 @@ function DimensionRow({
       aria-expanded={open}
       aria-controls={panelId}
       aria-label={`${open ? "Collapse" : "Expand"} ${title} details`}
-      onClick={() => setOpen((v) => !v)}
+      onClick={toggle}
+      onKeyDown={onKeyDown}
     >
       <div className="flex items-center justify-between text-xs mb-1.5 gap-2">
         <span className="text-foreground font-medium flex items-center gap-1.5">
@@ -116,6 +131,8 @@ function DimensionRow({
         <div
           id={panelId}
           className="mt-3 rounded-lg bg-card/80 border border-border/50 px-3 py-2.5 space-y-2"
+          onClick={(e) => e.stopPropagation()}
+          onKeyDown={(e) => e.stopPropagation()}
         >
           {factors.length === 0 ? (
             <p className="text-xs text-muted-foreground">
@@ -141,7 +158,7 @@ function DimensionRow({
           )}
         </div>
       )}
-    </button>
+    </div>
   );
 }
 

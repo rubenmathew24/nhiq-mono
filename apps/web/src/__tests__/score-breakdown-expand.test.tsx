@@ -43,11 +43,15 @@ const report: NeighborhoodReport = {
         tone_score: 49,
       },
     ],
+    summary: "Strong access to nearby emergency care for this area.",
   }),
   safety: dim(74, {
     factors: [{ name: "Assault", value: "20 incidents (12 mo)", impact: "neutral" }],
   }),
-  environment: dim(74),
+  environment: dim(74, {
+    summary:
+      "Strong air quality from modeled US AQI (EPA monitors unavailable or too sparse for this county).",
+  }),
   education: dim(91),
   economic: dim(68),
   narrative: "n",
@@ -63,10 +67,9 @@ describe("ScoreBreakdown expand", () => {
     expect(
       screen.getByRole("button", { name: /Expand Healthcare details/i }),
     ).toBeInTheDocument();
-    // Entire category is one bordered button
-    expect(container.querySelectorAll("button.rounded-xl.border").length).toBeGreaterThanOrEqual(
-      5,
-    );
+    expect(
+      container.querySelectorAll('[data-category-box].rounded-xl.border').length,
+    ).toBeGreaterThanOrEqual(5);
     const btn = screen.getByRole("button", { name: /Expand Healthcare details/i });
     expect(btn.className).toMatch(/hover:bg-muted\/55/);
   });
@@ -74,8 +77,16 @@ describe("ScoreBreakdown expand", () => {
   it("expands when clicking sub-score area (full box)", () => {
     render(<ScoreBreakdown report={report} />);
     expect(screen.queryByText(/162 min/)).not.toBeInTheDocument();
-    // Click the Access label inside the Healthcare box — whole button toggles
     fireEvent.click(screen.getAllByText("Access")[0]);
+    expect(screen.getByText(/162 min/)).toBeInTheDocument();
+  });
+
+  it("expands when clicking category summary text", () => {
+    render(<ScoreBreakdown report={report} />);
+    expect(screen.queryByText(/162 min/)).not.toBeInTheDocument();
+    fireEvent.click(
+      screen.getByText(/Strong access to nearby emergency care/i),
+    );
     expect(screen.getByText(/162 min/)).toBeInTheDocument();
   });
 
@@ -85,7 +96,6 @@ describe("ScoreBreakdown expand", () => {
     expect(screen.queryByText(/162 min/)).not.toBeInTheDocument();
     fireEvent.click(btn);
     expect(screen.getByText(/162 min/)).toBeInTheDocument();
-    // tone_score < 50 → score-poor text class
     const waitValue = screen.getByText(/162 min/);
     expect(waitValue.className).toMatch(/score-poor|text-score-poor/);
     fireEvent.click(screen.getByRole("button", { name: /Collapse Healthcare details/i }));

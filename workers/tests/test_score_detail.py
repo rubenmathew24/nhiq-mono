@@ -93,7 +93,7 @@ def test_build_detail_ordinal_ers_and_plain_english():
     assert "Nearest elementary" in edu_names
     assert "Nearest high" in edu_names
     prek = next(s for s in detail["education"]["stats"] if s["name"] == "Nearest Pre-K")
-    assert "No schools found within 25 mi" in prek["value"]
+    assert "No schools found within 30 mi" in prek["value"]
     assert "457" not in prek["value"]
     assert "Pupil–teacher ratio" not in edu_names
     assert "Locale code" not in edu_names
@@ -118,7 +118,52 @@ def test_school_beyond_cutoff_marks_access_unavailable_when_all_far():
     access = next(s for s in detail["education"]["sub_scores"] if s["id"] == "access")
     assert access["available"] is False
     elem = next(s for s in detail["education"]["stats"] if s["name"] == "Nearest elementary")
-    assert "No schools found within 25 mi" in elem["value"]
+    assert "No schools found within 30 mi" in elem["value"]
+
+
+def test_property_without_benches_is_unavailable_not_zero():
+    """Bentonville-style: BUR present, null state benches → limited data, not 0."""
+    detail = build_score_detail(
+        DetailInputs(
+            crime=CountyCrime(
+                county_fips="05007",
+                by_offense={
+                    "HOM": (4.0, 304.0),
+                    "ROB": (37.0, 1215.0),
+                    "ASS": (599.0, 17851.0),
+                    "BUR": (277.0, None),
+                    "LAR": (0.0, None),
+                },
+                ori_count=4,
+            ),
+            county_pop=286528.0,
+            state_pop=3018669.0,
+        )
+    )
+    property_s = next(s for s in detail["safety"]["sub_scores"] if s["id"] == "property")
+    assert property_s["available"] is False
+    assert property_s["score"] == 0.0  # payload zero when unavailable; UI shows —
+    personal = next(s for s in detail["safety"]["sub_scores"] if s["id"] == "personal")
+    assert personal["available"] is True
+    assert personal["score"] > 0
+
+
+def test_property_with_benches_and_pops_scores_per_resident():
+    detail = build_score_detail(
+        DetailInputs(
+            crime=CountyCrime(
+                county_fips="05007",
+                by_offense={"BUR": (10.0, 100.0), "LAR": (20.0, 200.0)},
+                ori_count=1,
+            ),
+            county_pop=100_000.0,
+            state_pop=1_000_000.0,
+        )
+    )
+    property_s = next(s for s in detail["safety"]["sub_scores"] if s["id"] == "property")
+    assert property_s["available"] is True
+    # Equal per-resident rates → score ~75
+    assert property_s["score"] == 75.0
 
 
 def test_safety_missing_pop_unavailable_comparison():

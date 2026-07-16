@@ -84,7 +84,20 @@ async def test_build_report_maps_score_detail():
                     ],
                 },
                 "safety": {
-                    "sub_scores": [],
+                    "sub_scores": [
+                        {
+                            "id": "personal",
+                            "label": "Crimes against people",
+                            "score": 91.0,
+                            "available": True,
+                        },
+                        {
+                            "id": "property",
+                            "label": "Crimes against property",
+                            "score": 0.0,
+                            "available": False,
+                        },
+                    ],
                     "stats": [
                         {
                             "name": "Violent crime vs state",
@@ -95,7 +108,16 @@ async def test_build_report_maps_score_detail():
                         {"name": "Assault", "value": "20 incidents (12 mo)", "impact": "neutral"},
                     ],
                 },
-                "education": {"sub_scores": [], "stats": []},
+                "education": {
+                    "sub_scores": [],
+                    "stats": [
+                        {
+                            "name": "Nearest Pre-K",
+                            "value": "No schools found within 30 mi",
+                            "impact": "neutral",
+                        }
+                    ],
+                },
                 "environment": {
                     "sub_scores": [],
                     "stats": [
@@ -124,6 +146,11 @@ async def test_build_report_maps_score_detail():
     safety_joined = " ".join(f.value for f in report.safety.factors)
     assert "per resident" in safety_joined
     assert "0.03×" not in safety_joined
+    prop = next(s for s in report.safety.sub_scores if s.id == "property")
+    assert prop.available is False
+    edu_joined = " ".join(f.value for f in report.education.factors)
+    assert "457" not in edu_joined
+    assert "30 mi" in edu_joined or "No schools found" in edu_joined
     assert "open_meteo" not in report.environment.factors[0].value
 
 

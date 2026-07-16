@@ -207,10 +207,10 @@ def _property_safety(
         if bench is not None:
             state += float(bench)
             saw = True
-    if not saw and local == 0.0:
-        return None
+    # Require real state benches — never synthesize state=local under pop
+    # normalization (that yields ratio ≈ state_pop/county_pop → false score 0).
     if not saw:
-        state = local if local > 0 else 1.0
+        return None
     local_rate = local / float(county_pop)
     state_rate = state / float(state_pop)
     if state_rate <= 0:

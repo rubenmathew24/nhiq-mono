@@ -52,7 +52,7 @@ Completed task IDs (T001–T098)
 
 **Purpose**: Raise expand cutoff to 30 miles before Schools expand/access tasks (research.md §12.2).
 
-- [ ] T099 [P] Set `SCHOOL_MAX_EXPAND_MILES = 30` in `workers/ingest/fixtures/constants.py`
+- [X] T099 [P] Set `SCHOOL_MAX_EXPAND_MILES = 30` in `workers/ingest/fixtures/constants.py`
 
 **Checkpoint**: Constant is 30; detail/copy will pick it up via import
 
@@ -70,13 +70,13 @@ Completed task IDs (T001–T098)
 
 ### Tests for User Story 1
 
-- [ ] T100 [P] [US1] Unit test: property offenses without state benches → `available: false` (not score 0) in `workers/tests/test_score_detail.py`
-- [ ] T101 [P] [US1] Unit test: property with benches + pops still scores via per-resident ratio in `workers/tests/test_score_detail.py` (or `test_safety_formula.py` if helper extracted)
+- [X] T100 [P] [US1] Unit test: property offenses without state benches → `available: false` (not score 0) in `workers/tests/test_score_detail.py`
+- [X] T101 [P] [US1] Unit test: property with benches + pops still scores via per-resident ratio in `workers/tests/test_score_detail.py` (or `test_safety_formula.py` if helper extracted)
 
 ### Implementation for User Story 1
 
-- [ ] T102 [US1] Fix `_property_safety` in `workers/scoring/detail.py`: require ≥1 non-null property state benchmark before scoring; if only local counts exist → return `None` (no `state = local` under population normalization)
-- [ ] T103 [US1] Confirm `compute.py` / `build_score_detail` property sub-score path uses the fixed helper so category blend skips unavailable property in `workers/scoring/compute.py` and `workers/scoring/detail.py`
+- [X] T102 [US1] Fix `_property_safety` in `workers/scoring/detail.py`: require ≥1 non-null property state benchmark before scoring; if only local counts exist → return `None` (no `state = local` under population normalization)
+- [X] T103 [US1] Confirm `compute.py` / `build_score_detail` property sub-score path uses the fixed helper so category blend skips unavailable property in `workers/scoring/compute.py` and `workers/scoring/detail.py`
 
 **Checkpoint**: Synthetic false-zero path gone; personal per-resident path unchanged
 
@@ -94,15 +94,15 @@ Completed task IDs (T001–T098)
 
 ### Tests for User Story 2
 
-- [ ] T104 [P] [US2] Update school cutoff tests to 30 mi / “No schools found within 30 mi” in `workers/tests/test_score_detail.py`
-- [ ] T105 [P] [US2] Harden Vitest: click sub-score **and** summary toggles expand; hover class on outer control in `apps/web/src/__tests__/score-breakdown-expand.test.tsx`
-- [ ] T106 [P] [US2] API/contract smoke assertion: education factors must not list absurd distances; property availability semantics noted in `apps/api/tests/test_score_subscores.py` if fixtures cover it
+- [X] T104 [P] [US2] Update school cutoff tests to 30 mi / “No schools found within 30 mi” in `workers/tests/test_score_detail.py`
+- [X] T105 [P] [US2] Harden Vitest: click sub-score **and** summary toggles expand; hover class on outer control in `apps/web/src/__tests__/score-breakdown-expand.test.tsx`
+- [X] T106 [P] [US2] API/contract smoke assertion: education factors must not list absurd distances; property availability semantics noted in `apps/api/tests/test_score_subscores.py` if fixtures cover it
 
 ### Implementation for User Story 2
 
-- [ ] T107 [US2] Ensure schools expand + access filter use `SCHOOL_MAX_EXPAND_MILES` (30) in `workers/scoring/detail.py` (copy string via constant)
-- [ ] T108 [US2] Verify/adjust `apps/web/src/components/report/ScoreBreakdown.tsx` so one control wraps title, score bar, **sub-score rows**, and **summary**; whole-box hover highlight; no header-only hit target
-- [ ] T109 [US2] Rebuild and restart Compose web so localhost:3000 serves the control: `docker compose build web && docker compose up -d web` (document if anything else needed; prefer rebuild over bind-mount unless rebuild fails acceptance)
+- [X] T107 [US2] Ensure schools expand + access filter use `SCHOOL_MAX_EXPAND_MILES` (30) in `workers/scoring/detail.py` (copy string via constant)
+- [X] T108 [US2] Verify/adjust `apps/web/src/components/report/ScoreBreakdown.tsx` so one control wraps title, score bar, **sub-score rows**, and **summary**; whole-box hover highlight; no header-only hit target
+- [X] T109 [US2] Rebuild and restart Compose web so localhost:3000 serves the control: `docker compose build web && docker compose up -d web` (document if anything else needed; prefer rebuild over bind-mount unless rebuild fails acceptance)
 
 **Checkpoint**: Source + running image both full-box; schools text says 30 mi
 
@@ -120,11 +120,11 @@ Completed task IDs (T001–T098)
 
 ### Tests for User Story 3
 
-- [ ] T110 [P] [US3] Confirm wait `tone_score` < 75 when local ≥ national still passes in `workers/tests/test_score_detail.py` / `apps/api/tests/test_score_hazard_timely.py`
+- [X] T110 [P] [US3] Confirm wait `tone_score` < 75 when local ≥ national still passes in `workers/tests/test_score_detail.py` / `apps/api/tests/test_score_hazard_timely.py`
 
 ### Implementation for User Story 3
 
-- [ ] T111 [US3] Smoke-check ER wait + hazard unavailable paths in `workers/scoring/detail.py` after property/school edits (fix only if regressions)
+- [X] T111 [US3] Smoke-check ER wait + hazard unavailable paths in `workers/scoring/detail.py` after property/school edits (fix only if regressions)
 
 **Checkpoint**: SC-005 / SC-009 still hold
 
@@ -142,13 +142,13 @@ Completed task IDs (T001–T098)
 
 ### Tests for User Story 4
 
-- [ ] T112 [P] [US4] Confirm national refuse tests still pass in `workers/tests/test_scope_refuse_national.py`
+- [X] T112 [P] [US4] Confirm national refuse tests still pass in `workers/tests/test_scope_refuse_national.py`
 
 ### Implementation for User Story 4
 
-- [ ] T113 [US4] Align `specs/004-report-subscores/quickstart.md` with property limited-data + 30 mi + web rebuild checklist (if any drift after implement)
-- [ ] T114 [US4] Run Compose `worker-scoring` with `INGEST_SCOPE=smoke` `INGEST_FORCE=1`; spot-check Bentonville `score_detail` property sub-score + schools copy in DB
-- [ ] T115 [US4] Manual Bentonville UI checklist on `http://localhost:3000` after web rebuild (`quickstart.md` V2)
+- [X] T113 [US4] Align `specs/004-report-subscores/quickstart.md` with property limited-data + 30 mi + web rebuild checklist (if any drift after implement)
+- [X] T114 [US4] Run Compose `worker-scoring` with `INGEST_SCOPE=smoke` `INGEST_FORCE=1`; spot-check Bentonville `score_detail` property sub-score + schools copy in DB
+- [X] T115 [US4] Manual Bentonville UI checklist on `http://localhost:3000` after web rebuild (`quickstart.md` V2)
 
 **Checkpoint**: Local DB + UI match round-3 contract
 
@@ -160,10 +160,10 @@ Completed task IDs (T001–T098)
 
 ## Phase 25: Polish & Cross-Cutting Validation
 
-- [ ] T116 [P] Run worker pytest for property/school/detail in `workers/tests/`
-- [ ] T117 [P] Run API pytest for score/subscores/hazard-timely in `apps/api/tests/`
-- [ ] T118 [P] Run web Vitest for `score-breakdown-expand` (+ `report-score-unavailable`) in `apps/web/src/__tests__/` (Node 20+)
-- [ ] T119 [P] Confirm `SCORE_UNAVAILABLE` unchanged in `apps/web/src/__tests__/report-score-unavailable.test.tsx`
+- [X] T116 [P] Run worker pytest for property/school/detail in `workers/tests/`
+- [X] T117 [P] Run API pytest for score/subscores/hazard-timely in `apps/api/tests/`
+- [X] T118 [P] Run web Vitest for `score-breakdown-expand` (+ `report-score-unavailable`) in `apps/web/src/__tests__/` (Node 20+)
+- [X] T119 [P] Confirm `SCORE_UNAVAILABLE` unchanged in `apps/web/src/__tests__/report-score-unavailable.test.tsx`
 
 
 
