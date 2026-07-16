@@ -1,4 +1,4 @@
-"""Census TIGER tract ingestion — fixture counties only."""
+"""Census TIGER tract ingestion — smoke / metro / national batch counties."""
 
 from __future__ import annotations
 
@@ -12,8 +12,9 @@ from shapely.geometry import MultiPolygon
 from shapely import wkt
 
 from ingest.base import BaseIngestionWorker
+from ingest.checkpoints import counties_with_census_tracts, log_skip
 from ingest.census.transform import filter_tract_records
-from ingest.fixtures.canonical_addresses import fixture_state_fips
+from ingest.geo.scope import active_county_fips
 
 logger = logging.getLogger("census")
 
@@ -37,10 +38,19 @@ class CensusTractWorker(BaseIngestionWorker):
         super().__init__("census")
         self._frames: list[gpd.GeoDataFrame] = []
         self._records: list[dict] = []
+        self._allow: frozenset[str] = frozenset()
 
     def fetch(self) -> None:
+        self._allow = active_county_fips(database_url=self.database_url)
+        done = counties_with_census_tracts(self.database_url, sorted(self._allow))
+        pending_counties = self._allow - done
+        log_skip(self.logger, "census", len(done), len(pending_counties))
+        pending_states = frozenset(cf[:2] for cf in pending_counties)
+        # Still need state downloads that have any pending county
+        states = pending_states or frozenset()
         self._frames = []
-        for state_fips in sorted(fixture_state_fips()):
+        self._pending_counties = pending_counties
+        for state_fips in sorted(states):
             url = TIGER_URL.format(state_fips=state_fips)
             self.logger.info("Fetching tracts for state %s …", state_fips)
             try:
@@ -64,9 +74,11 @@ class CensusTractWorker(BaseIngestionWorker):
                         "geometry": row.geometry,
                     }
                 )
-        self._records = filter_tract_records(raw)
+        # Only pending counties (checkpoint)
+        allow = getattr(self, "_pending_counties", None) or self._allow
+        self._records = filter_tract_records(raw, county_allowlist=allow)
         self.logger.info(
-            "Fixture-county filter kept %d / %d tracts",
+            "County filter kept %d / %d tracts",
             len(self._records),
             len(raw),
         )

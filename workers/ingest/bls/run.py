@@ -10,7 +10,8 @@ import psycopg2
 from ingest.base import BaseIngestionWorker
 from ingest.bls.client import fetch_laus_series, laus_series_id
 from ingest.bls.transform import transform_laus_series
-from ingest.fixtures.canonical_addresses import fixture_county_fips
+from ingest.checkpoints import counties_with_bls, log_skip
+from ingest.geo.scope import active_county_fips
 
 logger = logging.getLogger("bls")
 
@@ -35,7 +36,10 @@ class BlsLausWorker(BaseIngestionWorker):
         self._records: list[dict] = []
 
     def fetch(self) -> None:
-        counties = sorted(fixture_county_fips())
+        allow = active_county_fips(database_url=self.database_url)
+        done = counties_with_bls(self.database_url, sorted(allow))
+        counties = sorted(allow - done)
+        log_skip(self.logger, "bls", len(done), len(counties))
         series_map = {laus_series_id(cf): cf for cf in counties}
         all_series = list(series_map.keys())
         observations_by_series: dict[str, list] = {}

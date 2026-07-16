@@ -13,8 +13,9 @@ from psycopg2.extras import execute_values
 from ingest.base import BaseIngestionWorker
 from ingest.epa.client import fetch_daily_aqi, require_epa_credentials
 from ingest.epa.transform import transform_aqi_records
-from ingest.fixtures.canonical_addresses import fixture_state_fips
+from ingest.checkpoints import counties_with_epa, log_skip
 from ingest.fixtures.constants import EPA_END_LAG_DAYS, EPA_LOOKBACK_DAYS
+from ingest.geo.scope import active_county_fips
 
 logger = logging.getLogger("epa")
 
@@ -34,6 +35,11 @@ class EpaAqiWorker(BaseIngestionWorker):
 
     def fetch(self) -> None:
         require_epa_credentials()
+        self._allow = active_county_fips(database_url=self.database_url)
+        done = counties_with_epa(self.database_url, sorted(self._allow))
+        pending = self._allow - done
+        log_skip(self.logger, "epa", len(done), len(pending))
+        self._pending_counties = pending
         start, end = _ingest_date_window()
         self.logger.info(
             "EPA date window %s → %s (lag=%sd, lookback=%sd)",
@@ -42,13 +48,15 @@ class EpaAqiWorker(BaseIngestionWorker):
             EPA_END_LAG_DAYS,
             EPA_LOOKBACK_DAYS,
         )
-        self._raw_by_state = asyncio.run(self._fetch_all_states(start, end))
+        # Fetch whole states that still have pending counties (AQS is state-scoped).
+        states = frozenset(cf[:2] for cf in pending) or frozenset()
+        self._raw_by_state = asyncio.run(self._fetch_states(states, start, end))
 
-    async def _fetch_all_states(
-        self, start: date, end: date
+    async def _fetch_states(
+        self, states: frozenset[str], start: date, end: date
     ) -> dict[str, list[dict]]:
         out: dict[str, list[dict]] = {}
-        for state_code in sorted(fixture_state_fips()):
+        for state_code in sorted(states):
             try:
                 raw = await fetch_daily_aqi(state_code, start, end)
                 out[state_code] = raw
@@ -65,11 +73,14 @@ class EpaAqiWorker(BaseIngestionWorker):
         return out
 
     def transform(self) -> None:
+        allow = getattr(self, "_pending_counties", None) or getattr(
+            self, "_allow", frozenset()
+        )
         combined: list[dict] = []
         for state_code, raw in self._raw_by_state.items():
-            records = transform_aqi_records(raw)
+            records = transform_aqi_records(raw, county_allowlist=allow)
             self.logger.info(
-                "State %s: %d fixture-county records after transform",
+                "State %s: %d county records after transform",
                 state_code,
                 len(records),
             )

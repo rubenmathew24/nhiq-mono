@@ -14,10 +14,20 @@ import psycopg2
 from psycopg2.extras import Json, execute_batch
 
 from ingest.base import BaseIngestionWorker
+from ingest.checkpoints import counties_with_fbi_agencies, log_skip
 from ingest.fbi import client as cde
 from ingest.fbi.transform import agencies_to_rows, offense_aggregate_row
-from ingest.fixtures.canonical_addresses import active_canonical_addresses
+from ingest.fixtures.canonical_addresses import (
+    CanonicalAddress,
+    active_canonical_addresses,
+)
 from ingest.fixtures.constants import DATA_VINTAGE
+from ingest.geo.scope import (
+    CountyPoint,
+    active_county_fips,
+    load_county_points,
+    resolve_ingest_scope,
+)
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("fbi")
@@ -87,6 +97,24 @@ def _upsert_county_rows(
         conn.close()
 
 
+def _points_for_run(database_url: str) -> list[CanonicalAddress | CountyPoint]:
+    """Fixture addresses for metro/smoke; geo centroids for national."""
+    scope = resolve_ingest_scope()
+    if scope != "national":
+        return list(active_canonical_addresses())
+    counties = active_county_fips(database_url=database_url)
+    done = counties_with_fbi_agencies(database_url, sorted(counties))
+    pending = counties - done
+    log_skip(logging.getLogger("fbi"), "fbi", len(done), len(pending))
+    points = load_county_points(database_url, pending)
+    missing = sorted(pending - frozenset(points))
+    if missing:
+        logging.getLogger("fbi").warning(
+            "No geo_counties centroid for counties=%s — skipped", missing
+        )
+    return list(points.values())
+
+
 class FbiCdeWorker(BaseIngestionWorker):
     def __init__(self) -> None:
         super().__init__("fbi")
@@ -119,7 +147,17 @@ class FbiCdeWorker(BaseIngestionWorker):
         offenses = cde.chart_offenses()
         from_mm, to_mm = cde.chart_window()
 
-        for addr in active_canonical_addresses():
+        # Metro: also skip counties that already have agencies
+        points = _points_for_run(self.database_url)
+        if resolve_ingest_scope() != "national":
+            counties = {p.county_fips for p in points}
+            done = counties_with_fbi_agencies(self.database_url, sorted(counties))
+            if done:
+                before = len(points)
+                points = [p for p in points if p.county_fips not in done]
+                log_skip(self.logger, "fbi", before - len(points), len(points))
+
+        for addr in points:
             if addr.county_fips in self._seen_counties:
                 continue
             self._seen_counties.add(addr.county_fips)
@@ -233,7 +271,7 @@ class FbiCdeWorker(BaseIngestionWorker):
         ok_counties = len(self._counties_with_offenses)
         self.logger.info(
             "Prepared %s agency rows, %s offense aggregates "
-            "(fixture counties with offense rows: %s/%s)",
+            "(counties with offense rows: %s/%s)",
             len(self._agency_rows),
             len(self._offense_rows),
             ok_counties,
@@ -242,7 +280,7 @@ class FbiCdeWorker(BaseIngestionWorker):
         if ok_counties < total_counties:
             missing = sorted(self._seen_counties - self._counties_with_offenses)
             self.logger.warning(
-                "Partial CDE fixture coverage — %s/%s counties have offense rows; "
+                "Partial CDE coverage — %s/%s counties have offense rows; "
                 "missing=%s.",
                 ok_counties,
                 total_counties,

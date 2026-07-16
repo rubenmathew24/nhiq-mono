@@ -209,6 +209,60 @@ services:
     profiles:
       - workers
 
+  worker-geo:
+    build:
+      context: .
+      dockerfile: docker/worker.Dockerfile
+    environment:
+      DATABASE_URL: postgresql://postgres:postgres@db:5432/neighborhoodiq
+      INGEST_SCOPE: ${INGEST_SCOPE:-metro_10}
+      INGEST_STATE_BATCH: ${INGEST_STATE_BATCH:-}
+      INGEST_GEO_LOAD_ALL: ${INGEST_GEO_LOAD_ALL:-}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+    command: python -m ingest.geo.run
+    depends_on:
+      db:
+        condition: service_healthy
+    profiles:
+      - workers
+
+  worker-orchestrate:
+    build:
+      context: .
+      dockerfile: docker/worker.Dockerfile
+    environment:
+      DATABASE_URL: postgresql://postgres:postgres@db:5432/neighborhoodiq
+      ORCH_MAX_STATE_UNITS: ${ORCH_MAX_STATE_UNITS:-5}
+      ORCH_STATE_FILTER: ${ORCH_STATE_FILTER:-}
+      AZURE_RESOURCE_GROUP: ${AZURE_RESOURCE_GROUP:-}
+      AZURE_SUBSCRIPTION_ID: ${AZURE_SUBSCRIPTION_ID:-}
+      AZURE_TENANT_ID: ${AZURE_TENANT_ID:-}
+      AZURE_CLIENT_ID: ${AZURE_CLIENT_ID:-}
+      AZURE_CLIENT_SECRET: ${AZURE_CLIENT_SECRET:-}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+    command: python -m ingest.orchestrate.run
+    depends_on:
+      db:
+        condition: service_healthy
+    profiles:
+      - workers
+
+  worker-status:
+    build:
+      context: .
+      dockerfile: docker/worker.Dockerfile
+    environment:
+      DATABASE_URL: postgresql://postgres:postgres@db:5432/neighborhoodiq
+      INGEST_SCOPE: ${INGEST_SCOPE:-metro_10}
+      INGEST_COUNTY_ALLOWLIST: ${INGEST_COUNTY_ALLOWLIST:-}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+    command: python -m ingest.status
+    depends_on:
+      db:
+        condition: service_healthy
+    profiles:
+      - workers
+
 volumes:
   pgdata:
   redisdata:
