@@ -143,20 +143,33 @@ def states_needing_work(
     *,
     max_states: int | None = None,
     force_states: frozenset[str] | None = None,
+    exclusive: bool = False,
 ) -> list[str]:
-    """Ordered list of state FIPS that have any pipeline gap.
+    """Ordered list of state FIPS to process this orchestrator run.
 
-    Forced states are listed first (sorted), then remaining gap states.
-    ``max_states`` caps the combined list.
+    When ``force_states`` is non-empty: only those FIPS (sorted), capped by
+    ``max_states`` — never pad with other gap states.
+
+    When ``exclusive`` is true and force is empty: only gap states already in
+    the inventory (caller scoped inventory via state_filter); still capped by
+    ``max_states``.
+
+    When neither force nor exclusive: forced (if any) first, then remaining
+    gap states, capped by ``max_states`` (unscoped national continue).
     """
     by_state: dict[str, dict[str, list[str]]] = inventory.get("by_state") or {}
     needed: set[str] = set()
     for worker in PIPELINE_WORKERS:
         needed.update((by_state.get(worker) or {}).keys())
     force = frozenset(force_states or ())
-    forced_ordered = sorted(force)
-    gap_ordered = sorted(needed - force)
-    ordered = forced_ordered + gap_ordered
+
+    if force:
+        ordered = sorted(force)
+    elif exclusive:
+        ordered = sorted(needed)
+    else:
+        ordered = sorted(force) + sorted(needed - force)
+
     if max_states is not None and max_states >= 0:
         return ordered[:max_states]
     return ordered

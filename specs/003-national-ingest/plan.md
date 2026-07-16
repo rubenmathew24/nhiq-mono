@@ -8,7 +8,7 @@
 
 Enable ops to load **50 states + DC** county data in **explicit state batches**, with **DB-backed skip-done checkpoints** on every worker, **FBI agency selection via county centroids**, and a **real `INGEST_SCOPE=national` status denominator**. Keep `smoke` / `metro_10` fixture paths. Territories stay out of v1 but share an extensible jurisdiction list.
 
-**Orchestrator (US5–US7):** Inventory gaps per worker from Postgres; ACA job `niq-worker-orchestrate` starts only incomplete worker/state pairs (per-state pipeline order), or **all** workers when `ORCH_FORCE_STATES` includes the state. Status snapshots emit after each worker and every N units inside long loops. ARM PATCH/START retries transient 5xx/429. Thin GitHub Actions `workflow_dispatch` triggers the orchestrator—not Deploy-on-master.
+**Orchestrator (US5–US7):** Inventory gaps per worker from Postgres; ACA job `niq-worker-orchestrate` starts only incomplete worker/state pairs (per-state pipeline order), or **all** workers when `ORCH_FORCE_STATES` includes the state. Explicit `ORCH_FORCE_STATES` / `ORCH_STATE_FILTER` lists are **exclusive** (no gap padding to fill `max_states`). Status snapshots emit after each worker and every N units; console `INGEST_STATUS_SNAPSHOT` is metrics-only for Log Analytics Workbook; full detail stays in Postgres. ARM PATCH/START retries transient 5xx/429. Thin GitHub Actions `workflow_dispatch` triggers the orchestrator—not Deploy-on-master.
 
 ## Technical Context
 

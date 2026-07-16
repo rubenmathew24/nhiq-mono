@@ -22,8 +22,14 @@
 | Variable | Purpose |
 |----------|---------|
 | `ORCH_MAX_STATE_UNITS` | Max states to process this run (default `5`) |
-| `ORCH_STATE_FILTER` | Optional comma state FIPS to limit inventory |
-| `ORCH_FORCE_STATES` | Optional comma state FIPS to force full pipeline re-run (priority over gap-only scheduling) |
+| `ORCH_STATE_FILTER` | Optional comma state FIPS — **exclusive** list when set (only gaps within filter; no padding outside). Empty = unscoped national gap-fill. |
+| `ORCH_FORCE_STATES` | Optional comma state FIPS to force full pipeline re-run. **Exclusive** when set (only these FIPS, capped by max; no gap padding). |
+
+## Status snapshot log contract (`INGEST_STATUS_SNAPSHOT`)
+
+Console line (Log Analytics / Workbook): metrics-only JSON — `scope`, `county_count`, `captured_at`, `jobs[]` with `job_name` / `pct_complete` / `done_count` / `total_count`. Optional empty `counties: []`. **No** full FIPS lists or large `detail.missing` in the log line.
+
+Postgres `ingest_status_snapshot` retains full `detail` JSON for ops SQL.
 | `AZURE_RESOURCE_GROUP` | e.g. `neighborhoodiq-rg` |
 | `AZURE_SUBSCRIPTION_ID` | Subscription for ARM calls |
 | `AZURE_TENANT_ID` / `AZURE_CLIENT_ID` / `AZURE_CLIENT_SECRET` | SP that can start/update ACA jobs |

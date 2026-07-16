@@ -9,13 +9,13 @@
 ## Preferred: GitHub Actions orchestrator
 
 1. GitHub → Actions → **National ingest** → **Run workflow**
-2. Inputs: `max_states` (default 5), optional `state_filter` (e.g. `44` for Rhode Island), optional `force_states` (e.g. `25` to re-run Massachusetts even if complete)
-3. Watch the Actions log; Workbook refreshes after each worker and every ~15 counties mid-job (`INGEST_SCOPE=national`)
+2. Inputs: `max_states` (default 5), optional `state_filter` (e.g. `44`), optional `force_states` (e.g. `25`). **Either list is exclusive** — the run does not pad with other gap states to fill `max_states`. Leave both empty for unscoped national gap-fill.
+3. Watch the Actions log; Workbook refreshes after each worker and every ~15 counties mid-job (`INGEST_SCOPE=national`). Re-import [`infra/workbook-ingest-status.json`](../../infra/workbook-ingest-status.json) if the gallery is stale (slim log lines).
 4. Re-run the workflow to continue — inventory skips workers/states that are already complete (unless forced)
 
 ### Force re-ingest
 
-Use `force_states` when you need upserts for states inventory already marks done (bad prior data, scoring formula change). Workers get `INGEST_FORCE=1` for that run only.
+Use `force_states` when you need upserts for states inventory already marks done (bad prior data, scoring formula change). Workers get `INGEST_FORCE=1` for that run only. Example: `force_states=25` with `max_states=5` processes **only** Massachusetts.
 
 ## Manual one state batch (fallback)
 
