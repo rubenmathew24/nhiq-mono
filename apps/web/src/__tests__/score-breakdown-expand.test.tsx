@@ -109,4 +109,15 @@ describe("ScoreBreakdown expand", () => {
     fireEvent.click(screen.getByRole("button", { name: /Collapse Healthcare details/i }));
     expect(screen.queryByText(/162 min/)).not.toBeInTheDocument();
   });
+
+  it("collapses when clicking expand-panel value (panel chrome is activatable)", () => {
+    render(<ScoreBreakdown report={report} />);
+    fireEvent.click(
+      screen.getByRole("button", { name: /Expand Healthcare details/i }),
+    );
+    const waitValue = screen.getByText(/162 min/);
+    expect(waitValue).toBeInTheDocument();
+    fireEvent.click(waitValue);
+    expect(screen.queryByText(/162 min/)).not.toBeInTheDocument();
+  });
 });

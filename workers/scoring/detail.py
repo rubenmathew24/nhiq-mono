@@ -429,6 +429,14 @@ def build_score_detail(inputs: DetailInputs) -> dict[str, Any]:
                     "neutral",
                 )
             )
+        elif personal_res.provenance.get("reason") == "state_benches_unavailable":
+            safety_stats.append(
+                _stat(
+                    "Violent crime vs state",
+                    "Unavailable (state benchmarks missing)",
+                    "neutral",
+                )
+            )
         for slug in ("HOM", "ROB", "ASS", "BUR", "LAR"):
             pair = inputs.crime.by_offense.get(slug)
             if not pair:

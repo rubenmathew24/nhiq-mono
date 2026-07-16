@@ -31,7 +31,12 @@ class SafetyResult:
 
 
 def _weighted_local_state(crime: CountyCrime) -> tuple[float, float] | None:
-    """Personal-crime weighted totals for local vs state (HOM>ROB>ASS)."""
+    """Personal-crime weighted totals for local vs state (HOM>ROB>ASS).
+
+    Requires at least one real state benchmark. Never synthesize
+    ``state = local`` — under population normalization that invents a
+    false intensity ratio (same failure mode as property FR-021).
+    """
     weights = {"HOM": 3.0, "ROB": 2.0, "ASS": 2.0}
     local = 0.0
     state = 0.0
@@ -46,11 +51,8 @@ def _weighted_local_state(crime: CountyCrime) -> tuple[float, float] | None:
         if bench is not None:
             state += w * float(bench)
             saw = True
-    if not saw and local == 0.0 and not crime.by_offense:
-        return None
-    # If we have local but no state, treat state as local (neutral ratio 1.0)
     if not saw:
-        state = local if local > 0 else 1.0
+        return None
     return local, max(state, 1e-6)
 
 
@@ -79,11 +81,17 @@ def safety_from_cde(
 
     pair = _weighted_local_state(crime)
     if pair is None:
+        has_personal = any(
+            slug in crime.by_offense for slug in FBI_CDE_PERSONAL_OFFENSES
+        )
+        reason = (
+            "state_benches_unavailable" if has_personal else "cde_empty"
+        )
         return SafetyResult(
             score=DEFAULT_SAFETY_SCORE,
             provenance={
                 "source_id": SOURCE_DEFAULT,
-                "reason": "cde_empty",
+                "reason": reason,
                 "ori_count": crime.ori_count,
             },
         )

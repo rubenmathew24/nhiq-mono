@@ -64,3 +64,20 @@ def test_lower_local_rate_raises_score():
     )
     result = safety_from_cde(crime, county_pop=POP_COUNTY, state_pop=POP_STATE)
     assert result.score > 90.0
+
+
+def test_personal_without_benches_is_unavailable_not_synthesized():
+    """Null personal benches + pop must not invent a scored FBI result."""
+    crime = CountyCrime(
+        county_fips="05007",
+        by_offense={
+            "HOM": (4.0, None),
+            "ROB": (37.0, None),
+            "ASS": (599.0, None),
+        },
+        ori_count=4,
+    )
+    result = safety_from_cde(crime, county_pop=286528.0, state_pop=3018669.0)
+    assert result.provenance["source_id"] == SOURCE_DEFAULT
+    assert result.provenance["reason"] == "state_benches_unavailable"
+    assert "ratio" not in result.provenance

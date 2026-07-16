@@ -148,6 +148,35 @@ def test_property_without_benches_is_unavailable_not_zero():
     assert personal["score"] > 0
 
 
+def test_personal_without_benches_is_unavailable_not_zero():
+    """Personal offenses with null state benches → limited data (not fake ratio)."""
+    detail = build_score_detail(
+        DetailInputs(
+            crime=CountyCrime(
+                county_fips="05007",
+                by_offense={
+                    "HOM": (4.0, None),
+                    "ROB": (37.0, None),
+                    "ASS": (599.0, None),
+                    "BUR": (277.0, 5000.0),
+                },
+                ori_count=4,
+            ),
+            county_pop=286528.0,
+            state_pop=3018669.0,
+        )
+    )
+    personal = next(s for s in detail["safety"]["sub_scores"] if s["id"] == "personal")
+    assert personal["available"] is False
+    assert personal["score"] == 0.0
+    vs = next(
+        s for s in detail["safety"]["stats"] if s["name"] == "Violent crime vs state"
+    )
+    assert "state benchmarks missing" in vs["value"]
+    property_s = next(s for s in detail["safety"]["sub_scores"] if s["id"] == "property")
+    assert property_s["available"] is True
+
+
 def test_property_with_benches_and_pops_scores_per_resident():
     detail = build_score_detail(
         DetailInputs(

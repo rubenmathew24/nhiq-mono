@@ -156,9 +156,6 @@ function DimensionRow({
         <div
           id={panelId}
           className="mt-3 rounded-lg bg-card/80 border border-border/50 px-3 py-2.5 space-y-2"
-          onClick={(e) => e.stopPropagation()}
-          onPointerDown={(e) => e.stopPropagation()}
-          onKeyDown={(e) => e.stopPropagation()}
         >
           {factors.length === 0 ? (
             <p className="text-xs text-muted-foreground">
