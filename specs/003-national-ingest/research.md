@@ -46,4 +46,8 @@ Workers call one helper instead of `fixture_county_fips()` when national.
 
 **Note**: Operator must run a one-time (or per-state) **geo/county registry** load for all included states (or at least batch states) before % is meaningful. Plan: `python -m ingest.geo.run` loads TIGER counties for `INGEST_STATE_BATCH` (or all included if `INGEST_GEO_LOAD_ALL=1` for registry bootstrap only — prefer batch-only for ACA; document a loop over states for full registry).
 
-**Refined**: For full national denominator, support `INGEST_STATE_BATCH=*` or dedicated `ingest.geo.run` with `INGEST_GEO_LOAD_ALL=1` that only loads county registry (lightweight vs tracts). Default geo job still requires batch OR load-all flag.
+## R8 — Inventory-driven orchestrator
+
+**Decision**: Run inventory + scheduling inside ACA job `niq-worker-orchestrate` (DB reachable). GHA only `workflow_dispatch` → start/poll that job. Inventory reuses checkpoint SQL; skips starting workers with zero gaps for a state. Per-state pipeline order; `ORCH_MAX_STATE_UNITS` bounds each run.
+
+**Rationale**: GitHub runners cannot reliably reach Azure Postgres (firewall). Re-dispatch continues from gaps without a durable queue table.

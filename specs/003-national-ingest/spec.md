@@ -72,6 +72,23 @@ Operators can still run smoke (single-county) and metro fixture (ten-county) sco
 
 ---
 
+### User Story 5 - Inventory-driven orchestrator via Actions (Priority: P1)
+
+An ops operator starts a manual GitHub Actions workflow that triggers an Azure orchestrator. The orchestrator inventories which counties (or states) still lack each worker’s data, then starts only the ACA jobs that have gaps—skipping workers that are already complete for a state. Re-running the workflow continues from remaining gaps without redoing finished sources. The operator watches progress on the Workbook.
+
+**Why this priority**: Manual per-state clicking does not scale; inventory prevents wasting compute on sources that already succeeded (e.g. EPA done, FBI still missing).
+
+**Independent Test**: With EPA complete for a test state and FBI incomplete, run orchestrator for that state filter; confirm EPA job is not started and FBI (and later pipeline steps with gaps) are started; re-run after FBI completes starts neither for that state if all workers are done.
+
+**Acceptance Scenarios**:
+
+1. **Given** a national universe with mixed completeness per worker, **When** the orchestrator inventories, **Then** it produces a gap list per worker and only queues worker/state pairs with missing data.
+2. **Given** a worker has zero gaps for a state, **When** the orchestrator processes that state, **Then** it does not start that worker’s ACA job for that state.
+3. **Given** the operator re-runs the Actions workflow after partial progress, **When** inventory runs again, **Then** only remaining gaps are queued.
+4. **Given** the Actions workflow is configured, **When** code is pushed to master for site Deploy, **Then** national ingest orchestration does not start automatically.
+
+---
+
 ### Edge Cases
 
 - What happens when a state FIPS in the batch is unknown or not in the 50+DC list? Job fails clearly before fetch work.
@@ -79,6 +96,8 @@ Operators can still run smoke (single-county) and metro fixture (ten-county) sco
 - What if Census geography for a county has no usable centroid? Safety ingest skips that county with logged reason; status stays honest.
 - What if upstream APIs rate-limit mid-batch? Job may fail or exit incomplete; restart resumes via checkpoints without wiping prior counties.
 - What if operator re-runs an already-complete state batch? Workers mostly skip-done and exit successfully (or report nothing new to do).
+- What if inventory shows all workers complete for selected states? Orchestrator exits successfully without starting ingest jobs (may still refresh status).
+- What if GitHub Actions times out while the Azure orchestrator is still running? Operator re-dispatches; inventory-driven queue resumes from gaps.
 
 ## Requirements *(mandatory)*
 
@@ -96,8 +115,12 @@ Operators can still run smoke (single-county) and metro fixture (ten-county) sco
 - **FR-010**: National ingest status MUST compute real per-worker completion percentages against the full 50+DC county (or tract, where scoring uses tracts) universe—not a stub “not supported” result.
 - **FR-011**: Smoke and metro_10 scopes MUST remain supported with their existing small denominators and MUST NOT require a national state batch.
 - **FR-012**: National ingest MUST use idempotent upserts; operators MUST NOT need to truncate tables to resume or re-run a batch.
-- **FR-013**: Product in-app national progress UI, Slack/webhooks, and a single unattended all-states execution in one job are OUT OF SCOPE for this feature.
+- **FR-013**: Product in-app national progress UI and Slack/webhooks are OUT OF SCOPE for this feature. A single multi-day unattended run without re-dispatch is OUT OF SCOPE; re-dispatch continues from inventory.
 - **FR-014**: Operators MUST be able to refresh national progress via the existing ops status path (snapshot + Workbook) after state batches.
+- **FR-015**: System MUST provide an inventory of missing work per ingest/scoring worker against the national county universe (county grain; CMS at state grain; scoring per existing fbi_cde tract rule).
+- **FR-016**: An orchestrator MUST start only ACA worker jobs for worker/state pairs that inventory marks as incomplete, and MUST NOT start jobs for pairs with zero gaps.
+- **FR-017**: Operators MUST be able to trigger the orchestrator via a manual GitHub Actions workflow that does not run on ordinary master Deploy pushes.
+- **FR-018**: Orchestrator runs MUST be time-bounded (configurable max states per run) so re-runs continue filling remaining gaps.
 
 ### Key Entities
 
@@ -106,6 +129,8 @@ Operators can still run smoke (single-county) and metro fixture (ten-county) sco
 - **State batch**: Operator-supplied list of state FIPS codes that bounds one worker execution under national scope.
 - **Checkpoint unit**: A county (or state) that already has qualifying stored rows for a given worker so restart can skip it.
 - **National status snapshot**: Per-worker done/total/% against the full national universe (independent of the current batch size).
+- **Gap inventory**: Per-worker list of incomplete counties (or states) derived from database contents.
+- **Orchestrator run**: Bounded Azure job that inventories gaps, starts only needed worker jobs in pipeline order per state, and refreshes status.
 
 ## Success Criteria *(mandatory)*
 
@@ -116,13 +141,17 @@ Operators can still run smoke (single-county) and metro fixture (ten-county) sco
 - **SC-003**: National status denominator equals the county count for 50 states + DC; territories are not required to reach “national complete” for v1.
 - **SC-004**: Smoke and metro_10 status and a fixture-scoped worker re-run still succeed without a national state batch.
 - **SC-005**: Attempting national scope with no state batch fails fast with an actionable message in under 30 seconds (no multi-hour accidental run).
+- **SC-006**: When inventory shows worker W complete for state S, an orchestrator run for S does not start the ACA job for W.
+- **SC-007**: A second orchestrator run after partial completion queues fewer (or equal) gap units than the first, never re-queueing worker/state pairs that became complete.
 
 ## Assumptions
 
-- Ops operators run jobs manually (Azure Container Apps Jobs or local Docker), same overall worker order as metro ingest.
+- Ops operators run jobs via Azure Container Apps Jobs, local Docker, or the inventory orchestrator (Actions → orchestrate job).
 - Authoritative county list and centroids come from Census TIGER (or equivalent Census geography) already used for tracts.
 - Existing metro fixture addresses remain for smoke/metro_10 and local regression; they are not the national safety point source.
 - Upstream rate limits and incomplete FBI coverage for some counties are expected; honest status % is preferred over fake 100%.
-- ACA job time limits mean phased state batches are the supported national operating model for v1.
+- ACA job time limits mean phased state batches (manual or orchestrated) are the supported national operating model for v1.
 - Existing `ingest_status_snapshot` and Azure Monitor Workbook remain the ops visibility path.
 - Spec 002 fixture-only constraint is superseded for this new feature’s national path; 002 behavior for metro/smoke is preserved.
+- GitHub Actions uses existing `AZURE_CREDENTIALS`; the orchestrator job holds SP credentials to start sibling ACA jobs.
+- Inventory runs inside Azure (not on the Actions runner) so Postgres firewall rules are satisfied.

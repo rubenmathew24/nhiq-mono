@@ -8,6 +8,8 @@
 
 Enable ops to load **50 states + DC** county data in **explicit state batches**, with **DB-backed skip-done checkpoints** on every worker, **FBI agency selection via county centroids**, and a **real `INGEST_SCOPE=national` status denominator**. Keep `smoke` / `metro_10` fixture paths. Territories stay out of v1 but share an extensible jurisdiction list.
 
+**Orchestrator (US5):** Inventory gaps per worker from Postgres; ACA job `niq-worker-orchestrate` starts only incomplete worker/state pairs (per-state pipeline order). Thin GitHub Actions `workflow_dispatch` triggers the orchestrator—not Deploy-on-master.
+
 ## Technical Context
 
 **Language/Version**: Python 3.12 (workers)
@@ -62,10 +64,13 @@ specs/003-national-ingest/
 infra/sql/006_geo_counties.sql
 workers/ingest/geo/           # jurisdictions, scope resolution, county registry load
 workers/ingest/checkpoints.py # shared “is county done?” helpers
+workers/ingest/inventory.py   # gap inventory JSON
+workers/ingest/orchestrate/   # ACA orchestrator
 workers/ingest/*/run.py       # use scope + checkpoints
 workers/ingest/fbi/run.py     # centroids / geo_counties points
 workers/ingest/status.py      # real national denominators
 workers/scoring/compute.py    # national batch counties
+.github/workflows/national-ingest.yml
 docs/azure-setup-and-cicd.md  # national runbook
 ```
 
