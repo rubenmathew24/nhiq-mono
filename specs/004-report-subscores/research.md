@@ -183,8 +183,9 @@ No destructive rewrite of hospitals/schools/crime/ACS tables.
 | personal sub-score | Crimes against people |
 | property sub-score | Crimes against property |
 | HOM / ROB / ASS / BUR / LAR | Homicide / Robbery / Assault / Burglary / Larceny (theft) |
-| “Personal crime vs state” ratio line | Short plain line e.g. “Violent crime vs state average: about 0.9×” (neutral wording) |
 | Geography note + up to 5 agency rows | One short grain note + one condensed agencies line (e.g. “Reported by: A; B; C” truncated), not a long list |
+
+**Superseded for violent-crime ratio**: see §11.1 (per-resident vs state average). Do **not** show county absolute ÷ state absolute as “× state benchmark.”
 
 **Rationale**: Codes and “personal crime” jargon fail FR-019; `ASS` is unprofessional.
 
@@ -205,14 +206,68 @@ No destructive rewrite of hospitals/schools/crime/ACS tables.
 5. Staffing sub-score: `available: false` (limited data) until zoning-backed school assignment exists — do not show PTR as a proxy for “your school.”
 6. Copy must not imply the listed schools are zoned/assigned to the address.
 
+**Superseded distance rule**: see §11.3 (`SCHOOL_MAX_EXPAND_MILES = 25`).
+
 **Rationale**: Students attend different schools by age; single nearest + PTR misleads without zoning.
 
 **Alternatives considered**: Keep PTR with disclaimer (rejected); attendance-boundary ingest (out of scope / large).
 
 ### 10.6 Economy extras
 
-**Decision**: Keep median household income + county unemployment. Add **Employment rate** = `employed / labor_force` from existing `acs_indicators` columns (already ingested via B23025), labeled plainly (e.g. “Share of labor force employed”) with a short percent. No new ACS variables in this polish.
+**Decision**: Keep median household income + county unemployment. Add **Employment rate** = `employed / labor_force` from existing `acs_indicators` columns (already ingested via B23025), labeled plainly (e.g. “Share of labor force employed”) with a short percent. No new ACS variables in this polish **except population for safety normalization (§11.1)**.
 
 **Rationale**: User asked for one/two more glanceable stats; employment rate is already in DB and understandable.
 
 **Alternatives considered**: New poverty/rent ACS variables (deferred — needs ingest change); labor force headcount (less meaningful alone).
+
+---
+
+## 11. UX polish round 2 — 2026-07-16
+
+### 11.1 Safety — per-resident vs state average
+
+**Problem**: Current ratio `weighted_county_incidents / weighted_state_incidents` is roughly “share of statewide totals.” A small county always looks like `0.03×`, which users misread as “97% safer.”
+
+**Decision**:
+
+1. Compute **rates**:  
+   `local_rate = weighted_local / county_pop`  
+   `state_rate = weighted_state / state_pop`  
+   `intensity_ratio = local_rate / state_rate` (equivalent to `(local/state) * (state_pop/county_pop)`).
+2. Prefer expressing rates per 100k residents for provenance; scoring still maps `intensity_ratio` with the existing curve (`score ≈ 100 - 25 * ratio`, clamp) so ratio≈1 → ~75.
+3. **User-facing expand copy** (Fair Housing–neutral), examples:  
+   - ratio 0.72 → “Violent crime about 28% lower than the state average (per resident)”  
+   - ratio 1.15 → “Violent crime about 15% higher than the state average (per resident)”  
+   - ratio ≈1 → “Violent crime about the same as the state average (per resident)”  
+   Avoid “safer/more dangerous neighborhood” language.
+4. **Population source**: ACS 5-year **B01003_001E** (total population).  
+   - County: sum tract populations for tracts in that county from `acs_indicators` after extending ACS ingest to store `total_population` (or payload), **or** store county-level ACS rows.  
+   - State: ACS state-level B01003 for the fixture state(s) (one row per state, keyed `geo_level='state'` or sibling cache).  
+   Worker path only (precompute); re-score after population available. If population missing → limited-data / unavailable comparison (do not fall back to absolute share).
+5. Property-crime sub-score SHOULD use the same normalization pattern when comparable benches exist.
+
+**Rationale**: Matches intended product meaning (“how this area compares to other places in the state”).
+
+**Alternatives considered**: Honest relabel of absolute share (rejected — wrong product meaning); CDE summarized per-100k endpoint only (possible later; ACS pop is enough for smoke/metro).
+
+### 11.2 Healthcare — missing stars as `★-`
+
+**Decision**: Every ER expand value includes a star token: `★{n}` when rated, else **`★-`**. Keep `name · miles · ★…` order so columns align.
+
+**Rationale**: User request for consistent row shape.
+
+### 11.3 Schools — 25 mile expand cutoff
+
+**Decision**: Constant `SCHOOL_MAX_EXPAND_MILES = 25` in worker constants. When nearest school for a level is farther (e.g. 457 mi Pre-K), emit **“No schools found within 25 mi”** (or omit row + single summary if all levels empty)—never list the distant facility. Access sub-score only averages distances for in-range schools; if none in range, access `available: false`.
+
+**Rationale**: Bentonville smoke showed unusable Pre-K distance; 25 mi is still “somewhat far” (red tone) but not statewide absurdity. Aligns roughly with hospital far threshold (20 mi) with a bit more school leeway.
+
+**Alternatives considered**: 15 mi (too tight for some rural fixtures); 50 mi (still too far for daily school travel).
+
+### 11.4 Full-box click + stronger hover
+
+**Decision**: Restructure `ScoreBreakdown` so the **entire category box** (including sub-scores + summary) is one `<button>` (or equivalent single control). Expanded stats panel remains inside the same toggle. Hover uses a clearly stronger highlight than current `hover:bg-muted/40` (e.g. stronger muted fill + slightly stronger border)—still within existing tokens, not a new color system.
+
+**Rationale**: User feedback — only header felt clickable; hover too subtle.
+
+**Alternatives considered**: Nested buttons for expand only (a11y hazard); pointer cursor alone without stronger hover (rejected).

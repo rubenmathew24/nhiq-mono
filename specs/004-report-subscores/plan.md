@@ -4,56 +4,57 @@
 
 **Input**: Feature specification from `/specs/004-report-subscores/spec.md`. User lock: **dev/local only** with **`smoke` + `metro_10`** geography (not national).
 
-**Revision**: Post-implement UX polish (2026-07-16 explore notes) — plain-English expand, interactive category boxes, schools-by-level, ER wait tone fix. Core ingest/schema from the first plan remains shipped; this plan delta focuses on `score_detail` rewrite + web affordance.
+**Revision**: UX polish round 2 — per-resident safety comparison, ER `★-`, 25 mi school cutoff, full-box click + stronger hover. Prior polish (ordinals, plain English, tone_score) already shipped.
 
 ## Summary
 
-Upgrade the **local/dev report** so each of the five score categories shows **sub-scores** and can **expand in place** from an **obvious interactive box** for concrete, glanceable stats.
+Local/dev report: five categories with sub-scores and in-place expand from an obvious interactive box.
 
-**Already delivered (first implement)**: `score_detail` JSONB; FEMA NRI + CMS Timely workers (smoke/metro_10); API `sub_scores` + factors; accordion UI.
+**Already delivered**: `score_detail`; FEMA/Timely workers; API `sub_scores`/`tone_score`; plain-English expand; category boxes (header-only click).
 
-**Polish delta (this re-plan)**:
+**Round-2 delta**:
 
-1. **Web**: Category boxes (bordered/surface controls); color expand values with ScoreBar tiers when `tone_score` / mapped impact is present; drop reliance on “View details” microcopy.
-2. **Scoring `detail.py` (+ compute joins)**: Ordinal ER labels; fix timeliness tone vs state/national; plain-English safety labels + condensed agency/grain; AQI without source id; schools nearest-by-level; drop PTR/locale; employment rate from ACS; staffing sub-score limited-data.
-3. **Tests + re-score** smoke (and metro_10 as needed) so Bentonville fixture matches SC-008/SC-009.
-4. No new Azure national jobs; no NPPES/Zillow; no school-zoning ingest.
+1. **Safety**: Population-normalized local/state intensity; user copy = vs state average **per resident** (not absolute share). ACS B01003 for county/state pop.
+2. **Healthcare**: Missing ER stars → `★-`.
+3. **Schools**: `SCHOOL_MAX_EXPAND_MILES = 25`; beyond → no schools found for that level.
+4. **Web**: Entire category box is the toggle; stronger hover highlight.
+5. Tests + smoke re-score (ACS population + scoring).
 
 ## Technical Context
 
-**Language/Version**: Python 3.12 (workers + FastAPI); TypeScript / Next.js 14 (report UI only)
+**Language/Version**: Python 3.12 (workers + FastAPI); TypeScript / Next.js 14 (report UI)
 
-**Primary Dependencies**: Existing worker stack (`httpx`, `psycopg2`, dotenv); FastAPI + Pydantic; Next.js + Tailwind; Compose PostGIS 16 + Redis
+**Primary Dependencies**: Existing worker stack; FastAPI + Pydantic; Next.js + Tailwind; Compose PostGIS 16 + Redis; Census ACS for B01003
 
-**Storage**: PostgreSQL — existing `score_detail` on `neighborhood_scores`; existing `fema_nri_tracts`, `hospital_timely_measures`, `schools_*`, `acs_indicators`. Polish rewrites JSON only (no new tables)
+**Storage**: Existing tables + ACS column/payload for `total_population` (tract and/or state geo_level). No new hazard/timely tables. `score_detail` JSON rewrite on re-score
 
-**Testing**: `workers/tests/` detail labels + timeliness tone; `apps/api/tests/` factor shape; `apps/web/src/__tests__/` category box affordance + tone classes; manual Compose quickstart
+**Testing**: `workers/tests/` safety rate formula + school cutoff + ER star placeholder; `apps/api/tests/`; `apps/web` Vitest full-box click + hover class; manual Bentonville checklist
 
-**Target Platform**: Local Docker Compose developer machines only
+**Target Platform**: Local Docker Compose only
 
-**Project Type**: Monorepo — `workers/ingest`, `workers/scoring`, `apps/api`, `apps/web`
+**Project Type**: Monorepo — `workers/`, `apps/api`, `apps/web`
 
-**Performance Goals**: Report remains a single precomputed read; smoke re-score after polish is seconds–minutes
+**Performance Goals**: Single precomputed report read; smoke re-score after ACS pop + scoring minutes
 
-**Constraints**: `INGEST_SCOPE` smoke|metro_10 for new workers; no request-time government APIs; Fair Housing–neutral safety copy; plain-English user copy (FR-019); thin client (no wait math in Next.js)
+**Constraints**: `INGEST_SCOPE` smoke|metro_10; Fair Housing–neutral safety copy; thin client; no school zoning
 
-**Scale/Scope**: UX polish across five categories; scoring detail + ScoreBreakdown; no national scope
+**Scale/Scope**: Round-2 polish; smoke then metro_10 verification
 
 ## Constitution Check
 
 *GATE: Must pass before Phase 0 research. Re-check after Phase 1 design.*
 *Source: `.specify/memory/constitution.md` (NeighborhoodIQ Constitution v1.1.0)*
 
-- [x] **I. Locked Stack & Monorepo**: Next.js / FastAPI / PostGIS / Redis / workers under existing trees
-- [x] **II. Thin Client, Fat API**: Sub-score math and detail assembly in scoring worker + API `score_service`; web only renders (optional `tone_score` for color, no client recomputation of wait)
-- [x] **III. Precomputed Data Path**: FEMA/Timely ingest → score job writes `score_detail`; report serves DB/Redis
-- [x] **IV. API Contracts & Versioning**: Extend `/api/v1/score/{address_id}` payload additively (`sub_scores`; optional factor `tone_score`); no new version prefix
-- [x] **V. Security & Secrets**: No new secrets required for FEMA ArcGIS public layer; CMS Provider Data public; existing DB/Mapbox/EPA/FBI keys unchanged
-- [x] **VI. Test Alongside Features**: Formula, API, and web tests planned for polish
-- [x] **VII. Observability & Graceful Degradation**: Missing NRI/timely → air-only / access+quality-only with unavailable stats; structured worker logs
-- [x] **VIII. Clear User-Facing Errors**: Unavailable hazard/wait copy; `SCORE_UNAVAILABLE` unchanged
+- [x] **I. Locked Stack & Monorepo**
+- [x] **II. Thin Client, Fat API**: Rate math + copy in scoring/detail; web renders only
+- [x] **III. Precomputed Data Path**: ACS pop via workers → score_detail; no browser Census calls
+- [x] **IV. API Contracts & Versioning**: Additive factor text/tone only
+- [x] **V. Security & Secrets**: Existing `CENSUS_API_KEY` if ACS extended
+- [x] **VI. Test Alongside Features**
+- [x] **VII. Observability & Graceful Degradation**: Missing pop → unavailable comparison (not absolute-share fallback)
+- [x] **VIII. Clear User-Facing Errors**
 
-**Post-design re-check (2026-07-16 polish)**: Gates still pass. Plain-English labels and tone_score keep business logic server-side.
+**Post-design re-check (round 2)**: Gates pass. Population normalization keeps request path free of government calls.
 
 ## Project Structure
 
@@ -61,29 +62,25 @@ Upgrade the **local/dev report** so each of the five score categories shows **su
 
 ```text
 specs/004-report-subscores/
-├── plan.md              # This file
-├── research.md          # Phase 0 (+ §10 UX polish)
-├── data-model.md        # Phase 1
-├── quickstart.md        # Phase 1
+├── plan.md
+├── research.md          # §10 + §11
+├── data-model.md
+├── quickstart.md
 ├── contracts/
-│   ├── score-api.md
-│   └── worker-cli.md
-└── tasks.md             # /speckit-tasks (not this command)
+└── tasks.md             # /speckit-tasks
 ```
 
-### Source Code (repository root)
+### Source Code (touch list)
 
 ```text
-apps/web/src/components/report/ScoreBreakdown.tsx   # category boxes + tone
-apps/web/src/types/api.ts                           # optional Factor.tone_score
-apps/api/app/schemas/score.py                       # pass-through tone_score if added
-apps/api/app/services/score_service.py
-workers/scoring/detail.py                           # labels, schools-by-level, wait tone
-workers/scoring/compute.py                          # nearest schools per level; ACS employed/labor_force
-workers/tests/                                      # polish assertions
+workers/ingest/acs/              # B01003 total_population
+workers/scoring/safety.py        # per-resident ratio
+workers/scoring/detail.py        # copy, ★-, school cutoff
+workers/scoring/compute.py       # pass county/state pop; filter schools
+workers/ingest/fixtures/constants.py  # SCHOOL_MAX_EXPAND_MILES
+apps/web/.../ScoreBreakdown.tsx  # full-box + hover
+workers/tests/, apps/api/tests/, apps/web/src/__tests__/
 ```
-
-**Structure Decision**: No new packages; polish stays in existing scoring + report UI files.
 
 ## Complexity Tracking
 

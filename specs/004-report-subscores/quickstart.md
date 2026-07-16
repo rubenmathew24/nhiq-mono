@@ -23,16 +23,23 @@ docker compose --profile workers run --rm worker-cms-timely
 docker compose --profile workers run --rm worker-scoring
 ```
 
-**Expect**: Benton County tracts have `score_detail` with healthcare/schools/… sub_scores; plain-English factor names; ER wait `tone_score` mid/poor when wait ≈/above national; schools-by-level rows; AQI without `open_meteo` text.
+**Expect**: Benton County tracts have `score_detail` with healthcare/schools/… sub_scores; plain-English factor names; ER wait `tone_score` mid/poor when wait ≈/above national; schools-by-level within 25 mi; AQI without `open_meteo` text; violent crime vs state **per resident**.
+
+Also ensure ACS population is loaded (B01003) before trusting Safety comparison:
+
+```bash
+docker compose --profile workers run --rm -e INGEST_SCOPE=smoke -e INGEST_FORCE=1 worker-acs
+docker compose --profile workers run --rm -e INGEST_SCOPE=smoke -e INGEST_FORCE=1 worker-scoring
+```
 
 ## V2 — Smoke report UI (UX polish checklist)
 
 1. Open local web (`http://localhost:3000`); search `609 SE Jamaica Dr, Bentonville, AR`.
-2. Confirm each category is an **obvious clickable box** (not subtle “View details” only).
-3. Expand Healthcare → Nearest / 2nd / 3rd nearest ER labels; ER wait color not green when wait ≥ national.
-4. Expand Safety → full words (Assault, etc.); condensed geography/agencies.
+2. Confirm each category is an **obvious clickable box**; **hover highlight is clearly visible**; click on sub-score area still expands.
+3. Expand Healthcare → Nearest / 2nd / 3rd nearest ER; missing stars show `★-`; ER wait color not green when wait ≥ national.
+4. Expand Safety → full words (Assault, etc.); violent crime line is **% vs state average per resident** (not `0.03×` absolute share); condensed geography/agencies.
 5. Expand Environment → AQI readable; no `open_meteo` in the panel.
-6. Expand Schools → nearest by level; no PTR / locale.
+6. Expand Schools → nearest by level within **25 mi**; no 457 mi Pre-K; no PTR / locale.
 7. Expand Economy → income, unemployment, employment-rate style stat.
 
 ## V3 — metro_10
@@ -40,8 +47,8 @@ docker compose --profile workers run --rm worker-scoring
 ```bash
 export INGEST_SCOPE=metro_10
 export INGEST_FORCE=1
-docker compose --profile workers run --rm worker-fema
-docker compose --profile workers run --rm worker-cms-timely
+# ACS with B01003 if population not yet loaded for metros
+docker compose --profile workers run --rm worker-acs
 docker compose --profile workers run --rm worker-scoring
 ```
 
@@ -51,7 +58,7 @@ Spot-check at least **two** other fixture metros (e.g. Austin, Chicago) for expa
 
 ```bash
 # from repo conventions
-pytest workers/tests/ -q -k "detail or fema or timely or sub_score or tone"
+pytest workers/tests/ -q -k "detail or safety or school or tone"
 pytest apps/api/tests/ -q -k "score"
 cd apps/web && npm test -- --run report
 ```
@@ -67,6 +74,9 @@ cd apps/web && npm test -- --run report
 |---------|----------------|
 | Empty sub_scores | Scoring not re-run after migration / polish |
 | Green ER wait at/above national | Timeliness tone/formula not updated |
+| `0.03× the state` violent crime | Absolute-share formula still in use — need ACS pop + re-score |
+| Pre-K hundreds of miles away | School 25 mi cutoff not applied |
+| Header-only expand / faint hover | Full-box / hover polish not shipped |
 | “Also nearby” / `ASS` / `open_meteo` / Locale code | Old `score_detail` — force re-score |
 | Fake flood/wait | Bug — must show unavailable |
 | National worker run | Out of scope — use smoke/metro_10 only |
