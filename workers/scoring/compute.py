@@ -19,6 +19,7 @@ if str(_WORKERS_ROOT) not in sys.path:
 from dotenv import load_dotenv
 
 from ingest.checkpoints import counties_with_fbi_cde_scores, log_skip
+from ingest.force import force_enabled
 from ingest.fixtures.constants import (
     DATA_VINTAGE,
     EPA_END_LAG_DAYS,
@@ -407,7 +408,11 @@ def run() -> int:
         raise RuntimeError("DATABASE_URL is required")
 
     allow = active_county_fips(database_url=database_url)
-    done = counties_with_fbi_cde_scores(database_url, sorted(allow))
+    done = (
+        set()
+        if force_enabled()
+        else counties_with_fbi_cde_scores(database_url, sorted(allow))
+    )
     counties = sorted(allow - done)
     log_skip(logger, "scoring", len(done), len(counties))
     if not counties:

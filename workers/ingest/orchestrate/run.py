@@ -3,7 +3,7 @@
 Usage:
   python -m ingest.orchestrate.run
 
-Env: DATABASE_URL, AZURE_*, ORCH_MAX_STATE_UNITS, ORCH_STATE_FILTER
+Env: DATABASE_URL, AZURE_*, ORCH_MAX_STATE_UNITS, ORCH_STATE_FILTER, ORCH_FORCE_STATES
 """
 
 from __future__ import annotations
@@ -22,6 +22,7 @@ from ingest.inventory import (
     workers_needed_for_state,
 )
 from ingest.orchestrate.azure_jobs import AzureJobClient, client_from_env
+from ingest.status_pulse import emit_status_snapshot
 
 load_dotenv()
 
@@ -45,10 +46,11 @@ def run_worker_once(
     worker: str,
     state_fips: str,
     *,
+    force: bool = False,
     retries: int = 1,
 ) -> str:
     job_name = WORKER_ACA_JOB[worker]
-    client.set_national_batch(job_name, state_fips)
+    client.set_national_batch(job_name, state_fips, force=force)
     last_status = "Failed"
     for attempt in range(retries + 1):
         execution = client.start_job(job_name)
@@ -65,12 +67,10 @@ def run_worker_once(
     return last_status
 
 
-def run_status(client: AzureJobClient) -> None:
-    job_name = "niq-worker-status"
-    client.set_env_vars(job_name, {"INGEST_SCOPE": "national"})
-    execution = client.start_job(job_name)
-    status = client.wait_execution(job_name, execution, timeout_seconds=900)
-    logger.info("Status job finished status=%s", status)
+def run_status_emit(database_url: str) -> None:
+    """In-process national status snapshot (Workbook Log Analytics line)."""
+    os.environ.setdefault("INGEST_SCOPE", "national")
+    emit_status_snapshot(database_url, scope="national")
 
 
 def run() -> int:
@@ -79,16 +79,21 @@ def run() -> int:
         raise RuntimeError("DATABASE_URL is required")
 
     state_filter = parse_state_batch(os.getenv("ORCH_STATE_FILTER"))
+    force_states = parse_state_batch(os.getenv("ORCH_FORCE_STATES")) or frozenset()
     max_states = _max_states()
     client = client_from_env()
 
     inv = build_inventory(database_url, state_filter=state_filter)
     logger.info("Inventory summary %s", inv["summary"])
-    states = states_needing_work(inv, max_states=max_states)
+    if force_states:
+        logger.info("Force states=%s", sorted(force_states))
+    states = states_needing_work(
+        inv, max_states=max_states, force_states=force_states
+    )
     if not states:
         logger.info("No gaps for selected universe — nothing to start")
         try:
-            run_status(client)
+            run_status_emit(database_url)
         except Exception as exc:  # noqa: BLE001
             logger.warning("Status refresh skipped: %s", exc)
         return 0
@@ -96,13 +101,14 @@ def run() -> int:
     logger.info("Will process states=%s (max=%s)", states, max_states)
     hard_fail = False
     for state_fips in states:
-        workers = workers_needed_for_state(inv, state_fips)
-        logger.info("State %s workers=%s", state_fips, workers)
+        forcing = state_fips in force_states
+        workers = workers_needed_for_state(inv, state_fips, force=forcing)
+        logger.info(
+            "State %s workers=%s force=%s", state_fips, workers, forcing
+        )
         for worker in workers:
-            # Re-check inventory lightly: rebuild would be expensive; trust initial
-            # and rely on worker skip_checkpoint. Optionally skip if empty list.
             gaps = (inv.get("by_state") or {}).get(worker, {}).get(state_fips) or []
-            if not gaps:
+            if not forcing and not gaps:
                 logger.info(
                     "orch_skip worker=%s state=%s reason=no_gaps",
                     worker,
@@ -110,20 +116,31 @@ def run() -> int:
                 )
                 continue
             logger.info(
-                "orch_start worker=%s state=%s gap_count=%s",
+                "orch_start worker=%s state=%s gap_count=%s force=%s",
                 worker,
                 state_fips,
-                len(gaps),
+                len(gaps) if not forcing else "all",
+                forcing,
             )
             try:
                 status = run_worker_once(
-                    client, worker, state_fips, retries=1 if worker == "fbi" else 0
+                    client,
+                    worker,
+                    state_fips,
+                    force=forcing,
+                    retries=1 if worker == "fbi" else 0,
                 )
             except Exception as exc:  # noqa: BLE001
                 logger.error(
                     "orch_error worker=%s state=%s err=%s", worker, state_fips, exc
                 )
                 hard_fail = True
+                try:
+                    run_status_emit(database_url)
+                except Exception as status_exc:  # noqa: BLE001
+                    logger.warning(
+                        "Status after worker error: %s", status_exc
+                    )
                 continue
             if status != "Succeeded":
                 # FBI may fail-closed on partial coverage after writing some counties
@@ -135,14 +152,23 @@ def run() -> int:
                 )
                 if worker not in ("fbi",):
                     hard_fail = True
-        try:
-            run_status(client)
-        except Exception as exc:  # noqa: BLE001
-            logger.warning("Status refresh after state %s: %s", state_fips, exc)
+            try:
+                run_status_emit(database_url)
+            except Exception as exc:  # noqa: BLE001
+                logger.warning(
+                    "Status refresh after worker %s state %s: %s",
+                    worker,
+                    state_fips,
+                    exc,
+                )
 
     # Final inventory summary
     inv2 = build_inventory(database_url, state_filter=state_filter)
     logger.info("Final inventory summary %s", inv2["summary"])
+    try:
+        run_status_emit(database_url)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Final status emit: %s", exc)
     return 1 if hard_fail else 0
 
 

@@ -8,7 +8,7 @@
 
 Enable ops to load **50 states + DC** county data in **explicit state batches**, with **DB-backed skip-done checkpoints** on every worker, **FBI agency selection via county centroids**, and a **real `INGEST_SCOPE=national` status denominator**. Keep `smoke` / `metro_10` fixture paths. Territories stay out of v1 but share an extensible jurisdiction list.
 
-**Orchestrator (US5):** Inventory gaps per worker from Postgres; ACA job `niq-worker-orchestrate` starts only incomplete worker/state pairs (per-state pipeline order). Thin GitHub Actions `workflow_dispatch` triggers the orchestrator—not Deploy-on-master.
+**Orchestrator (US5–US7):** Inventory gaps per worker from Postgres; ACA job `niq-worker-orchestrate` starts only incomplete worker/state pairs (per-state pipeline order), or **all** workers when `ORCH_FORCE_STATES` includes the state. Status snapshots emit after each worker and every N units inside long loops. ARM PATCH/START retries transient 5xx/429. Thin GitHub Actions `workflow_dispatch` triggers the orchestrator—not Deploy-on-master.
 
 ## Technical Context
 
@@ -24,9 +24,9 @@ Enable ops to load **50 states + DC** county data in **explicit state batches**,
 
 **Project Type**: Batch workers + ops status (no product API/UI change required)
 
-**Performance Goals**: One small state batch completable within ACA replica timeout with restarts; national % updates after each batch
+**Performance Goals**: One small state batch completable within ACA replica timeout with restarts; national % updates after each worker and every ~15 counties mid-job
 
-**Constraints**: ACA ~7200s timeout; national runs **require** `INGEST_STATE_BATCH`; no all-51 unattended run in v1
+**Constraints**: ACA ~7200s timeout; national runs **require** `INGEST_STATE_BATCH`; no all-51 unattended run in v1; force re-runs use upserts only (no wipe)
 
 **Scale/Scope**: ~3,143 counties (50+DC); phased by state FIPS batch
 
@@ -65,8 +65,10 @@ infra/sql/006_geo_counties.sql
 workers/ingest/geo/           # jurisdictions, scope resolution, county registry load
 workers/ingest/checkpoints.py # shared “is county done?” helpers
 workers/ingest/inventory.py   # gap inventory JSON
-workers/ingest/orchestrate/   # ACA orchestrator
-workers/ingest/*/run.py       # use scope + checkpoints
+workers/ingest/force.py       # INGEST_FORCE helper
+workers/ingest/status_pulse.py # mid-run snapshot cadence
+workers/ingest/orchestrate/   # ACA orchestrator (+ ARM retries)
+workers/ingest/*/run.py       # use scope + checkpoints + force + pulse
 workers/ingest/fbi/run.py     # centroids / geo_counties points
 workers/ingest/status.py      # real national denominators
 workers/scoring/compute.py    # national batch counties

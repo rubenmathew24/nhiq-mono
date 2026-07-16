@@ -14,6 +14,60 @@ logger = logging.getLogger("ingest.orchestrate.azure")
 
 ARM = "https://management.azure.com"
 API_VERSION = "2024-03-01"
+RETRY_STATUS = frozenset({429, 500, 502, 503})
+DEFAULT_ARM_RETRIES = 3
+
+
+def _request_with_retries(
+    method: str,
+    url: str,
+    *,
+    headers: dict[str, str],
+    json_body: dict[str, Any] | None = None,
+    timeout: float = 180.0,
+    retries: int = DEFAULT_ARM_RETRIES,
+) -> httpx.Response:
+    """HTTP call with exponential backoff on transient ARM failures."""
+    last_exc: Exception | None = None
+    for attempt in range(retries + 1):
+        try:
+            with httpx.Client(timeout=timeout) as client:
+                resp = client.request(
+                    method, url, headers=headers, json=json_body
+                )
+            if resp.status_code in RETRY_STATUS and attempt < retries:
+                delay = 2 ** (attempt + 1)
+                logger.warning(
+                    "ARM %s %s status=%s attempt=%s/%s; retry in %ss body=%s",
+                    method,
+                    url,
+                    resp.status_code,
+                    attempt + 1,
+                    retries + 1,
+                    delay,
+                    (resp.text or "")[:300],
+                )
+                time.sleep(delay)
+                continue
+            return resp
+        except (httpx.TransportError, httpx.TimeoutException) as exc:
+            last_exc = exc
+            if attempt >= retries:
+                raise
+            delay = 2 ** (attempt + 1)
+            logger.warning(
+                "ARM %s %s transport error attempt=%s/%s; retry in %ss err=%s",
+                method,
+                url,
+                attempt + 1,
+                retries + 1,
+                delay,
+                exc,
+            )
+            time.sleep(delay)
+    if last_exc:
+        raise last_exc
+    raise RuntimeError(f"ARM {method} {url} failed after retries")
 
 
 class AzureJobClient:
@@ -74,10 +128,11 @@ class AzureJobClient:
         return f"{base}{suffix}?api-version={API_VERSION}"
 
     def get_job(self, job_name: str) -> dict[str, Any]:
-        with httpx.Client(timeout=120.0) as client:
-            resp = client.get(self._job_url(job_name), headers=self._headers())
-            resp.raise_for_status()
-            return resp.json()
+        resp = _request_with_retries(
+            "GET", self._job_url(job_name), headers=self._headers(), timeout=120.0
+        )
+        resp.raise_for_status()
+        return resp.json()
 
     def set_env_vars(self, job_name: str, updates: dict[str, str]) -> None:
         """Merge/replace named plain env vars on the first container."""
@@ -96,35 +151,43 @@ class AzureJobClient:
         container["env"] = new_env
         containers[0] = container
         body = {"properties": {"template": {"containers": containers}}}
-        with httpx.Client(timeout=180.0) as client:
-            resp = client.patch(
-                self._job_url(job_name), headers=self._headers(), json=body
-            )
-            if resp.status_code >= 400:
-                logger.error("PATCH %s failed: %s", job_name, resp.text)
-            resp.raise_for_status()
+        resp = _request_with_retries(
+            "PATCH",
+            self._job_url(job_name),
+            headers=self._headers(),
+            json_body=body,
+            timeout=180.0,
+        )
+        if resp.status_code >= 400:
+            logger.error("PATCH %s failed: %s", job_name, resp.text)
+        resp.raise_for_status()
         logger.info("Patched %s env keys=%s", job_name, sorted(updates))
 
-    def set_national_batch(self, job_name: str, state_fips: str) -> None:
+    def set_national_batch(
+        self, job_name: str, state_fips: str, *, force: bool = False
+    ) -> None:
         self.set_env_vars(
             job_name,
             {
                 "INGEST_SCOPE": "national",
                 "INGEST_STATE_BATCH": state_fips,
                 "INGEST_COUNTY_ALLOWLIST": "",
+                "INGEST_FORCE": "1" if force else "0",
             },
         )
 
     def start_job(self, job_name: str) -> str:
         """Start job; return execution name."""
-        with httpx.Client(timeout=120.0) as client:
-            resp = client.post(
-                self._job_url(job_name, "/start"), headers=self._headers()
-            )
-            if resp.status_code >= 400:
-                logger.error("START %s failed: %s", job_name, resp.text)
-            resp.raise_for_status()
-            body = resp.json() if resp.content else {}
+        resp = _request_with_retries(
+            "POST",
+            self._job_url(job_name, "/start"),
+            headers=self._headers(),
+            timeout=120.0,
+        )
+        if resp.status_code >= 400:
+            logger.error("START %s failed: %s", job_name, resp.text)
+        resp.raise_for_status()
+        body = resp.json() if resp.content else {}
         # Response shape varies; try common fields
         name = (
             body.get("name")
@@ -140,10 +203,11 @@ class AzureJobClient:
 
     def _latest_execution_name(self, job_name: str) -> str:
         url = self._job_url(job_name, "/executions")
-        with httpx.Client(timeout=120.0) as client:
-            resp = client.get(url, headers=self._headers())
-            resp.raise_for_status()
-            body = resp.json()
+        resp = _request_with_retries(
+            "GET", url, headers=self._headers(), timeout=120.0
+        )
+        resp.raise_for_status()
+        body = resp.json()
         values = body.get("value") or []
         if not values:
             raise RuntimeError(f"No executions found for {job_name}")
@@ -152,10 +216,11 @@ class AzureJobClient:
     def get_execution_status(self, job_name: str, execution_name: str) -> str:
         enc = quote(execution_name, safe="")
         url = self._job_url(job_name, f"/executions/{enc}")
-        with httpx.Client(timeout=120.0) as client:
-            resp = client.get(url, headers=self._headers())
-            resp.raise_for_status()
-            body = resp.json()
+        resp = _request_with_retries(
+            "GET", url, headers=self._headers(), timeout=120.0
+        )
+        resp.raise_for_status()
+        body = resp.json()
         return str((body.get("properties") or {}).get("status") or "Unknown")
 
     def wait_execution(

@@ -487,9 +487,9 @@ See also [`specs/003-national-ingest/quickstart.md`](../specs/003-national-inges
 
 1. Apply [`infra/sql/006_geo_counties.sql`](../infra/sql/006_geo_counties.sql).
 2. Bootstrap registry (all included jurisdictions): `INGEST_GEO_LOAD_ALL=1` on `niq-worker-geo`, then start it.
-3. **Preferred:** GitHub → Actions → **National ingest** → Run workflow (`max_states`, optional `state_filter`). This starts `niq-worker-orchestrate`, which inventories DB gaps and only starts ACA jobs that still need work.
-4. Manual fallback: set on ingest/scoring jobs `INGEST_SCOPE=national`, `INGEST_STATE_BATCH=<SS>`; run workers in order; re-start to resume (`skip_checkpoint`).
-5. Status with `INGEST_SCOPE=national` for Workbook % against full `geo_counties` universe.
+3. **Preferred:** GitHub → Actions → **National ingest** → Run workflow (`max_states`, optional `state_filter`, optional `force_states`). This starts `niq-worker-orchestrate`, which inventories DB gaps and only starts ACA jobs that still need work—or force-reruns all workers for states listed in `force_states`.
+4. Manual fallback: set on ingest/scoring jobs `INGEST_SCOPE=national`, `INGEST_STATE_BATCH=<SS>`; run workers in order; re-start to resume (`skip_checkpoint`). Set `INGEST_FORCE=1` to re-upsert without skip-done.
+5. Status with `INGEST_SCOPE=national` for Workbook % against full `geo_counties` universe. Orchestrator emits `INGEST_STATUS_SNAPSHOT` after each worker and long workers pulse every ~15 counties (`INGEST_STATUS_EVERY_N`). ARM PATCH/START retries transient 429/5xx.
 6. Territories are **not** in v1; enable later by moving FIPS from `TERRITORY_STATE_FIPS` → `INCLUDED_STATE_FIPS` in code.
 
 Orchestrator job: `niq-worker-orchestrate`. GitHub Actions **National ingest** injects the Deploy service principal from `AZURE_CREDENTIALS` into the job env on each run (no separate Key Vault SP required). The SP must be able to start/update jobs in the RG. **Do not** wire national ingest to the `master` Deploy workflow.

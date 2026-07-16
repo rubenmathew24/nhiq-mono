@@ -15,6 +15,7 @@ from ingest.epa.client import fetch_daily_aqi, require_epa_credentials
 from ingest.epa.transform import transform_aqi_records
 from ingest.checkpoints import counties_with_epa, log_skip
 from ingest.fixtures.constants import EPA_END_LAG_DAYS, EPA_LOOKBACK_DAYS
+from ingest.force import force_enabled
 from ingest.geo.scope import active_county_fips
 
 logger = logging.getLogger("epa")
@@ -36,7 +37,11 @@ class EpaAqiWorker(BaseIngestionWorker):
     def fetch(self) -> None:
         require_epa_credentials()
         self._allow = active_county_fips(database_url=self.database_url)
-        done = counties_with_epa(self.database_url, sorted(self._allow))
+        done = (
+            set()
+            if force_enabled()
+            else counties_with_epa(self.database_url, sorted(self._allow))
+        )
         pending = self._allow - done
         log_skip(self.logger, "epa", len(done), len(pending))
         self._pending_counties = pending
