@@ -28,7 +28,7 @@ docker compose build web && docker compose up -d web
 ## V2 — Smoke report UI checklist
 
 1. Open `http://localhost:3000`; search `609 SE Jamaica Dr, Bentonville, AR`.
-2. Confirm each category is one box; **hover anywhere on the box** (including sub-score rows and the summary sentence) highlights the **entire** box.
+2. Confirm each category is one box; **hover anywhere** highlights the whole box; **click** expands; **drag-select** on summary/labels copies text without toggling.
 3. Click a **sub-score** (e.g. Access) → expand stats open; click the **summary** text → toggles; click title/bar → toggles.
 4. Expand Safety → Crimes against property is **limited data / —**, not a scored **0**; violent crime line is % vs state **per resident**.
 5. Expand Schools → nearest by level within **30 mi**; no ~457 mi Pre-K; no PTR / locale.

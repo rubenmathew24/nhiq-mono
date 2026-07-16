@@ -325,3 +325,23 @@ That path is valid only as a **neutral absolute** ratio of 1.0 before population
 **Rationale**: Matches FR-004 / SC-012; explains why “we already shipped full-box” contradicted the user’s browser.
 
 **Alternatives considered**: Bind-mount Next.js into Compose for hot reload (nice for iteration; not required if rebuild is documented in quickstart); leave stale image (rejected).
+
+---
+
+## 13. UX polish round 4 — text selection — 2026-07-16
+
+### 13.1 Click-to-expand without blocking text drag-select
+
+**Problem**: Full-box control used `select-none` (and `pointer-events-none` on sub-score rows), so users could not highlight/copy summary or labels. Even without `select-none`, a drag ending in `click` would toggle expand and clear the selection UX.
+
+**Decision**:
+
+1. Allow normal text selection (`select-none` / blocking pointer-events removed from selectable content).
+2. On activate (`click`), toggle only if pointer movement since `pointerdown` is within a small threshold (~4–5px) **and** `window.getSelection()` is empty (or collapsed).
+3. Keyboard Enter/Space still toggles unconditionally.
+4. Expanded stats panel may keep `stopPropagation` so interacting with values does not collapse via bubbling; selection inside the panel still works.
+5. Rebuild Compose `web` after change.
+
+**Rationale**: SC-014 — copyable report facts without losing one-box expand.
+
+**Alternatives considered**: Separate “select mode” control (rejected — too heavy); only make expand panel selectable (rejected — summary must be selectable too).
