@@ -6,9 +6,11 @@
 
 **Scope lock**: Local Compose only; `INGEST_SCOPE` ∈ {`smoke`, `metro_10`} — not national.
 
+**Status**: First implement (T001–T044) **complete**. Open work is **UX polish** (T045+) per plan revision 2026-07-16.
+
 **Tests**: Constitution VI — pytest in `workers/tests/` and `apps/api/tests/`; Vitest in `apps/web/src/__tests__/`.
 
-**Organization**: By user story. Build order: schema/API types → sub-scores from existing data (US1) → expand stats + accordion (US2) → FEMA + CMS Timely (US3) → operator Compose path (US4).
+**Organization**: By user story. Polish build order: `tone_score` contract → plain-English detail rewrite (US2-heavy) → wait tone with timely data (US3) → operator re-score (US4).
 
 ## Format: `[ID] [P?] [Story] Description`
 
@@ -25,138 +27,133 @@
 
 ---
 
-## Phase 1: Setup (Shared Infrastructure)
+## Phase 1–7: First implement (COMPLETE)
 
-**Purpose**: Feature scaffolding without changing runtime behavior yet
+All tasks T001–T044 from the original plan are done (`[x]`). Schema, FEMA/Timely workers, `score_detail`, API `sub_scores`, and initial accordion UI shipped. Do not re-open unless converge finds gaps.
 
-- [x] T001 Create SQL one-shot `infra/sql/007_report_detail.sql` with comments for `score_detail`, `fema_nri_tracts`, `hospital_timely_measures` per `data-model.md` (tables may be stubbed empty until later tasks fill DDL)
-- [x] T002 [P] Mirror `score_detail` + new table DDL essentials into `infra/sql/init.sql` for fresh Compose volumes
-- [x] T003 [P] Create package stubs `workers/ingest/fema/__init__.py` and `workers/ingest/cms_timely/__init__.py`
-- [x] T004 [P] Add shared detail constants (sub-score ids/labels/weights) in `workers/ingest/fixtures/constants.py` or `workers/scoring/detail_constants.py` per research.md §3
+<details>
+<summary>Completed task IDs (T001–T044)</summary>
 
-**Checkpoint**: Scaffold + DDL files exist
+- T001–T010 Setup + Foundational (SQL, SubScore types, `detail.py`, score_service)
+- T011–T018 US1 sub-scores
+- T019–T025 US2 expand + accordion
+- T026–T034 US3 FEMA + CMS Timely
+- T035–T039 US4 Compose operator path
+- T040–T044 First-wave polish / quickstart
 
----
-
-## Phase 2: Foundational (Blocking Prerequisites)
-
-**Purpose**: Additive schema + typed report contract so US1–US2 can ship on existing raw data
-
-**⚠️ CRITICAL**: No user-story UI/API acceptance until this phase completes
-
-- [x] T005 Apply/complete `ALTER TABLE neighborhood_scores ADD COLUMN IF NOT EXISTS score_detail JSONB NOT NULL DEFAULT '{}'` in `infra/sql/007_report_detail.sql` and `infra/sql/init.sql`
-- [x] T006 [P] Add Pydantic `SubScore` and extend `ScoreDimension` with `sub_scores: list[SubScore]` in `apps/api/app/schemas/score.py`
-- [x] T007 [P] Add matching `SubScore` / `ScoreDimension.sub_scores` in `apps/web/src/types/api.ts`
-- [x] T008 Extend score SELECT + report builder to read `score_detail` in `apps/api/app/services/score_service.py` (map to `sub_scores` + `factors`; empty detail → empty lists, no invented flood/wait)
-- [x] T009 [P] Update demo/mock report in `apps/api/app/data/mock_report.py` to include `sub_scores` arrays so existing UI tests do not break shape
-- [x] T010 Create `workers/scoring/detail.py` helper API (`build_score_detail(...)` → JSON-serializable dict) with no DB I/O — pure assembly from typed inputs
-
-**Checkpoint**: Schema + types + empty-safe API path ready; scoring can start writing detail
+</details>
 
 ---
 
-## Phase 3: User Story 1 — See dimension scores with sub-scores (Priority: P1) 🎯 MVP
+## Phase 8: UX Polish — Foundational (Blocking)
 
-**Goal**: Live reports show labeled sub-scores under each of the five categories from **existing** ingest (no FEMA/Timely required yet)
+**Purpose**: Additive `tone_score` on expand factors so web can use ScoreBar tiers without client-side wait math
 
-**Independent Test**: After re-score for `INGEST_SCOPE=smoke`, open Bentonville report; each category shows documented sub-scores (timeliness/hazard may be `available: false`)
+**⚠️ CRITICAL**: Complete before polishing expand value colors (US2/US3)
+
+- [ ] T045 [P] Add optional `tone_score: float | None` to Pydantic `Factor` in `apps/api/app/schemas/score.py`
+- [ ] T046 [P] Add optional `tone_score?: number` to `Factor` in `apps/web/src/types/api.ts`
+- [ ] T047 Pass through `tone_score` from `score_detail.stats` → API `factors` in `apps/api/app/services/score_service.py` (omit or null when absent; never invent)
+- [ ] T048 [P] Extend mock report factors with sample `tone_score` where useful in `apps/api/app/data/mock_report.py`
+
+**Checkpoint**: Contract supports ScoreBar-aligned factor coloring
+
+---
+
+## Phase 9: User Story 1 — Sub-score labels & staffing limited (Priority: P1)
+
+**Goal**: Sub-score labels match plain-English Key Entities; Schools staffing is limited-data without PTR proxy
+
+**Independent Test**: Bentonville report after re-score shows “Crimes against people/property”; Schools staffing shows limited data (not a fake PTR-driven staffing score)
 
 ### Tests for User Story 1
 
-- [x] T011 [P] [US1] Unit tests for sub-score blends (healthcare access/quality; safety personal/property; education; environment air-only; economic) in `workers/tests/test_score_detail.py`
-- [x] T012 [P] [US1] API test that live score response includes `sub_scores` per dimension in `apps/api/tests/test_score_subscores.py`
+- [ ] T049 [P] [US1] Update/extend unit tests for safety sub-score labels + staffing `available: false` in `workers/tests/test_score_detail.py`
 
 ### Implementation for User Story 1
 
-- [x] T013 [US1] Implement healthcare/safety/education/environment/economic sub-score builders in `workers/scoring/detail.py` (weights per research.md; renormalize when components missing)
-- [x] T014 [US1] Extend tract input SQL / loaders in `workers/scoring/compute.py` to gather nearest ER stars/miles, school fields, crime offense map, AQI provenance inputs, ACS/LAUS already used — enough for sub-scores without new tables
-- [x] T015 [US1] Persist `score_detail` JSON (sub_scores; stats may be `[]` temporarily) on upsert in `workers/scoring/compute.py`
-- [x] T016 [US1] Wire `score_service` summaries to mention limited-data when a sub-score has `available: false` in `apps/api/app/services/score_service.py`
-- [x] T017 [US1] Render category score + sub-score mini bars (always visible) in `apps/web/src/components/report/ScoreBreakdown.tsx` matching existing card styling
-- [x] T018 [US1] Update web tests that fixture reports in `apps/web/src/__tests__/report-dashboard-link.test.tsx` (and any peers) to include `sub_scores: []` or sample values
+- [ ] T050 [US1] Rename safety sub-score user labels to “Crimes against people” / “Crimes against property” in `workers/scoring/detail.py` (keep ids `personal` / `property`)
+- [ ] T051 [US1] Mark education staffing sub-score `available: false` (do not use pupil–teacher as staffing) and adjust access blend inputs for schools-by-level when available in `workers/scoring/detail.py`
+- [ ] T052 [US1] Confirm web still renders limited-data sub-scores correctly in `apps/web/src/components/report/ScoreBreakdown.tsx` (no code change if already correct)
 
-**Checkpoint**: MVP — sub-scores visible on live smoke report after re-score
+**Checkpoint**: US1 labels honest for non-technical readers
 
 ---
 
-## Phase 4: User Story 2 — Expand a category for extra stats (Priority: P1)
+## Phase 10: User Story 2 — Interactive boxes + plain-English expand (Priority: P1) 🎯 Polish MVP
 
-**Goal**: Categories are clearly clickable; expand/collapse shows concrete stats (ER, school, crime, AQI, income) from existing tables via `score_detail.stats` → `factors`
+**Goal**: Obvious category boxes; glanceable expand stats for all five pillars per revised FR-004…FR-009 / FR-019
 
-**Independent Test**: Affordance visible before click; expand Healthcare/Schools shows name + distance + rating/ratio; collapse works; keyboard/touch usable
+**Independent Test**: Bentonville report — boxes look clickable; Healthcare ordinals + wait tone; Safety plain English + condensed meta; Environment no `open_meteo`; Schools by level no PTR/locale; Economy includes employment rate
 
 ### Tests for User Story 2
 
-- [x] T019 [P] [US2] Unit tests that `build_score_detail` emits expected expand `stats` for healthcare/schools fixtures in `workers/tests/test_score_detail_stats.py`
-- [x] T020 [P] [US2] Vitest accordion expand/collapse + affordance in `apps/web/src/__tests__/score-breakdown-expand.test.tsx`
-- [x] T021 [P] [US2] API test factors populated from `score_detail.stats` in `apps/api/tests/test_score_subscores.py` (extend or sibling)
+- [ ] T053 [P] [US2] Unit tests for ER ordinal labels, safety plain-English names, AQI without source id, schools-by-level stats, employment rate, no PTR/locale in `workers/tests/test_score_detail_stats.py` (extend or sibling)
+- [ ] T054 [P] [US2] Vitest: category renders as interactive box (no “View details”-only affordance); expand/collapse; factor value uses `scoreTextClass(tone_score)` when present in `apps/web/src/__tests__/score-breakdown-expand.test.tsx`
+- [ ] T055 [P] [US2] API assertions that factors omit raw offense codes / `open_meteo` / “Also nearby” and may include `tone_score` in `apps/api/tests/test_score_subscores.py`
 
 ### Implementation for User Story 2
 
-- [x] T022 [US2] Populate expand `stats` in `workers/scoring/detail.py` / `compute.py` for all five pillars from existing raw tables (nearest ER list ≤3, nearest school, crime vs state + agencies, AQI + source, income + unemployment); Fair Housing–neutral safety wording
-- [x] T023 [US2] Ensure Redis report invalidation still runs after score upserts that change `score_detail` in `workers/scoring/compute.py` (or existing invalidation helper)
-- [x] T024 [US2] Convert `ScoreBreakdown` into in-place accordion with visible chevron/`View details`, `aria-expanded`, keyboard activation in `apps/web/src/components/report/ScoreBreakdown.tsx`
-- [x] T025 [US2] Render expanded `factors` list under the active category in `apps/web/src/components/report/ScoreBreakdown.tsx` (blend with current typography/spacing; no new visual system)
+- [ ] T056 [US2] Rewrite Healthcare expand stats in `workers/scoring/detail.py`: labels `Nearest ER` / `2nd nearest ER` / `3rd nearest ER`; set ER wait `tone_score` from timeliness score; tighten `_timeliness_score` / impact so wait ≈/above national (and vs primary bench) is not ScoreBar “good” (≥75)
+- [ ] T057 [US2] Rewrite Safety expand stats in `workers/scoring/detail.py`: full offense names (Homicide, Robbery, Assault, Burglary, Larceny); user-friendly vs-state line; single condensed geography + agencies line (not many agency rows)
+- [ ] T058 [US2] Rewrite Environment AQI expand value in `workers/scoring/detail.py` to `"{aqi} · {category}"` only (no `open_meteo` / `epa_aqs`); set `tone_score` from air sub-score when useful
+- [ ] T059 [US2] Implement schools-by-level nearest stats (Pre-K / Elementary / Middle / Junior High / High when data distinguishes) in `workers/scoring/detail.py` + gather per-level nearests in `workers/scoring/compute.py`; remove PTR and locale expand stats; no zoning claim copy
+- [ ] T060 [US2] Add Economy “Share of labor force employed” from ACS `employed` / `labor_force` in `workers/scoring/detail.py` + pass fields from `workers/scoring/compute.py`
+- [ ] T061 [US2] Restyle `ScoreBreakdown` categories as interactive boxes (border/surface, full-control activate, chevron ok) and remove reliance on “View details” microcopy in `apps/web/src/components/report/ScoreBreakdown.tsx`
+- [ ] T062 [US2] Color expanded factor **values** with `scoreTextClass(tone_score)` when `tone_score` present (else `impact` fallback) in `apps/web/src/components/report/ScoreBreakdown.tsx`
 
-**Checkpoint**: US1 + US2 complete on existing data (P1 product slice)
+**Checkpoint**: Polish MVP — plain-English expand + obvious boxes on existing smoke data after re-score
 
 ---
 
-## Phase 5: User Story 3 — Richer environment & healthcare from new data (Priority: P2)
+## Phase 11: User Story 3 — Wait / hazard tone with collected data (Priority: P2)
 
-**Goal**: FEMA NRI + CMS Timely ingest for smoke/metro_10; hazard + timeliness sub-scores/stats when present; unavailable when not
+**Goal**: When CMS Timely / FEMA rows exist, Healthcare wait and Environment hazard expand stay plain English and correctly tier-colored; unavailable when missing
 
-**Independent Test**: With FEMA/timely loaded for smoke, Environment expand shows hazard band; Healthcare shows wait vs state; without data, clear unavailable (no fabricated flood/wait)
+**Independent Test**: Smoke with timely loaded — ER wait shows comparisons + non-green when ≥ national; missing timely → Unavailable; hazard unavailable without inventing flood
 
 ### Tests for User Story 3
 
-- [x] T026 [P] [US3] FEMA transform / risk→sub-score unit tests in `workers/tests/test_fema_transform.py`
-- [x] T027 [P] [US3] CMS Timely transform / wait→sub-score unit tests in `workers/tests/test_cms_timely_transform.py`
-- [x] T028 [P] [US3] API/integration assertions for hazard + wait factors when `score_detail` includes them in `apps/api/tests/test_score_hazard_timely.py`
+- [ ] T063 [P] [US3] Unit test: local wait ≥ national bench → `tone_score` &lt; 75 in `workers/tests/test_score_detail.py` or `workers/tests/test_cms_timely_transform.py`
+- [ ] T064 [P] [US3] API/fixture assertions for wait `tone_score` + hazard unavailable copy in `apps/api/tests/test_score_hazard_timely.py` (extend)
 
 ### Implementation for User Story 3
 
-- [x] T029 [US3] Complete `fema_nri_tracts` DDL in `infra/sql/007_report_detail.sql` and `infra/sql/init.sql` per data-model.md
-- [x] T030 [US3] Complete `hospital_timely_measures` DDL in `infra/sql/007_report_detail.sql` and `infra/sql/init.sql` per data-model.md
-- [x] T031 [US3] Implement FEMA NRI client/transform/load in `workers/ingest/fema/` (ArcGIS tract query; Moderate+ hazards JSONB; upsert by geoid; scope `active_county_fips()`; refuse `INGEST_SCOPE=national`)
-- [x] T032 [US3] Implement CMS Timely client/transform/load in `workers/ingest/cms_timely/` (hospital-level ED measures + state/national benchmarks; upsert; scope fixture states/counties; refuse national)
-- [x] T033 [US3] Join FEMA + timely into scoring inputs and update blends in `workers/scoring/detail.py` + `workers/scoring/compute.py` (environment air+hazard; healthcare access+quality+timeliness; provenance `fema_nri` / `cms_timely_effective_care` in `score_sources`)
-- [x] T034 [US3] Surface hazard/wait unavailable copy in expand stats when components missing in `workers/scoring/detail.py` and API summaries in `apps/api/app/services/score_service.py`
+- [ ] T065 [US3] Finalize ER wait expand copy (minutes + state/national in plain English) and `tone_score` wiring when timely present in `workers/scoring/detail.py`
+- [ ] T066 [US3] Ensure hazard expand stats remain plain English / unavailable path unchanged (no fabricated flood) in `workers/scoring/detail.py`
 
-**Checkpoint**: P2 data richness works for smoke when workers run
+**Checkpoint**: SC-005 / SC-009 satisfied when data present or absent
 
 ---
 
-## Phase 6: User Story 4 — Operator prepares data (Priority: P2)
+## Phase 12: User Story 4 — Operator re-score after polish (Priority: P2)
 
-**Goal**: Documented Compose one-offs for FEMA/Timely/scoring under smoke and metro_10; idempotent re-runs
+**Goal**: Documented force re-score refreshes `score_detail` JSON for smoke (then metro_10); no national
 
-**Independent Test**: Follow `quickstart.md` V1–V3; Bentonville + second metro show populated `score_detail` without web calling government APIs
+**Independent Test**: Follow updated quickstart V1–V2; Bentonville expand matches polish checklist without web calling government APIs
 
 ### Tests for User Story 4
 
-- [x] T035 [P] [US4] Unit test that FEMA/Timely runners raise/refuse on `INGEST_SCOPE=national` in `workers/tests/test_scope_refuse_national.py`
+- [ ] T067 [P] [US4] Confirm national refuse tests still pass in `workers/tests/test_scope_refuse_national.py` (no regression)
 
 ### Implementation for User Story 4
 
-- [x] T036 [US4] Wire `worker-fema` and `worker-cms-timely` Compose profiles in `docker-compose.yml` (`python -m ingest.fema.run` / `ingest.cms_timely.run`, `INGEST_SCOPE` passthrough)
-- [x] T037 [P] [US4] Sync `.env.example` notes for smoke/metro_10 report-detail workers (no new secrets required) 
-- [x] T038 [US4] Align `specs/004-report-subscores/quickstart.md` commands with final service names / SQL filename after implementation
-- [x] T039 [US4] Verify idempotent upserts (second FEMA/Timely/score run) via worker logs + optional assert in `workers/tests/` or documented manual check in quickstart
+- [ ] T068 [US4] Align `specs/004-report-subscores/quickstart.md` polish checklist with final labels / `tone_score` behavior after implementation
+- [ ] T069 [US4] Run `INGEST_SCOPE=smoke INGEST_FORCE=1` scoring (and timely if needed) via Compose `worker-scoring` / `worker-cms-timely` so local DB `score_detail` matches polish; spot-check Bentonville
 
-**Checkpoint**: Operator path matches contracts/worker-cli.md
+**Checkpoint**: Operator path refreshes polish JSON on fixture DB
 
 ---
 
-## Phase 7: Polish & Cross-Cutting Concerns
+## Phase 13: Polish & Cross-Cutting Validation
 
-**Purpose**: End-to-end confidence on smoke → metro_10
+**Purpose**: End-to-end confidence for UX polish
 
-- [x] T040 [P] Run worker formula/API pytest subset for detail/fema/timely/subscores
-- [x] T041 [P] Run web Vitest for report/score-breakdown
-- [x] T042 Manual quickstart V1–V3 (`INGEST_SCOPE=smoke` then `metro_10`) and spot-check Bentonville + one other fixture address
-- [x] T043 [P] Confirm `SCORE_UNAVAILABLE` path unchanged in `apps/web/src/__tests__/report-score-unavailable.test.tsx`
-- [x] T044 Neutral safety copy review (no safe/unsafe steering) in generated safety stats strings in `workers/scoring/detail.py`
+- [ ] T070 [P] Run worker pytest subset for detail/stats/tone/timely in `workers/tests/`
+- [ ] T071 [P] Run API pytest for score/subscores/hazard-timely in `apps/api/tests/`
+- [ ] T072 [P] Run web Vitest for `score-breakdown-expand` (+ related report tests) in `apps/web/src/__tests__/`
+- [ ] T073 Manual Bentonville checklist: boxes, ordinals, wait color, safety English, no `open_meteo`, schools-by-level, employment rate (`quickstart.md` V2)
+- [ ] T074 [P] Confirm `SCORE_UNAVAILABLE` unchanged in `apps/web/src/__tests__/report-score-unavailable.test.tsx`
 
 ---
 
@@ -164,83 +161,74 @@
 
 ### Phase Dependencies
 
-- **Setup (Phase 1)**: Start immediately
-- **Foundational (Phase 2)**: After Setup — **blocks** all stories
-- **US1 (Phase 3)**: After Foundational — **MVP**
-- **US2 (Phase 4)**: After US1 scoring writes detail (needs T015); UI can start once T008 types exist but acceptance needs stats from T022
-- **US3 (Phase 5)**: After Foundational; ideally after US1 detail builder exists (extends `detail.py`)
-- **US4 (Phase 6)**: After US3 workers exist (Compose wiring)
-- **Polish (Phase 7)**: After desired stories complete
+- **Phases 1–7**: Complete (do not block polish)
+- **Phase 8 Foundational**: Blocks factor coloring (T062) and preferably wait tone tests
+- **US1 (Phase 9)**: After Phase 8 optional; can parallel with early US2 detail work on different concerns
+- **US2 (Phase 10)**: After Phase 8 for tone coloring; detail label tasks T056–T060 can start once T045–T047 types exist for `tone_score` in stats dict
+- **US3 (Phase 11)**: After T056 wait formula; extends US2 healthcare/env
+- **US4 (Phase 12)**: After detail rewrite tasks land (needs code before re-score acceptance)
+- **Phase 13**: After desired polish stories complete
 
-### User Story Dependencies
+### User Story Dependencies (polish)
 
-- **US1**: No dependency on US3/US4 — uses existing hospitals/schools/crime/ACS/EPA
-- **US2**: Builds on US1 `score_detail` persistence
-- **US3**: Independent ingest; depends on US1 detail module to plug hazard/timely
-- **US4**: Depends on US3 entrypoints + Compose
+- **US1**: Label/staffing honesty — independent of boxes
+- **US2**: Main polish MVP — depends on Phase 8 for web tone; depends on compute school/ACS fields for T059–T060
+- **US3**: Wait/hazard with collected data — depends on T056 formula
+- **US4**: Re-score operator path — depends on scoring code complete
 
 ### Parallel Opportunities
 
-- T002–T004 parallel in Setup
-- T006–T007–T009 parallel in Foundational
-- T011–T012 parallel tests before/during US1 impl
-- T019–T021 parallel US2 tests
-- T026–T028 parallel US3 tests; T031 and T032 workers in parallel after DDL T029–T030
-- T040–T041–T043 parallel in Polish
+- T045–T046–T048 parallel in Phase 8
+- T053–T055 parallel US2 tests
+- T057 / T058 / T060 parallel after shared `_stat` helper stable (watch `detail.py` conflicts — prefer sequential if one agent)
+- T061–T062 after types; can parallel with worker detail if different owners
+- T070–T072–T074 parallel in Phase 13
 
 ---
 
-## Parallel Example: User Story 1
+## Parallel Example: User Story 2 (polish)
 
 ```bash
 # Tests in parallel:
-Task: "Unit tests in workers/tests/test_score_detail.py"
-Task: "API test in apps/api/tests/test_score_subscores.py"
+Task: "workers/tests/test_score_detail_stats.py polish assertions"
+Task: "apps/web/src/__tests__/score-breakdown-expand.test.tsx boxes + tone"
+Task: "apps/api/tests/test_score_subscores.py plain-English factors"
 
-# Then implementation:
-Task: "detail.py sub-score builders"
-Task: "compute.py persist score_detail"
-Task: "ScoreBreakdown.tsx sub-score UI"
-```
-
-## Parallel Example: User Story 3
-
-```bash
-Task: "workers/ingest/fema/ client+load"
-Task: "workers/ingest/cms_timely/ client+load"
-# after both + DDL:
-Task: "scoring detail blends hazard + timeliness"
+# Then (prefer one agent on detail.py):
+Task: "detail.py healthcare/safety/env/schools/economy rewrite"
+Task: "compute.py schools-by-level + ACS employment fields"
+Task: "ScoreBreakdown.tsx boxes + tone_score coloring"
 ```
 
 ---
 
 ## Implementation Strategy
 
-### MVP First (US1 only)
+### Polish MVP (recommended)
 
-1. Phase 1 Setup  
-2. Phase 2 Foundational  
-3. Phase 3 US1 — sub-scores on report  
-4. **STOP** — validate Bentonville smoke re-score  
+1. Phase 8 — `tone_score` contract  
+2. Phase 10 US2 — boxes + plain-English expand (includes most user-visible wins)  
+3. Phase 9 US1 labels if not already done inside T056–T051  
+4. **STOP** — Bentonville smoke re-score + V2 checklist  
 
-### Incremental Delivery
+### Incremental
 
-1. US1 → sub-scores visible  
-2. US2 → expand stats + accordion (complete P1)  
-3. US3 → FEMA + Timely richness  
-4. US4 → Compose operator path  
-5. Polish quickstart smoke → metro_10  
+1. US2 polish MVP → demo  
+2. US3 wait tone hardening → SC-009  
+3. US4 operator re-score + metro_10 spot-check  
+4. Phase 13 automated + manual validation  
 
 ### Suggested MVP scope
 
-**User Story 1 only** (sub-scores from existing data). US2 is the natural immediate follow-on for the clickable expand experience promised in the product ask.
+**Phase 8 + User Story 2 (Phase 10)** — interactive boxes and plain-English expand stats. US1 label tweaks and US3 wait-tone hardening are immediate follow-ons before close.
 
 ---
 
 ## Notes
 
-- Refuse `INGEST_SCOPE=national` in new workers (feature lock)
-- Never invent flood/wait when tables empty
-- Keep overall category weights 25/25/20/15/15; only within-category blends change
+- Do not invent flood/wait; do not surface `open_meteo` in factors
+- No school zoning ingest; no PTR/locale in expand
+- Refuse `INGEST_SCOPE=national` unchanged
+- Overall category weights 25/25/20/15/15 unchanged
 - Plan + this `tasks.md` stay **uncommitted** until `/speckit-implement` Commit #2
 - Avoid NPPES/Zillow/HCAHPS scope creep

@@ -110,11 +110,12 @@ Preserve published overall weights. Within each category:
 
 - Extend `ScoreDimension` with `sub_scores: list[SubScore]` (`id`, `label`, `score`, optional `available`).
 - Keep `factors` as the expand-stat list (name/value/impact) populated from `score_detail.*.stats`.
-- Web `ScoreBreakdown`: accordion rows; always show category score + sub-score mini bars; chevron / “View details”; expanded region lists `factors`.
-- Affordance: visible control + `aria-expanded` / button semantics (not hover-only).
-- `sources` provenance unchanged; may add `fema_nri` / `cms_timely_effective_care` under environment/healthcare.
+- Web `ScoreBreakdown`: each category is an **interactive box** (bordered/surface control); always show category score + sub-score mini bars; expanded region lists `factors`. Do **not** rely on subtle “View details” microcopy.
+- Affordance: full-box activate + `aria-expanded` / button semantics (not hover-only).
+- Factor value coloring for scored stats (esp. ER wait): map via the same tiers as `scoreTier` / ScoreBar (≥75 good, ≥50 mid, else poor). Prefer deriving display color from a numeric tone (`tone_score` optional on factor **or** worker-set `impact` that matches those bands). Fix timeliness scoring so wait ≈/above national is not “good.”
+- `sources` provenance unchanged; may add `fema_nri` / `cms_timely_effective_care` under environment/healthcare. User-visible Environment AQI copy omits internal source ids.
 
-**Rationale**: Minimal schema churn for web types; factors already in mock report.
+**Rationale**: Explore feedback — subtle link failed SC-002; wait green at 162 min misled users.
 
 ---
 
@@ -144,7 +145,74 @@ No destructive rewrite of hospitals/schools/crime/ACS tables.
 
 ## 9. Testing strategy
 
-- Unit: hazard→sub-score map; timely→sub-score; property-crime blend; `score_detail` serialization  
+- Unit: hazard→sub-score map; timely→sub-score; property-crime blend; `score_detail` serialization; ER ordinal labels; schools-by-level; safety plain-English labels; AQI without source id; employment rate stat; wait tone vs national  
 - API: report JSON includes `sub_scores` + non-empty `factors` for Bentonville after prep  
-- Web Vitest: accordion expand/collapse, affordance present, limited-data copy  
+- Web Vitest: category **box** expand/collapse, affordance present without “View details”-only, factor tone classes, limited-data copy  
 - Manual quickstart: smoke then metro_10
+
+---
+
+## 10. UX polish (post-implement explore) — 2026-07-16
+
+### 10.1 Category boxes
+
+**Decision**: Replace subtle “View details” with a full-width interactive category box (existing border/muted tokens). Entire header (title + score + bar) is the control; chevron ok as secondary cue.
+
+**Rationale**: User feedback — current affordance too subtle for SC-002.
+
+**Alternatives considered**: Larger text link only (rejected); modal sheet (rejected — keep in-place).
+
+### 10.2 Healthcare ER labels + wait color
+
+**Decision**:
+
+1. Labels: `Nearest ER`, `2nd nearest ER`, `3rd nearest ER` (never “Also nearby”).
+2. Timeliness → color: use ScoreBar tiers. Tighten `_timeliness_score` (and/or impact mapping) so local wait ≥ national (and similarly vs state when that is the primary bench) does not land in the “good” (≥75) band. Example acceptance: Bentonville ~162 min vs national ~161 → mid or poor, not green.
+3. Prefer optional `tone_score` on expand stats (0–100) so web can call `scoreTextClass` without re-deriving wait math in the client (thin client). If schema stays `{name,value,impact}` only, map impact to the three tiers consistently with ScoreBar and fix the numeric score first.
+
+**Rationale**: Ordinal labels are glanceable; current formula `100 - 25 * (local/bench)` yields ~75 when ratio≈1.0 (misleading green).
+
+**Alternatives considered**: Keep impact-only green/amber/red without formula change (rejected — still wrong for Bentonville); show raw CMS measure ids (rejected — not plain English).
+
+### 10.3 Safety plain English + condensed meta
+
+**Decision**:
+
+| Internal | User-facing label |
+|----------|-------------------|
+| personal sub-score | Crimes against people |
+| property sub-score | Crimes against property |
+| HOM / ROB / ASS / BUR / LAR | Homicide / Robbery / Assault / Burglary / Larceny (theft) |
+| “Personal crime vs state” ratio line | Short plain line e.g. “Violent crime vs state average: about 0.9×” (neutral wording) |
+| Geography note + up to 5 agency rows | One short grain note + one condensed agencies line (e.g. “Reported by: A; B; C” truncated), not a long list |
+
+**Rationale**: Codes and “personal crime” jargon fail FR-019; `ASS` is unprofessional.
+
+### 10.4 Environment — hide Open-Meteo id
+
+**Decision**: AQI expand value shows number + human category only (e.g. `57 · Moderate`). Do not append `(open_meteo)` / `(epa_aqs)` in user-visible stats. Provenance may remain in `score_sources` for operators/API consumers.
+
+**Rationale**: User will address source honesty later; for now remove noise.
+
+### 10.5 Schools — by level; drop PTR / locale
+
+**Decision**:
+
+1. Expand stats: for each level bucket present near the tract centroid, emit one row: **Nearest Pre-K / Elementary / Middle / Junior High / High** with name · miles.
+2. Map Urban/NCES `school_level` (and grade fields when needed) into those buckets. If Junior High is not distinguishable from Middle in data, emit **Middle** only (do not invent a Junior High row).
+3. Remove pupil–teacher ratio and locale code from expand stats.
+4. Access sub-score: prefer average (or min) proximity across available level nearests rather than a single nearest-any-school when level data exists.
+5. Staffing sub-score: `available: false` (limited data) until zoning-backed school assignment exists — do not show PTR as a proxy for “your school.”
+6. Copy must not imply the listed schools are zoned/assigned to the address.
+
+**Rationale**: Students attend different schools by age; single nearest + PTR misleads without zoning.
+
+**Alternatives considered**: Keep PTR with disclaimer (rejected); attendance-boundary ingest (out of scope / large).
+
+### 10.6 Economy extras
+
+**Decision**: Keep median household income + county unemployment. Add **Employment rate** = `employed / labor_force` from existing `acs_indicators` columns (already ingested via B23025), labeled plainly (e.g. “Share of labor force employed”) with a short percent. No new ACS variables in this polish.
+
+**Rationale**: User asked for one/two more glanceable stats; employment rate is already in DB and understandable.
+
+**Alternatives considered**: New poverty/rent ACS variables (deferred — needs ingest change); labor force headcount (less meaningful alone).
