@@ -120,6 +120,22 @@ def counties_with_bls(database_url: str, counties: list[str]) -> set[str]:
     )
 
 
+def counties_with_urban(database_url: str, counties: list[str]) -> set[str]:
+    """Counties with ≥1 NCES school that has a matching schools_urban row."""
+    if not counties:
+        return set()
+    return _fetch_set(
+        database_url,
+        """
+        SELECT DISTINCT (n.state_fips || n.county_fips)
+        FROM schools_nces n
+        INNER JOIN schools_urban u ON u.ncessch = n.ncessch
+        WHERE (n.state_fips || n.county_fips) = ANY(%s)
+        """,
+        (counties,),
+    )
+
+
 def counties_with_fbi_cde_scores(database_url: str, counties: list[str]) -> set[str]:
     """Counties where every tract has safety source fbi_cde (strict skip-done)."""
     if not counties:

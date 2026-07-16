@@ -475,7 +475,7 @@ Ingest workers write **directly** to Azure Postgres (`niq-postgres` / `neighborh
 
 ### Manual jobs (resource group `neighborhoodiq-rg`, env `niq-env`)
 
-`niq-worker-geo`, `niq-worker-census`, `niq-worker-epa`, `niq-worker-cms`, `niq-worker-fbi`, `niq-worker-nces`, `niq-worker-urban`, `niq-worker-acs`, `niq-worker-bls`, `niq-worker-scoring`, **`niq-worker-status`**.
+`niq-worker-geo`, `niq-worker-orchestrate`, `niq-worker-census`, `niq-worker-epa`, `niq-worker-cms`, `niq-worker-fbi`, `niq-worker-nces`, `niq-worker-urban`, `niq-worker-acs`, `niq-worker-bls`, `niq-worker-scoring`, **`niq-worker-status`**.
 
 Shape: trigger **Manual**, ~1 CPU / 2Gi, `--replica-timeout` 7200s (status/geo can use 600–3600s). Command form: `python` `-m` `<module>` (e.g. `ingest.geo.run`, `ingest.census.run`, `scoring.compute`, **`ingest.status`**).
 
@@ -487,9 +487,12 @@ See also [`specs/003-national-ingest/quickstart.md`](../specs/003-national-inges
 
 1. Apply [`infra/sql/006_geo_counties.sql`](../infra/sql/006_geo_counties.sql).
 2. Bootstrap registry (all included jurisdictions): `INGEST_GEO_LOAD_ALL=1` on `niq-worker-geo`, then start it.
-3. For each state batch, set on **all** ingest/scoring jobs: `INGEST_SCOPE=national`, `INGEST_STATE_BATCH=<SS>` (e.g. `44` for Rhode Island). Run workers in order; re-start the same job to resume — logs show `skip_checkpoint`.
-4. Status with `INGEST_SCOPE=national` (no batch required) for Workbook % against full `geo_counties` universe.
-5. Territories are **not** in v1; enable later by moving FIPS from `TERRITORY_STATE_FIPS` → `INCLUDED_STATE_FIPS` in code.
+3. **Preferred:** GitHub → Actions → **National ingest** → Run workflow (`max_states`, optional `state_filter`). This starts `niq-worker-orchestrate`, which inventories DB gaps and only starts ACA jobs that still need work.
+4. Manual fallback: set on ingest/scoring jobs `INGEST_SCOPE=national`, `INGEST_STATE_BATCH=<SS>`; run workers in order; re-start to resume (`skip_checkpoint`).
+5. Status with `INGEST_SCOPE=national` for Workbook % against full `geo_counties` universe.
+6. Territories are **not** in v1; enable later by moving FIPS from `TERRITORY_STATE_FIPS` → `INCLUDED_STATE_FIPS` in code.
+
+Orchestrator job env (Key Vault secret refs): `AZURE_TENANT_ID`, `AZURE_CLIENT_ID`, `AZURE_CLIENT_SECRET`, `AZURE_SUBSCRIPTION_ID`, plus `AZURE_RESOURCE_GROUP=neighborhoodiq-rg`. Use the same service principal as GitHub `AZURE_CREDENTIALS` (must be able to start/update jobs in the RG). **Do not** wire national ingest to the `master` Deploy workflow.
 
 ### Ingest progress Workbook (ops)
 

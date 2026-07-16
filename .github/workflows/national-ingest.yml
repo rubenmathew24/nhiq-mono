@@ -1,0 +1,81 @@
+name: National ingest
+
+# Manual trigger only — does NOT run on push to master/dev (Deploy is separate).
+on:
+  workflow_dispatch:
+    inputs:
+      max_states:
+        description: Max states to process this run (ORCH_MAX_STATE_UNITS)
+        required: false
+        default: "5"
+      state_filter:
+        description: Optional comma-separated state FIPS (e.g. 44 or 44,09)
+        required: false
+        default: ""
+
+jobs:
+  orchestrate:
+    name: Start niq-worker-orchestrate
+    runs-on: ubuntu-latest
+    steps:
+      - name: Azure Login
+        uses: azure/login@v2
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: Configure orchestrator inputs
+        env:
+          MAX_STATES: ${{ github.event.inputs.max_states }}
+          STATE_FILTER: ${{ github.event.inputs.state_filter }}
+        run: |
+          set -euo pipefail
+          RG="${{ secrets.AZURE_RESOURCE_GROUP }}"
+          JOB=niq-worker-orchestrate
+          ARGS=("ORCH_MAX_STATE_UNITS=${MAX_STATES:-5}")
+          if [ -n "${STATE_FILTER}" ]; then
+            ARGS+=("ORCH_STATE_FILTER=${STATE_FILTER}")
+          else
+            ARGS+=("ORCH_STATE_FILTER=")
+          fi
+          az containerapp job update \
+            --name "$JOB" \
+            --resource-group "$RG" \
+            --set-env-vars "${ARGS[@]}" \
+            -o none
+
+      - name: Start orchestrator job
+        id: start
+        run: |
+          set -euo pipefail
+          RG="${{ secrets.AZURE_RESOURCE_GROUP }}"
+          JOB=niq-worker-orchestrate
+          OUT=$(az containerapp job start --name "$JOB" --resource-group "$RG" -o json)
+          NAME=$(echo "$OUT" | python -c "import sys,json; print(json.load(sys.stdin).get('name',''))")
+          echo "execution=$NAME" >> "$GITHUB_OUTPUT"
+          echo "Started execution: $NAME"
+
+      - name: Poll until complete
+        env:
+          EXECUTION: ${{ steps.start.outputs.execution }}
+        run: |
+          set -euo pipefail
+          RG="${{ secrets.AZURE_RESOURCE_GROUP }}"
+          JOB=niq-worker-orchestrate
+          for i in $(seq 1 240); do
+            ST=$(az containerapp job execution show \
+              --name "$JOB" \
+              --resource-group "$RG" \
+              --job-execution-name "$EXECUTION" \
+              --query "properties.status" -o tsv)
+            echo "poll=$i status=$ST"
+            if [ "$ST" = "Succeeded" ]; then
+              exit 0
+            fi
+            if [ "$ST" = "Failed" ] || [ "$ST" = "Stopped" ]; then
+              echo "Orchestrator ended with status=$ST"
+              exit 1
+            fi
+            sleep 30
+          done
+          echo "Timed out waiting for orchestrator"
+          exit 1
