@@ -271,3 +271,57 @@ No destructive rewrite of hospitals/schools/crime/ACS tables.
 **Rationale**: User feedback — only header felt clickable; hover too subtle.
 
 **Alternatives considered**: Nested buttons for expand only (a11y hazard); pointer cursor alone without stronger hover (rejected).
+
+---
+
+## 12. UX polish round 3 — 2026-07-16
+
+### 12.1 Property sub-score false zero (Bentonville)
+
+**Problem**: After round-2 per-resident normalization, Benton County `score_detail` shows property `{score: 0.0, available: true}` while personal is ~91. Live CDE rows for BUR/LAR/MVT/ARS have **null** `state_benchmark_12mo`.
+
+**Root cause**: `_property_safety` when `saw` (any bench) is false set `state = local`, then:
+
+`ratio = (local/county_pop) / (local/state_pop) = state_pop/county_pop ≈ 10.5` → `100 - 25*ratio` clamps to **0**.
+
+That path is valid only as a **neutral absolute** ratio of 1.0 before population was introduced; combining it with mismatched pops invents “property crime 10× the state.”
+
+**Decision**:
+
+1. Require **at least one** property offense with a non-null state benchmark before computing a property score.
+2. If local property incidents exist but **all benches missing** → return `None` → sub-score `available: false` (UI “limited data” / —), **not** score 0.
+3. When benches exist, keep population-normalized intensity (same curve as personal).
+4. Do **not** fall back to absolute county÷state share for property either.
+5. Re-score smoke after fix; Bentonville property MUST NOT show `0`.
+
+**Rationale**: FR-011 / FR-021 — missing inputs → unavailable, never invent measured-looking zeros.
+
+**Alternatives considered**: Keep absolute-share property when benches missing (rejected — same misleading product meaning as personal absolute share); backfill property state benches in CDE ingest this round (valuable later, not required to stop the false 0).
+
+### 12.2 Schools cutoff 30 miles
+
+**Decision**: Set `SCHOOL_MAX_EXPAND_MILES = 30`. Copy: “No schools found within 30 mi”. Access sub-score still averages only in-range schools. Supersedes §11.3’s 25 mi product lock.
+
+**Rationale**: Explicit user request after round 2; still blocks ~457 mi Pre-K.
+
+**Alternatives considered**: Keep 25 (rejected by product); 50 (still too far for expand list).
+
+### 12.3 Full-box expand not visible on localhost
+
+**Problem**: User still can only expand via the title/score/bar region; sub-score and summary clicks do nothing; hover does not cover the whole box.
+
+**Findings**:
+
+1. Current `ScoreBreakdown.tsx` already wraps title + `ScoreBar` + sub-scores + summary + expand panel in **one** `<button>` with `hover:bg-muted/55`.
+2. Compose `web` service builds `docker/web.Dockerfile` **runner** target and does **not** bind-mount `./apps/web` (unlike `api`). So `:3000` can serve a **pre-round-2/round-2-incomplete image** while git already has full-box source.
+
+**Decision**:
+
+1. Keep single activatable control covering **title, bar, sub-scores, and summary**; hover styles on that same control so any pointer-over highlights the whole box.
+2. Vitest MUST click a **sub-score label** and (ideally) assert summary click toggles; assert hover class on the outer control.
+3. Operator verify path: `docker compose build web && docker compose up -d web` (or equivalent) after UI change—**required** for SC-012 on localhost.
+4. Do not add nested buttons. If a browser quirk with `<button>` containing complex children appears, fall back to `div role="button"` with keyboard handlers—only if rebuild alone fails acceptance.
+
+**Rationale**: Matches FR-004 / SC-012; explains why “we already shipped full-box” contradicted the user’s browser.
+
+**Alternatives considered**: Bind-mount Next.js into Compose for hot reload (nice for iteration; not required if rebuild is documented in quickstart); leave stale image (rejected).

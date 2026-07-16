@@ -1,66 +1,60 @@
 # Quickstart: Report Sub-Scores (smoke + metro_10)
 
-**Feature**: `004-report-subscores` | **Date**: 2026-07-16 (UX polish)
+**Feature**: `004-report-subscores` | **Date**: 2026-07-16 (UX polish round 3)
 
 Validate expanded report UI against **local Compose** with `INGEST_SCOPE=smoke` then `metro_10`. Not for national.
 
 ## Prerequisites
 
 - Docker Compose stack healthy (`db`, `api`, `web`, Redis).
-- `.env` with existing keys (`DATABASE_URL`, Mapbox, EPA, FBI, etc. as needed for base scores).
+- `.env` with existing keys (`DATABASE_URL`, Mapbox, EPA, FBI, Census, etc. as needed).
 - Feature SQL applied (`infra/sql/007_report_detail.sql` or init on fresh volume).
-- Base fixture data loaded for the scope you test — or run the full worker chain once.
-- After UX polish code lands: **re-run scoring** so `score_detail` labels/tone refresh.
+- After round-3 code lands: **rebuild `web`** (Compose does not bind-mount `apps/web`) and **re-run scoring** so property sub-scores and school copy refresh.
 
 ## V1 — Schema + smoke detail
 
 ```bash
 export INGEST_SCOPE=smoke
 export INGEST_FORCE=1
-# apply 007_report_detail.sql if score_detail column missing
-docker compose --profile workers run --rm worker-fema
-docker compose --profile workers run --rm worker-cms-timely
+# ACS population (B01003) if not already loaded for Safety rates
+docker compose --profile workers run --rm worker-acs
 docker compose --profile workers run --rm worker-scoring
+# Ship UI changes to localhost:3000
+docker compose build web && docker compose up -d web
 ```
 
-**Expect**: Benton County tracts have `score_detail` with healthcare/schools/… sub_scores; plain-English factor names; ER wait `tone_score` mid/poor when wait ≈/above national; schools-by-level within 25 mi; AQI without `open_meteo` text; violent crime vs state **per resident**.
+**Expect**: Benton County tracts have `score_detail` with healthcare/schools/… sub_scores; personal Safety per resident; **property sub-score limited-data (not 0)** when CDE property benches are null; schools-by-level within **30 mi**; ER `★-` when unrated.
 
-Also ensure ACS population is loaded (B01003) before trusting Safety comparison:
+## V2 — Smoke report UI checklist
 
-```bash
-docker compose --profile workers run --rm -e INGEST_SCOPE=smoke -e INGEST_FORCE=1 worker-acs
-docker compose --profile workers run --rm -e INGEST_SCOPE=smoke -e INGEST_FORCE=1 worker-scoring
-```
-
-## V2 — Smoke report UI (UX polish checklist)
-
-1. Open local web (`http://localhost:3000`); search `609 SE Jamaica Dr, Bentonville, AR`.
-2. Confirm each category is an **obvious clickable box**; **hover highlight is clearly visible**; click on sub-score area still expands.
-3. Expand Healthcare → Nearest / 2nd / 3rd nearest ER; missing stars show `★-`; ER wait color not green when wait ≥ national.
-4. Expand Safety → full words (Assault, etc.); violent crime line is **% vs state average per resident** (not `0.03×` absolute share); condensed geography/agencies.
-5. Expand Environment → AQI readable; no `open_meteo` in the panel.
-6. Expand Schools → nearest by level within **25 mi**; no 457 mi Pre-K; no PTR / locale.
-7. Expand Economy → income, unemployment, employment-rate style stat.
+1. Open `http://localhost:3000`; search `609 SE Jamaica Dr, Bentonville, AR`.
+2. Confirm each category is one box; **hover anywhere on the box** (including sub-score rows and the summary sentence) highlights the **entire** box.
+3. Click a **sub-score** (e.g. Access) → expand stats open; click the **summary** text → toggles; click title/bar → toggles.
+4. Expand Safety → Crimes against property is **limited data / —**, not a scored **0**; violent crime line is % vs state **per resident**.
+5. Expand Schools → nearest by level within **30 mi**; no ~457 mi Pre-K; no PTR / locale.
+6. Expand Healthcare → ordinal ERs; missing stars show `★-`.
 
 ## V3 — metro_10
 
 ```bash
 export INGEST_SCOPE=metro_10
 export INGEST_FORCE=1
-# ACS with B01003 if population not yet loaded for metros
-docker compose --profile workers run --rm worker-acs
 docker compose --profile workers run --rm worker-scoring
 ```
 
-Spot-check at least **two** other fixture metros (e.g. Austin, Chicago) for expand content and plain-English labels.
+Spot-check at least two other fixture metros for property availability honesty and school cutoff.
 
 ## V4 — Automated checks
 
 ```bash
-# from repo conventions
-pytest workers/tests/ -q -k "detail or safety or school or tone"
-pytest apps/api/tests/ -q -k "score"
-cd apps/web && npm test -- --run report
+# workers (use project venv; prefer PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 if pytest hangs)
+cd workers && PYTHONPATH=. .venv/bin/python -m pytest tests/test_score_detail.py tests/test_safety_formula.py -q
+
+# API (in api container with pytest-asyncio if needed)
+docker compose exec -T -u root api sh -c "pip install -q pytest pytest-asyncio && python -m pytest tests/test_score_subscores.py -q"
+
+# Web Vitest needs Node 20+
+docker run --rm -v "$PWD/apps/web:/app" -w /app node:20-alpine npm test -- --run src/__tests__/score-breakdown-expand.test.tsx
 ```
 
 ## Contracts
@@ -72,12 +66,10 @@ cd apps/web && npm test -- --run report
 
 | Symptom | Likely cause |
 |---------|----------------|
-| Empty sub_scores | Scoring not re-run after migration / polish |
-| Green ER wait at/above national | Timeliness tone/formula not updated |
-| `0.03× the state` violent crime | Absolute-share formula still in use — need ACS pop + re-score |
-| Pre-K hundreds of miles away | School 25 mi cutoff not applied |
-| Header-only expand / faint hover | Full-box / hover polish not shipped |
-| “Also nearby” / `ASS` / `open_meteo` / Locale code | Old `score_detail` — force re-score |
-| Fake flood/wait | Bug — must show unavailable |
+| Property score shows **0** | Synthetic `state=local` + pop still in scoring — re-score after FR-021 fix |
+| Property “limited data” forever after benches land | CDE ingest still null benches — separate backfill |
+| Header-only expand / faint hover on :3000 | **Stale `web` image** — `docker compose build web && up -d web` |
+| Pre-K hundreds of miles away | School 30 mi cutoff not applied / scoring not re-run |
+| `0.03× the state` violent crime | Absolute-share formula / missing ACS pop |
 | National worker run | Out of scope — use smoke/metro_10 only |
 | `SCORE_UNAVAILABLE` | Tract not scored for active vintage |

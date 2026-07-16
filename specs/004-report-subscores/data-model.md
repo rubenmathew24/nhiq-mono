@@ -71,7 +71,7 @@ Reuse as inputs to scoring detail:
     ],
     "stats": [
       {"name": "Nearest elementary", "value": "Example Elem · 0.8 mi", "impact": "positive"},
-      {"name": "Nearest Pre-K", "value": "No schools found within 25 mi", "impact": "neutral"}
+      {"name": "Nearest Pre-K", "value": "No schools found within 30 mi", "impact": "neutral"}
     ]
   },
   "environment": {
@@ -97,7 +97,8 @@ Reuse as inputs to scoring detail:
 - `stats` map 1:1 to API `factors` for expand panels. **`name` MUST be plain English** (no `HOM`/`ASS`, no `open_meteo`, no “Also nearby”).
 - Optional **`tone_score`** (0–100): web colors the value with ScoreBar tiers (`≥75` / `≥50` / else). Required for ER wait acceptance (SC-009).
 - Empty `{}` on old rows until re-score.
-- Schools stats: one row per available level bucket **within 25 miles**; beyond cutoff → no-schools-found copy; never include pupil–teacher or locale.
+- Schools stats: one row per available level bucket **within 30 miles**; beyond cutoff → no-schools-found copy; never include pupil–teacher or locale.
+- Safety property sub-score: `available: false` when property offenses lack state benchmarks (do not emit score `0` from synthetic ratios).
 - Safety violent-crime factor: per-resident vs state average plain English; never absolute county/state count share.
 - Healthcare ER values: always include `★n` or `★-`.
 - Safety: prefer a single condensed “About these numbers” (or equivalent) over separate geography + many agency rows.
@@ -127,7 +128,7 @@ Unchanged from first plan — see prior sections in git history / first implemen
 CensusTract 1──1 FemaNriTract (optional)
 Hospital 1──* HospitalTimelyMeasure
 CensusTract 1──* NeighborhoodScore
-NeighborhoodScore.score_detail ← scoring reads hospitals, schools (by level, ≤25 mi),
+NeighborhoodScore.score_detail ← scoring reads hospitals, schools (by level, ≤30 mi),
   crime + ACS population, ACS labor, LAUS, EPA/OM, FemaNri, Timely
 ```
 

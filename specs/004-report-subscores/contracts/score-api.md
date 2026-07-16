@@ -51,7 +51,8 @@ interface ScoreDimension {
   - ER factor values MUST include `★n` or `★-` when a facility row is shown.
   - ER wait factor SHOULD include `tone_score` aligned with timeliness sub-score (or equivalent) so UI can match ScoreBar coloring.
   - Environment AQI factor value MUST NOT include `open_meteo` / `epa_aqs` substrings.
-  - Education factors MUST NOT include pupil–teacher ratio or locale codes; MUST NOT list schools beyond 25 miles (use no-schools-found copy instead).
+  - Education factors MUST NOT include pupil–teacher ratio or locale codes; MUST NOT list schools beyond 30 miles (use no-schools-found copy instead).
+  - Safety `property` sub-score MUST set `available: false` when no property state benchmarks exist (MUST NOT present a scored `0` from a synthetic local=state bench under population normalization).
   - Safety factor names MUST NOT be raw CDE codes (`HOM`, `ASS`, etc.).
   - Violent-crime comparison factor MUST describe per-resident vs state average (percent lower/higher/about the same)—MUST NOT present absolute county÷state incident share as the meaning.
 - When `score_detail` is `{}` or missing a dimension (pre-migration rows):
@@ -72,5 +73,5 @@ After scoring upserts `score_detail`, invalidate report Redis keys for affected 
 - Hover MUST use a clearly stronger highlight than a near-invisible muted wash.
 - `sub_scores` always visible per category (inside the control).
 - `factors` shown only when category expanded.
-- Affordance: full-box activate + accessible name (not text-only “View details”).
+- Affordance: full-box activate (title **and** sub-scores **and** summary) + accessible name (not text-only “View details”). Local Compose must rebuild `web` after UI changes (no source bind-mount today).
 - When `tone_score` is present, color factor **values** with the same good/mid/poor classes as ScoreBar (`≥75` / `≥50` / else). When absent, fall back to `impact`.
