@@ -25,11 +25,14 @@ from ingest.checkpoints import (
     counties_with_census_tracts,
     counties_with_epa,
     counties_with_fbi_agencies,
-    counties_with_fbi_cde_scores,
+    counties_with_fema_nri,
     counties_with_nces,
+    counties_with_score_detail,
     counties_with_urban,
     states_with_hospitals,
+    states_with_timely_measures,
 )
+from ingest.fixtures.constants import DATA_VINTAGE
 from ingest.geo.jurisdictions import INCLUDED_STATE_FIPS, STATE_FIPS_TO_ABBR
 from ingest.geo.scope import load_national_universe_counties, parse_state_batch
 
@@ -47,6 +50,27 @@ PIPELINE_WORKERS: tuple[str, ...] = (
     "urban",
     "acs",
     "bls",
+    "fema",
+    "cms_timely",
+    "scoring",
+)
+
+# Base ingest (no report-detail) — used for class-A preference.
+BASE_WORKERS: tuple[str, ...] = (
+    "census",
+    "epa",
+    "cms",
+    "fbi",
+    "nces",
+    "urban",
+    "bls",
+)
+
+# Report-detail / expand stages (prefer these gaps after base is done).
+DETAIL_WORKERS: tuple[str, ...] = (
+    "acs",
+    "fema",
+    "cms_timely",
     "scoring",
 )
 
@@ -59,6 +83,8 @@ WORKER_ACA_JOB: dict[str, str] = {
     "urban": "niq-worker-urban",
     "acs": "niq-worker-acs",
     "bls": "niq-worker-bls",
+    "fema": "niq-worker-fema",
+    "cms_timely": "niq-worker-cms-timely",
     "scoring": "niq-worker-scoring",
 }
 
@@ -84,19 +110,24 @@ def build_inventory(
     database_url: str,
     *,
     state_filter: frozenset[str] | None = None,
-    done_fns: dict[str, Callable[[str, list[str]], set[str]]] | None = None,
+    done_fns: dict[str, Callable[..., set[str]]] | None = None,
+    data_vintage: str | None = None,
 ) -> dict[str, Any]:
     """
     Return gap inventory for national universe.
 
-    gaps[worker] = sorted missing county FIPS (or state FIPS for cms).
+    gaps[worker] = sorted missing county FIPS (or state FIPS for cms / cms_timely).
     by_state[worker][state_fips] = missing units in that state.
     """
+    vintage = data_vintage or DATA_VINTAGE
     universe = load_national_universe_counties(database_url)
     universe = _filter_counties(universe, state_filter)
     county_list = sorted(universe)
 
-    fns = done_fns or {
+    def _scoring_done(url: str, counties: list[str]) -> set[str]:
+        return counties_with_score_detail(url, counties, data_vintage=vintage)
+
+    fns: dict[str, Callable[..., set[str]]] = done_fns or {
         "census": counties_with_census_tracts,
         "epa": counties_with_epa,
         "fbi": counties_with_fbi_agencies,
@@ -104,38 +135,70 @@ def build_inventory(
         "urban": counties_with_urban,
         "acs": counties_with_acs,
         "bls": counties_with_bls,
-        "scoring": counties_with_fbi_cde_scores,
+        "fema": counties_with_fema_nri,
+        "scoring": _scoring_done,
     }
 
     gaps: dict[str, list[str]] = {}
     by_state: dict[str, dict[str, list[str]]] = {}
 
-    for worker in ("census", "epa", "fbi", "nces", "urban", "acs", "bls", "scoring"):
+    for worker in (
+        "census",
+        "epa",
+        "fbi",
+        "nces",
+        "urban",
+        "acs",
+        "bls",
+        "fema",
+        "scoring",
+    ):
         done = fns[worker](database_url, county_list) if county_list else set()
         missing = sorted(set(county_list) - done)
         gaps[worker] = missing
         by_state[worker] = _group_by_state(missing)
 
-    # CMS — state grain (USPS abbr in hospitals table)
+    # CMS + CMS Timely — state grain (USPS abbr in hospitals table)
     states = sorted({c[:2] for c in county_list} | (set(state_filter or ())))
     states = [s for s in states if s in INCLUDED_STATE_FIPS]
     abbrs = [STATE_FIPS_TO_ABBR[s] for s in states if s in STATE_FIPS_TO_ABBR]
-    have = states_with_hospitals(database_url, abbrs) if abbrs else set()
+    have_hospitals = states_with_hospitals(database_url, abbrs) if abbrs else set()
     cms_missing_states = sorted(
-        s for s in states if STATE_FIPS_TO_ABBR.get(s) not in have
+        s for s in states if STATE_FIPS_TO_ABBR.get(s) not in have_hospitals
     )
     gaps["cms"] = cms_missing_states
     by_state["cms"] = {s: [s] for s in cms_missing_states}
+
+    have_timely = (
+        states_with_timely_measures(database_url, abbrs, data_vintage=vintage)
+        if abbrs
+        else set()
+    )
+    timely_missing_states = sorted(
+        s for s in states if STATE_FIPS_TO_ABBR.get(s) not in have_timely
+    )
+    gaps["cms_timely"] = timely_missing_states
+    by_state["cms_timely"] = {s: [s] for s in timely_missing_states}
 
     summary = {w: len(gaps.get(w, [])) for w in PIPELINE_WORKERS}
     return {
         "captured_at": datetime.now(timezone.utc).isoformat(),
         "universe_county_count": len(county_list),
         "state_filter": sorted(state_filter) if state_filter else None,
+        "data_vintage": vintage,
         "gaps": gaps,
         "by_state": by_state,
         "summary": summary,
     }
+
+
+def _state_has_worker_gap(
+    by_state: dict[str, dict[str, list[str]]], state_fips: str, workers: tuple[str, ...]
+) -> bool:
+    for worker in workers:
+        if (by_state.get(worker) or {}).get(state_fips):
+            return True
+    return False
 
 
 def states_needing_work(
@@ -154,8 +217,9 @@ def states_needing_work(
     the inventory (caller scoped inventory via state_filter); still capped by
     ``max_states``.
 
-    When neither force nor exclusive: forced (if any) first, then remaining
-    gap states, capped by ``max_states`` (unscoped national continue).
+    When neither force nor exclusive: prefer class A (base-complete,
+    report-detail gaps only), then class B (other gaps), capped by
+    ``max_states``.
     """
     by_state: dict[str, dict[str, list[str]]] = inventory.get("by_state") or {}
     needed: set[str] = set()
@@ -168,7 +232,14 @@ def states_needing_work(
     elif exclusive:
         ordered = sorted(needed)
     else:
-        ordered = sorted(force) + sorted(needed - force)
+        class_a = sorted(
+            s
+            for s in needed
+            if not _state_has_worker_gap(by_state, s, BASE_WORKERS)
+            and _state_has_worker_gap(by_state, s, DETAIL_WORKERS)
+        )
+        class_b = sorted(s for s in needed if s not in set(class_a))
+        ordered = class_a + class_b
 
     if max_states is not None and max_states >= 0:
         return ordered[:max_states]

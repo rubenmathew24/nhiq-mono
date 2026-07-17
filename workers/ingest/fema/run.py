@@ -1,4 +1,4 @@
-"""FEMA NRI tract ingestion — smoke / metro_10 counties only."""
+"""FEMA NRI tract ingestion — smoke / metro_10 / national (batch) counties."""
 
 from __future__ import annotations
 
@@ -14,7 +14,7 @@ from ingest.checkpoints import geoids_with_fema_nri, log_skip
 from ingest.fema.client import build_out_fields, query_county_features
 from ingest.fema.transform import FEMA_NRI_HAZARD_PREFIXES, transform_tract_features
 from ingest.force import force_enabled
-from ingest.geo.scope import active_county_fips, assert_dev_scope
+from ingest.geo.scope import active_county_fips
 
 logger = logging.getLogger("fema")
 
@@ -52,7 +52,7 @@ class FemaNriWorker(BaseIngestionWorker):
         self._records: list[dict] = []
 
     def fetch(self) -> None:
-        assert_dev_scope()
+        # active_county_fips handles smoke / metro_10 / national (+ INGEST_STATE_BATCH)
         self._allow = active_county_fips(database_url=self.database_url)
         tract_map = _load_tract_geoids_by_county(self.database_url, self._allow)
         pending_counties: list[str] = []

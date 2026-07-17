@@ -1,6 +1,8 @@
 -- Report sub-scores: score_detail JSONB + FEMA NRI + CMS Timely measures.
--- Apply on existing Compose volumes after init.sql bootstrap:
+-- Apply on existing Azure / Compose volumes (idempotent; does NOT truncate data):
+--   See docs/azure-setup-and-cicd.md §16 "Schema on Azure (workers)".
 --   psql "$DATABASE_URL" -f infra/sql/007_report_detail.sql
+-- Fresh volumes: also covered by infra/sql/init.sql.
 
 ALTER TABLE neighborhood_scores
   ADD COLUMN IF NOT EXISTS score_detail JSONB NOT NULL DEFAULT '{}'::jsonb;

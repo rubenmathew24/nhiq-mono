@@ -1,4 +1,4 @@
-"""CMS Timely & Effective Care ingestion — smoke / metro_10 only."""
+"""CMS Timely & Effective Care ingestion — smoke / metro_10 / national (batch)."""
 
 from __future__ import annotations
 
@@ -14,7 +14,7 @@ from ingest.cms_timely.client import (
     iter_dataset_pages,
 )
 from ingest.cms_timely.transform import transform_measure_rows
-from ingest.geo.scope import active_state_abbrs, assert_dev_scope
+from ingest.geo.scope import active_state_abbrs
 
 logger = logging.getLogger("cms_timely")
 
@@ -69,7 +69,7 @@ class CmsTimelyWorker(BaseIngestionWorker):
         self._records: list[dict] = []
 
     def fetch(self) -> None:
-        assert_dev_scope()
+        # active_state_abbrs → active_county_fips (national requires INGEST_STATE_BATCH)
         self._states = active_state_abbrs(database_url=self.database_url)
         self._providers = _load_hospital_provider_ids(self.database_url, self._states)
         self.logger.info(

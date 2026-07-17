@@ -27,6 +27,7 @@ from ingest.fixtures.canonical_addresses import (
     default_fixture_county_fips,
     parse_county_allowlist,
 )
+from ingest.fixtures.constants import DATA_VINTAGE
 from ingest.geo.jurisdictions import STATE_FIPS_TO_ABBR
 from ingest.geo.scope import load_national_universe_counties
 
@@ -52,6 +53,8 @@ JOB_NAMES = (
     "urban",
     "acs",
     "bls",
+    "fema",
+    "cms_timely",
     "scoring",
 )
 
@@ -268,12 +271,23 @@ def compute_job_statuses(cur, counties: frozenset[str], scope: str) -> list[JobS
         )
     )
 
-    # acs — geoid prefix = county
+    # acs — every tract has ACS row with total_population
     cur.execute(
         """
-        SELECT DISTINCT LEFT(geoid, 5) AS cf
-        FROM acs_indicators
-        WHERE LEFT(geoid, 5) = ANY(%s)
+        WITH scoped AS (
+            SELECT geoid, (state_fips || county_fips) AS cf
+            FROM census_tracts
+            WHERE (state_fips || county_fips) = ANY(%s)
+        )
+        SELECT s.cf
+        FROM scoped s
+        LEFT JOIN acs_indicators a
+          ON a.geoid = s.geoid
+         AND a.geo_level = 'tract'
+         AND a.total_population IS NOT NULL
+        GROUP BY s.cf
+        HAVING COUNT(*) > 0
+           AND COUNT(*) FILTER (WHERE a.geoid IS NOT NULL) = COUNT(*)
         """,
         (county_list,),
     )
@@ -284,7 +298,7 @@ def compute_job_statuses(cur, counties: frozenset[str], scope: str) -> list[JobS
             _pct(len(acs_ok), n),
             len(acs_ok),
             n,
-            {"missing": sorted(set(county_list) - acs_ok)},
+            {"missing": sorted(set(county_list) - acs_ok), "metric": "tracts_with_population"},
         )
     )
 
@@ -308,7 +322,74 @@ def compute_job_statuses(cur, counties: frozenset[str], scope: str) -> list[JobS
         )
     )
 
-    # scoring — tracts with fbi_cde safety / tracts in scope
+    # fema — counties where every tract has fema_nri_tracts
+    cur.execute(
+        """
+        WITH scoped AS (
+            SELECT geoid, (state_fips || county_fips) AS cf
+            FROM census_tracts
+            WHERE (state_fips || county_fips) = ANY(%s)
+        )
+        SELECT s.cf
+        FROM scoped s
+        LEFT JOIN fema_nri_tracts f ON f.geoid = s.geoid
+        GROUP BY s.cf
+        HAVING COUNT(*) > 0
+           AND COUNT(*) FILTER (WHERE f.geoid IS NOT NULL) = COUNT(*)
+        """,
+        (county_list,),
+    )
+    fema_ok = _county_set_from_rows(cur.fetchall())
+    statuses.append(
+        JobStatus(
+            "fema",
+            _pct(len(fema_ok), n),
+            len(fema_ok),
+            n,
+            {"missing": sorted(set(county_list) - fema_ok)},
+        )
+    )
+
+    # cms_timely — states where every hospital has timely measures
+    cur.execute(
+        """
+        WITH hospitals_in AS (
+            SELECT cms_provider_id, state
+            FROM hospitals
+            WHERE state = ANY(%s)
+        ),
+        hospital_counts AS (
+            SELECT state, COUNT(*)::int AS n FROM hospitals_in GROUP BY state
+        ),
+        timely_counts AS (
+            SELECT h.state, COUNT(DISTINCT h.cms_provider_id)::int AS n
+            FROM hospitals_in h
+            INNER JOIN hospital_timely_measures t
+              ON t.cms_provider_id = h.cms_provider_id
+             AND t.data_vintage = %s
+            GROUP BY h.state
+        )
+        SELECT hc.state
+        FROM hospital_counts hc
+        LEFT JOIN timely_counts tc ON tc.state = hc.state
+        WHERE hc.n = 0 OR COALESCE(tc.n, 0) = hc.n
+        """,
+        (state_abbrs, DATA_VINTAGE),
+    )
+    timely_ok = {str(r[0]) for r in cur.fetchall() if r and r[0]}
+    no_hosp = set(state_abbrs) - cms_ok
+    timely_done_set = timely_ok | no_hosp
+    statuses.append(
+        JobStatus(
+            "cms_timely",
+            _pct(len(timely_done_set), len(state_abbrs)),
+            len(timely_done_set),
+            len(state_abbrs),
+            {"missing_states": sorted(set(state_abbrs) - timely_done_set)},
+        )
+    )
+
+    # scoring — tracts with fbi_cde + non-empty score_detail
     cur.execute(
         """
         SELECT COUNT(*)::int
@@ -325,6 +406,8 @@ def compute_job_statuses(cur, counties: frozenset[str], scope: str) -> list[JobS
         INNER JOIN census_tracts t ON t.geoid = s.geoid
         WHERE (t.state_fips || t.county_fips) = ANY(%s)
           AND s.score_sources->'safety'->>'source_id' = 'fbi_cde'
+          AND s.score_detail IS NOT NULL
+          AND s.score_detail <> '{}'::jsonb
         """,
         (county_list,),
     )
@@ -335,7 +418,7 @@ def compute_job_statuses(cur, counties: frozenset[str], scope: str) -> list[JobS
             _pct(score_done, tract_total),
             score_done,
             tract_total,
-            {"metric": "tracts_with_safety_fbi_cde"},
+            {"metric": "tracts_with_fbi_cde_and_score_detail"},
         )
     )
 

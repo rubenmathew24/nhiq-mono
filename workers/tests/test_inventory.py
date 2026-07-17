@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from ingest.inventory import (
     PIPELINE_WORKERS,
+    WORKER_ACA_JOB,
     build_inventory,
     states_needing_work,
     workers_needed_for_state,
@@ -32,7 +33,11 @@ def test_build_inventory_gaps_with_mocked_done(monkeypatch):
     def hospitals(_url, abbrs):
         return {"RI"}  # RI done; CA not
 
+    def timely(_url, abbrs, data_vintage=None):
+        return set(abbrs)
+
     monkeypatch.setattr("ingest.inventory.states_with_hospitals", hospitals)
+    monkeypatch.setattr("ingest.inventory.states_with_timely_measures", timely)
 
     inv = build_inventory(
         "postgresql://x",
@@ -45,6 +50,7 @@ def test_build_inventory_gaps_with_mocked_done(monkeypatch):
             "urban": empty_done,
             "acs": empty_done,
             "bls": empty_done,
+            "fema": empty_done,
             "scoring": empty_done,
         },
     )
@@ -53,9 +59,12 @@ def test_build_inventory_gaps_with_mocked_done(monkeypatch):
     assert inv["gaps"]["epa"] == []
     assert "44" not in inv["by_state"]["epa"]
     assert inv["by_state"]["census"]["44"] == ["44003"]
-    # CMS: RI has hospitals, CA does not
     assert "44" not in inv["gaps"]["cms"]
     assert "06" in inv["gaps"]["cms"]
+    assert "fema" in inv["summary"]
+    assert "cms_timely" in inv["summary"]
+    assert WORKER_ACA_JOB["fema"] == "niq-worker-fema"
+    assert WORKER_ACA_JOB["cms_timely"] == "niq-worker-cms-timely"
 
 
 def test_workers_needed_skips_complete_worker():
@@ -69,6 +78,8 @@ def test_workers_needed_skips_complete_worker():
             "urban": {},
             "acs": {},
             "bls": {},
+            "fema": {},
+            "cms_timely": {},
             "scoring": {},
         }
     }
@@ -88,6 +99,8 @@ def test_states_needing_work_respects_max():
             "urban": {},
             "acs": {},
             "bls": {},
+            "fema": {},
+            "cms_timely": {},
             "scoring": {},
         }
     }
@@ -106,10 +119,12 @@ def test_force_states_included_even_when_complete():
             "urban": {},
             "acs": {},
             "bls": {},
+            "fema": {},
+            "cms_timely": {},
             "scoring": {},
         }
     }
     assert states_needing_work(inv, max_states=5, force_states=frozenset({"25"})) == [
         "25"
     ]
-    assert workers_needed_for_state(inv, "25", force=True)[0] == "census"
+    assert workers_needed_for_state(inv, "25", force=True) == list(PIPELINE_WORKERS)
