@@ -3,7 +3,8 @@
 Usage:
   python -m ingest.orchestrate.run
 
-Env: DATABASE_URL, AZURE_*, ORCH_MAX_STATE_UNITS, ORCH_STATE_FILTER, ORCH_FORCE_STATES
+Env: DATABASE_URL, AZURE_*, ORCH_MAX_STATE_UNITS, ORCH_STATE_FILTER,
+     ORCH_FORCE_STATES, ORCH_STATE_EXCLUDE
 """
 
 from __future__ import annotations
@@ -80,6 +81,7 @@ def run() -> int:
 
     state_filter = parse_state_batch(os.getenv("ORCH_STATE_FILTER"))
     force_states = parse_state_batch(os.getenv("ORCH_FORCE_STATES")) or frozenset()
+    exclude_states = parse_state_batch(os.getenv("ORCH_STATE_EXCLUDE")) or frozenset()
     max_states = _max_states()
     client = client_from_env()
 
@@ -87,12 +89,20 @@ def run() -> int:
     logger.info("Inventory summary %s", inv["summary"])
     if force_states:
         logger.info("Force states=%s", sorted(force_states))
+    if exclude_states:
+        logger.info("Exclude states=%s", sorted(exclude_states))
+        overridden = sorted(force_states & exclude_states)
+        if overridden:
+            logger.info(
+                "Force overrides exclude for states=%s", overridden
+            )
     # Explicit force and/or state_filter lists are exclusive (no gap padding).
     exclusive = bool(force_states) or bool(state_filter)
     states = states_needing_work(
         inv,
         max_states=max_states,
         force_states=force_states,
+        exclude_states=exclude_states,
         exclusive=exclusive,
     )
     if not states:

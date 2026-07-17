@@ -206,6 +206,7 @@ def states_needing_work(
     *,
     max_states: int | None = None,
     force_states: frozenset[str] | None = None,
+    exclude_states: frozenset[str] | None = None,
     exclusive: bool = False,
 ) -> list[str]:
     """Ordered list of state FIPS to process this orchestrator run.
@@ -220,12 +221,17 @@ def states_needing_work(
     When neither force nor exclusive: prefer class A (base-complete,
     report-detail gaps only), then class B (other gaps), capped by
     ``max_states``.
+
+    ``exclude_states`` drops FIPS from the ordered list before the
+    ``max_states`` slice so blacklisted states do not consume the quota.
+    FIPS also listed in ``force_states`` are kept (force overrides exclude).
     """
     by_state: dict[str, dict[str, list[str]]] = inventory.get("by_state") or {}
     needed: set[str] = set()
     for worker in PIPELINE_WORKERS:
         needed.update((by_state.get(worker) or {}).keys())
     force = frozenset(force_states or ())
+    exclude = frozenset(exclude_states or ())
 
     if force:
         ordered = sorted(force)
@@ -240,6 +246,9 @@ def states_needing_work(
         )
         class_b = sorted(s for s in needed if s not in set(class_a))
         ordered = class_a + class_b
+
+    if exclude:
+        ordered = [s for s in ordered if s in force or s not in exclude]
 
     if max_states is not None and max_states >= 0:
         return ordered[:max_states]
