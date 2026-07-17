@@ -25,6 +25,9 @@ def test_education_and_economic_summaries_when_sourced():
     assert "Placeholder" not in edu
     assert "Placeholder" not in econ
     assert "NCES" in edu
+    assert "staffing signals" not in edu.lower()
+    assert "Urban Institute CCD" not in edu
+    assert "by level" in edu
     assert "ACS" in econ
 
 

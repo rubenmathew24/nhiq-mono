@@ -1,6 +1,7 @@
 name: National ingest
 
 # Manual trigger only — does NOT run on push to master/dev (Deploy is separate).
+# Worker list (incl. fema / cms_timely) comes from orchestrator inventory code — no new inputs here.
 on:
   workflow_dispatch:
     inputs:

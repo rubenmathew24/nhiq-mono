@@ -1,6 +1,6 @@
 from datetime import datetime, timezone
 
-from app.schemas.score import Factor, NeighborhoodReport, ScoreDimension
+from app.schemas.score import Factor, NeighborhoodReport, ScoreDimension, SubScore
 
 # Stable demo lookups for local report smoke tests when Redis has no entry.
 DEMO_LOOKUPS: dict[str, dict] = {
@@ -14,17 +14,25 @@ DEMO_LOOKUPS: dict[str, dict] = {
 }
 
 
+def _subs(*pairs: tuple[str, str, float]) -> list[SubScore]:
+    return [
+        SubScore(id=i, label=lab, score=sc, available=True) for i, lab, sc in pairs
+    ]
+
+
 def _dimension(
     score: float,
     label: str,
     summary: str,
     factors: list[Factor],
+    sub_scores: list[SubScore] | None = None,
 ) -> ScoreDimension:
     return ScoreDimension(
         score=score,
         label=label,
         summary=summary,
         factors=factors,
+        sub_scores=sub_scores or [],
     )
 
 
@@ -50,16 +58,19 @@ def build_mock_report(
             "Strong hospital access and short ER wait times for this area.",
             [
                 Factor(
-                    name="Nearest hospital",
-                    value="2.1 mi",
+                    name="Nearest ER",
+                    value="Demo Hospital · 2.1 mi · ★4",
                     impact="positive",
+                    tone_score=90,
                 ),
                 Factor(
-                    name="ER wait time",
-                    value="Below metro average",
+                    name="ER wait",
+                    value="22 min (state 35 · national 30)",
                     impact="positive",
+                    tone_score=80,
                 ),
             ],
+            _subs(("access", "Access", 90), ("quality", "Quality", 88), ("timeliness", "Timeliness", 80)),
         ),
         safety=_dimension(
             74,
@@ -67,16 +78,21 @@ def build_mock_report(
             "Crime rates are moderate and trending stable year over year.",
             [
                 Factor(
-                    name="Violent crime index",
-                    value="Near metro average",
+                    name="Violent crime vs state",
+                    value="Violent crime about the same as the state average (per resident)",
                     impact="neutral",
+                    tone_score=60,
                 ),
                 Factor(
-                    name="Property crime trend",
-                    value="Stable",
-                    impact="positive",
+                    name="Assault",
+                    value="Near average for the area",
+                    impact="neutral",
                 ),
             ],
+            _subs(
+                ("personal", "Crimes against people", 76),
+                ("property", "Crimes against property", 70),
+            ),
         ),
         environment=_dimension(
             74,
@@ -84,32 +100,41 @@ def build_mock_report(
             "Air quality is generally good with moderate seasonal flood risk.",
             [
                 Factor(
-                    name="Air quality index",
-                    value="Good",
+                    name="Average AQI",
+                    value="42 · Good",
                     impact="positive",
+                    tone_score=80,
                 ),
                 Factor(
                     name="Flood risk",
                     value="Moderate",
                     impact="negative",
+                    tone_score=45,
                 ),
             ],
+            _subs(("air_quality", "Air quality", 80), ("hazard", "Hazard risk", 55)),
         ),
         education=_dimension(
             91,
             "Schools",
-            "Highly rated public schools within a short commute.",
+            "Public schools nearby across grade levels.",
             [
                 Factor(
-                    name="Elementary rating",
-                    value="A",
+                    name="Nearest elementary",
+                    value="Demo Elem · 0.8 mi",
                     impact="positive",
+                    tone_score=90,
                 ),
                 Factor(
-                    name="High school rating",
-                    value="A-",
+                    name="Nearest high",
+                    value="Demo High · 2.0 mi",
                     impact="positive",
+                    tone_score=85,
                 ),
+            ],
+            [
+                SubScore(id="access", label="Access", score=95, available=True),
+                SubScore(id="staffing", label="Staffing", score=0.0, available=False),
             ],
         ),
         economic=_dimension(
@@ -118,16 +143,25 @@ def build_mock_report(
             "Solid employment base with moderate home-price growth.",
             [
                 Factor(
-                    name="Median income trend",
-                    value="Rising",
+                    name="Median household income",
+                    value="$85,000",
                     impact="positive",
+                    tone_score=72,
                 ),
                 Factor(
-                    name="Unemployment",
-                    value="Slightly above metro avg",
-                    impact="negative",
+                    name="County unemployment",
+                    value="4.2%",
+                    impact="neutral",
+                    tone_score=55,
+                ),
+                Factor(
+                    name="Share of labor force employed",
+                    value="95.1%",
+                    impact="positive",
+                    tone_score=80,
                 ),
             ],
+            _subs(("income", "Income", 72), ("labor", "Labor", 62)),
         ),
         narrative=(
             "Strong hospital access and top-rated schools, with moderate flood "

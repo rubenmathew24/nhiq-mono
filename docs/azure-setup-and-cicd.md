@@ -475,24 +475,55 @@ Ingest workers write **directly** to Azure Postgres (`niq-postgres` / `neighborh
 
 ### Manual jobs (resource group `neighborhoodiq-rg`, env `niq-env`)
 
-`niq-worker-geo`, `niq-worker-orchestrate`, `niq-worker-census`, `niq-worker-epa`, `niq-worker-cms`, `niq-worker-fbi`, `niq-worker-nces`, `niq-worker-urban`, `niq-worker-acs`, `niq-worker-bls`, `niq-worker-scoring`, **`niq-worker-status`**.
+`niq-worker-geo`, `niq-worker-orchestrate`, `niq-worker-census`, `niq-worker-epa`, `niq-worker-cms`, `niq-worker-fbi`, `niq-worker-nces`, `niq-worker-urban`, `niq-worker-acs`, `niq-worker-bls`, **`niq-worker-fema`**, **`niq-worker-cms-timely`**, `niq-worker-scoring`, **`niq-worker-status`**.
 
-Shape: trigger **Manual**, ~1 CPU / 2Gi, `--replica-timeout` 7200s (status/geo can use 600–3600s). Command form: `python` `-m` `<module>` (e.g. `ingest.geo.run`, `ingest.census.run`, `scoring.compute`, **`ingest.status`**).
+Shape: trigger **Manual**, ~1 CPU / 2Gi, `--replica-timeout` 7200s (status/geo can use 600–3600s). Command form: `python` `-m` `<module>` (e.g. `ingest.geo.run`, `ingest.census.run`, `ingest.fema.run`, `ingest.cms_timely.run`, `scoring.compute`, **`ingest.status`**).
+
+### Creating report-detail jobs (FEMA + CMS Timely)
+
+If missing, create like other ingest jobs (same image `neighborhoodiqacr.azurecr.io/neighborhoodiq-worker:dev`, same `WORKER-DATABASE-URL` secretref):
+
+| Job | Command |
+|-----|---------|
+| `niq-worker-fema` | `python` `-m` `ingest.fema.run` |
+| `niq-worker-cms-timely` | `python` `-m` `ingest.cms_timely.run` |
+
+No new API keys (public FEMA FeatureServer + CMS Provider Data Catalog). Rebuild/push the worker image after merging report-detail national support, then point both jobs at that tag.
 
 Status job env: `INGEST_SCOPE=metro_10` (or `smoke` / `national`), optional `INGEST_COUNTY_ALLOWLIST`, `DATABASE_URL` → `WORKER-DATABASE-URL`.
+
+### Report-detail promote → Azure smoke gate (before National Ingest)
+
+1. Merge feature to `dev`, promote `dev` → `master`; wait for Deploy (API/web) and rebuild/push the **worker** image used by ACA jobs.
+2. Apply [`infra/sql/007_report_detail.sql`](../infra/sql/007_report_detail.sql) on Azure Postgres (idempotent). Confirm `acs_indicators.total_population` exists (from `004` / init).
+3. Ensure `niq-worker-fema` and `niq-worker-cms-timely` exist (table above).
+4. **Smoke fill** (Benton County): set `INGEST_SCOPE=smoke` on acs / fema / cms_timely / scoring (or allowlist `05007`), then start in order:
+
+```powershell
+az containerapp job start --name niq-worker-acs --resource-group neighborhoodiq-rg
+az containerapp job start --name niq-worker-fema --resource-group neighborhoodiq-rg
+az containerapp job start --name niq-worker-cms-timely --resource-group neighborhoodiq-rg
+az containerapp job start --name niq-worker-scoring --resource-group neighborhoodiq-rg
+```
+
+5. Open production web → `609 SE Jamaica Dr, Bentonville, AR` → expand report must match the known-good local/dev expand UI (sub-scores, plain-English stats, hazard/wait when sources provided).
+6. **If smoke fails, do not start National Ingest.** Local Compose alone does not clear this gate.
+
+See also [`specs/005-national-report-detail/quickstart.md`](../specs/005-national-report-detail/quickstart.md).
 
 ### National ingest (50 states + DC, phased)
 
 See also [`specs/003-national-ingest/quickstart.md`](../specs/003-national-ingest/quickstart.md).
 
-1. Apply [`infra/sql/006_geo_counties.sql`](../infra/sql/006_geo_counties.sql).
+1. Apply [`infra/sql/006_geo_counties.sql`](../infra/sql/006_geo_counties.sql) (and **`007_report_detail.sql`** if not already applied for expand reports).
 2. Bootstrap registry (all included jurisdictions): `INGEST_GEO_LOAD_ALL=1` on `niq-worker-geo`, then start it.
-3. **Preferred:** GitHub → Actions → **National ingest** → Run workflow (`max_states`, optional `state_filter`, optional `force_states`). This starts `niq-worker-orchestrate`, which inventories DB gaps and only starts ACA jobs that still need work—or force-reruns all workers for states listed in `force_states`. **`force_states` / `state_filter` are exclusive lists** (no padding other gap states to fill `max_states`).
-4. Manual fallback: set on ingest/scoring jobs `INGEST_SCOPE=national`, `INGEST_STATE_BATCH=<SS>`; run workers in order; re-start to resume (`skip_checkpoint`). Set `INGEST_FORCE=1` to re-upsert without skip-done.
-5. Status with `INGEST_SCOPE=national` for Workbook % against full `geo_counties` universe. Orchestrator emits slim `INGEST_STATUS_SNAPSHOT` (metrics only; full detail in Postgres) after each worker and long workers pulse every ~15 counties (`INGEST_STATUS_EVERY_N`). ARM PATCH/START retries transient 429/5xx. Re-import [`infra/workbook-ingest-status.json`](../infra/workbook-ingest-status.json) after gallery changes (default Scope=`national`).
-6. Territories are **not** in v1; enable later by moving FIPS from `TERRITORY_STATE_FIPS` → `INCLUDED_STATE_FIPS` in code.
+3. **Preferred:** GitHub → Actions → **National ingest** → Run workflow (`max_states`, optional `state_filter`, optional `force_states`). This starts `niq-worker-orchestrate`, which inventories DB gaps (including FEMA, CMS Timely, ACS population, and empty `score_detail`) and only starts ACA jobs that still need work—or force-reruns all workers for states listed in `force_states`. **`force_states` / `state_filter` are exclusive lists** (no padding other gap states to fill `max_states`).
+4. **No force required for report-detail backfill:** states that already finished base ingest but lack hazard/timely/pop/`score_detail` remain gap states. Orchestrator **prefers** those states over virgin states when filling `max_states`. For a selected state it runs only missing stages (e.g. `fema` → `cms_timely` → `scoring`), not a full census…bls redo.
+5. Manual fallback: set on ingest/scoring jobs `INGEST_SCOPE=national`, `INGEST_STATE_BATCH=<SS>`; run workers in order; re-start to resume (`skip_checkpoint`). Set `INGEST_FORCE=1` to re-upsert without skip-done (formula changes / bad data only).
+6. Status with `INGEST_SCOPE=national` for Workbook % against full `geo_counties` universe (includes `fema` / `cms_timely`). Orchestrator emits slim `INGEST_STATUS_SNAPSHOT` after each worker. Re-import [`infra/workbook-ingest-status.json`](../infra/workbook-ingest-status.json) if the gallery is stale (jobs table expands dynamically).
+7. Territories are **not** in v1; enable later by moving FIPS from `TERRITORY_STATE_FIPS` → `INCLUDED_STATE_FIPS` in code.
 
-Orchestrator job: `niq-worker-orchestrate`. GitHub Actions **National ingest** injects the Deploy service principal from `AZURE_CREDENTIALS` into the job env on each run (no separate Key Vault SP required). The SP must be able to start/update jobs in the RG. **Do not** wire national ingest to the `master` Deploy workflow.
+Orchestrator job: `niq-worker-orchestrate`. GitHub Actions **National ingest** injects the Deploy service principal from `AZURE_CREDENTIALS` into the job env on each run (no separate Key Vault SP required). The SP must be able to start/update jobs in the RG. **Do not** wire national ingest to the `master` Deploy workflow. Workflow inputs unchanged — new jobs are discovered via worker inventory code.
 
 ### Ingest progress Workbook (ops)
 
@@ -517,12 +548,12 @@ WHERE scope = 'metro_10'
 ORDER BY job_name;
 ```
 
-Scoring % = tracts with `score_sources.safety.source_id = 'fbi_cde'` / tracts in scope (not merely “row exists”).
+Scoring % = tracts with `score_sources.safety.source_id = 'fbi_cde'` **and** non-empty `score_detail` / tracts in scope. Status also reports `fema` and `cms_timely` completion.
 
 ### Run order and resume
 
 ```text
-census → epa → cms → fbi → nces → urban → acs → bls → scoring
+census → epa → cms → fbi → nces → urban → acs → bls → fema → cms_timely → scoring
 # anytime: status (refresh Workbook)
 ```
 
@@ -535,7 +566,7 @@ az containerapp job execution list --name niq-worker-census --resource-group nei
 
 ### Schema on Azure (workers)
 
-Applied manually (in order) when missing: `infra/sql/init.sql`, `002_raw_ingest_tables.sql`, `003_score_sources.sql`, `004_safety_education_economic.sql`, **`005_ingest_status.sql`**, **`006_geo_counties.sql`**. Same Docker `psql` + `sslmode=require` pattern as §7.
+Applied manually (in order) when missing: `infra/sql/init.sql`, `002_raw_ingest_tables.sql`, `003_score_sources.sql`, `004_safety_education_economic.sql`, **`005_ingest_status.sql`**, **`006_geo_counties.sql`**, **`007_report_detail.sql`** (`score_detail`, `fema_nri_tracts`, `hospital_timely_measures`). Confirm `acs_indicators.total_population` (004/init). Same Docker `psql` + `sslmode=require` pattern as §7. **Do not truncate** existing national data.
 
 ### Explicitly deferred
 

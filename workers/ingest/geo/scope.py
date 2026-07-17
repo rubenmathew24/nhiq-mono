@@ -36,6 +36,15 @@ def resolve_ingest_scope() -> str:
     return raw
 
 
+def assert_dev_scope() -> None:
+    """Refuse national scope — smoke/metro_10 workers only."""
+    if resolve_ingest_scope() == "national":
+        raise RuntimeError(
+            "This worker does not support INGEST_SCOPE=national. "
+            "Use smoke or metro_10."
+        )
+
+
 def parse_state_batch(raw: str | None) -> frozenset[str] | None:
     if raw is None:
         return None

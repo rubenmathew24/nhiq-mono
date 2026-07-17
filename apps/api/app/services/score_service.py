@@ -9,7 +9,13 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
-from app.schemas.score import DimensionSource, Factor, NeighborhoodReport, ScoreDimension
+from app.schemas.score import (
+    DimensionSource,
+    Factor,
+    NeighborhoodReport,
+    ScoreDimension,
+    SubScore,
+)
 
 
 class ScoreUnavailableError(Exception):
@@ -24,17 +30,80 @@ def _label_for(score: float) -> str:
     return "Limited"
 
 
-def _dimension(
+def _parse_sub_scores(raw: Any) -> list[SubScore]:
+    if not isinstance(raw, list):
+        return []
+    out: list[SubScore] = []
+    for item in raw:
+        if not isinstance(item, dict):
+            continue
+        sid = item.get("id")
+        label = item.get("label")
+        if not isinstance(sid, str) or not isinstance(label, str):
+            continue
+        try:
+            score = float(item.get("score", 0))
+        except (TypeError, ValueError):
+            score = 0.0
+        available = item.get("available", True)
+        out.append(
+            SubScore(
+                id=sid,
+                label=label,
+                score=score,
+                available=bool(available),
+            )
+        )
+    return out
+
+
+def _parse_stats_factors(raw: Any) -> list[Factor]:
+    if not isinstance(raw, list):
+        return []
+    out: list[Factor] = []
+    for item in raw:
+        if not isinstance(item, dict):
+            continue
+        name = item.get("name")
+        value = item.get("value")
+        impact = item.get("impact", "neutral")
+        if not isinstance(name, str) or not isinstance(value, str):
+            continue
+        if impact not in ("positive", "negative", "neutral"):
+            impact = "neutral"
+        tone_raw = item.get("tone_score")
+        tone_score: float | None = None
+        if isinstance(tone_raw, (int, float)):
+            tone_score = float(tone_raw)
+        out.append(
+            Factor(name=name, value=value, impact=impact, tone_score=tone_score)
+        )
+    return out
+
+
+def _dimension_from_detail(
     score: float,
     label: str,
     summary: str,
-    factors: list[Factor] | None = None,
+    detail_block: Any,
+    *,
+    fallback_factors: list[Factor] | None = None,
 ) -> ScoreDimension:
+    block = detail_block if isinstance(detail_block, dict) else {}
+    sub_scores = _parse_sub_scores(block.get("sub_scores"))
+    factors = _parse_stats_factors(block.get("stats"))
+    if not factors and fallback_factors:
+        factors = fallback_factors
+    # Note limited data in summary when any sub-score unavailable
+    if sub_scores and any(not s.available for s in sub_scores):
+        if "limited" not in summary.lower() and "unavailable" not in summary.lower():
+            summary = f"{summary} Some sub-scores use limited data."
     return ScoreDimension(
         score=float(score),
         label=label,
         summary=summary,
-        factors=factors or [],
+        factors=factors,
+        sub_scores=sub_scores,
     )
 
 
@@ -99,8 +168,8 @@ def _education_summary(score: float, sources: dict[str, DimensionSource]) -> str
     source_id = src.source_id if src else None
     if source_id == "nces_urban":
         return (
-            f"{_label_for(score)} school access and staffing signals "
-            f"from NCES locations plus Urban Institute CCD stats nearby."
+            f"{_label_for(score)} school access from NCES public-school "
+            f"locations by level (staffing limited until zoning-backed assignment)."
         )
     if source_id == "default":
         return (
@@ -164,7 +233,7 @@ async def fetch_score_row(
             """
             SELECT geoid, healthcare_score, safety_score, environment_score,
                    education_score, economic_score, overall_score,
-                   data_vintage, computed_at, score_sources
+                   data_vintage, computed_at, score_sources, score_detail
             FROM neighborhood_scores
             WHERE geoid = :geoid AND data_vintage = :vintage
             LIMIT 1
@@ -189,7 +258,28 @@ async def build_report_from_scores(
     if not geoid or geoid == "unknown":
         raise ScoreUnavailableError("No census tract for this lookup")
 
-    row = await fetch_score_row(session, geoid)
+    try:
+        row = await fetch_score_row(session, geoid)
+    except Exception:
+        # Older DBs without score_detail column — retry without it
+        result = await session.execute(
+            text(
+                """
+                SELECT geoid, healthcare_score, safety_score, environment_score,
+                       education_score, economic_score, overall_score,
+                       data_vintage, computed_at, score_sources
+                FROM neighborhood_scores
+                WHERE geoid = :geoid AND data_vintage = :vintage
+                LIMIT 1
+                """
+            ),
+            {"geoid": geoid, "vintage": settings.SCORE_DATA_VINTAGE},
+        )
+        mapped = result.mappings().first()
+        row = dict(mapped) if mapped else None
+        if row is not None:
+            row["score_detail"] = {}
+
     if row is None:
         raise ScoreUnavailableError(
             "Neighborhood score is not available for this address yet."
@@ -203,28 +293,21 @@ async def build_report_from_scores(
     overall = float(row["overall_score"] or 0)
     vintage = str(row["data_vintage"] or settings.SCORE_DATA_VINTAGE)
     sources = _parse_sources(row.get("score_sources"))
+    detail_raw = row.get("score_detail") or {}
+    if isinstance(detail_raw, str):
+        import json
+
+        try:
+            detail_raw = json.loads(detail_raw)
+        except json.JSONDecodeError:
+            detail_raw = {}
+    detail = detail_raw if isinstance(detail_raw, dict) else {}
+
     computed = row.get("computed_at")
     if isinstance(computed, datetime):
         computed_at = computed.astimezone(timezone.utc).isoformat()
     else:
         computed_at = datetime.now(timezone.utc).isoformat()
-
-    env_src = sources.get("environment")
-    env_factors = [
-        Factor(
-            name="Environment score",
-            value=f"{environment:.1f}",
-            impact="positive" if environment >= 60 else "neutral",
-        )
-    ]
-    if env_src:
-        env_factors.append(
-            Factor(
-                name="Data source",
-                value=env_src.source_id,
-                impact="neutral",
-            )
-        )
 
     return NeighborhoodReport(
         address=lookup["address_raw"],
@@ -233,59 +316,35 @@ async def build_report_from_scores(
         latitude=float(lookup["latitude"]),
         longitude=float(lookup["longitude"]),
         overall_score=overall,
-        healthcare=_dimension(
+        healthcare=_dimension_from_detail(
             healthcare,
             "Healthcare",
             f"{_label_for(healthcare)} hospital access based on nearby emergency facilities.",
-            [
-                Factor(
-                    name="Healthcare score",
-                    value=f"{healthcare:.1f}",
-                    impact="positive" if healthcare >= 60 else "neutral",
-                )
-            ],
+            detail.get("healthcare"),
         ),
-        safety=_dimension(
+        safety=_dimension_from_detail(
             safety,
             "Safety",
             _safety_summary(safety, sources),
-            [
-                Factor(
-                    name="Safety score",
-                    value=f"{safety:.1f}",
-                    impact="positive" if safety >= 60 else "neutral",
-                )
-            ],
+            detail.get("safety"),
         ),
-        environment=_dimension(
+        environment=_dimension_from_detail(
             environment,
             "Environment",
             _environment_summary(environment, sources),
-            env_factors,
+            detail.get("environment"),
         ),
-        education=_dimension(
+        education=_dimension_from_detail(
             education,
             "Schools",
             _education_summary(education, sources),
-            [
-                Factor(
-                    name="Education score",
-                    value=f"{education:.1f}",
-                    impact="positive" if education >= 60 else "neutral",
-                )
-            ],
+            detail.get("education"),
         ),
-        economic=_dimension(
+        economic=_dimension_from_detail(
             economic,
             "Economy",
             _economic_summary(economic, sources),
-            [
-                Factor(
-                    name="Economic score",
-                    value=f"{economic:.1f}",
-                    impact="positive" if economic >= 60 else "neutral",
-                )
-            ],
+            detail.get("economic"),
         ),
         narrative=_narrative(
             healthcare=healthcare,
