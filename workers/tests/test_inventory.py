@@ -128,3 +128,60 @@ def test_force_states_included_even_when_complete():
         "25"
     ]
     assert workers_needed_for_state(inv, "25", force=True) == list(PIPELINE_WORKERS)
+
+
+def test_exclude_states_skips_before_max_and_fills_quota():
+    inv = {
+        "by_state": {
+            "census": {
+                "01": ["01001"],
+                "06": ["06001"],
+                "44": ["44001"],
+                "48": ["48001"],
+            },
+            "epa": {},
+            "cms": {},
+            "fbi": {},
+            "nces": {},
+            "urban": {},
+            "acs": {},
+            "bls": {},
+            "fema": {},
+            "cms_timely": {},
+            "scoring": {},
+        }
+    }
+    # Empty exclude unchanged
+    assert states_needing_work(inv, max_states=2) == ["01", "06"]
+    assert states_needing_work(
+        inv, max_states=2, exclude_states=frozenset()
+    ) == ["01", "06"]
+    # Exclude early gaps — next states fill max_states
+    assert states_needing_work(
+        inv, max_states=2, exclude_states=frozenset({"01", "06"})
+    ) == ["44", "48"]
+
+
+def test_force_overrides_exclude():
+    inv = {
+        "by_state": {
+            "census": {"06": ["06001"], "44": ["44001"]},
+            "epa": {},
+            "cms": {},
+            "fbi": {},
+            "nces": {},
+            "urban": {},
+            "acs": {},
+            "bls": {},
+            "fema": {},
+            "cms_timely": {},
+            "scoring": {},
+        }
+    }
+    ordered = states_needing_work(
+        inv,
+        max_states=5,
+        force_states=frozenset({"06"}),
+        exclude_states=frozenset({"06"}),
+    )
+    assert ordered == ["06"]

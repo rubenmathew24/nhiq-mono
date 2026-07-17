@@ -17,6 +17,10 @@ on:
         description: Optional comma-separated state FIPS to force full re-ingest (bypass skip-done)
         required: false
         default: ""
+      state_exclude:
+        description: Optional comma-separated state FIPS to skip (blacklist); force_states overrides
+        required: false
+        default: ""
 
 jobs:
   orchestrate:
@@ -33,6 +37,7 @@ jobs:
           MAX_STATES: ${{ github.event.inputs.max_states }}
           STATE_FILTER: ${{ github.event.inputs.state_filter }}
           FORCE_STATES: ${{ github.event.inputs.force_states }}
+          STATE_EXCLUDE: ${{ github.event.inputs.state_exclude }}
           AZURE_CREDENTIALS: ${{ secrets.AZURE_CREDENTIALS }}
           AZURE_RESOURCE_GROUP: ${{ secrets.AZURE_RESOURCE_GROUP }}
         run: |
@@ -50,11 +55,13 @@ jobs:
           max_states = os.environ.get("MAX_STATES") or "5"
           state_filter = os.environ.get("STATE_FILTER") or ""
           force_states = os.environ.get("FORCE_STATES") or ""
+          state_exclude = os.environ.get("STATE_EXCLUDE") or ""
           rg = os.environ["AZURE_RESOURCE_GROUP"]
           env_vars = [
               f"ORCH_MAX_STATE_UNITS={max_states}",
               f"ORCH_STATE_FILTER={state_filter}",
               f"ORCH_FORCE_STATES={force_states}",
+              f"ORCH_STATE_EXCLUDE={state_exclude}",
               f"AZURE_RESOURCE_GROUP={rg}",
               f"AZURE_SUBSCRIPTION_ID={sub}",
               f"AZURE_TENANT_ID={tenant}",

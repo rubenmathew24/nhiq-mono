@@ -67,6 +67,26 @@ def test_states_needing_work_unscoped_still_pads():
     assert ordered == ["06", "44"]
 
 
+def test_states_needing_work_exclude_fills_quota():
+    inv = {
+        "by_state": {
+            "census": {"06": ["06001"], "25": ["25001"], "44": ["44001"]},
+            "epa": {},
+            "cms": {},
+            "fbi": {},
+            "nces": {},
+            "urban": {},
+            "acs": {},
+            "bls": {},
+            "scoring": {},
+        }
+    }
+    ordered = states_needing_work(
+        inv, max_states=2, exclude_states=frozenset({"06"})
+    )
+    assert ordered == ["25", "44"]
+
+
 def test_workers_needed_force_returns_full_pipeline():
     inv = {
         "by_state": {
