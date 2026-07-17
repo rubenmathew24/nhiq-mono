@@ -61,7 +61,7 @@ An operator (or developer) starts the local database, runs the EPA air quality i
 
 An operator runs the census tract boundary ingestion job for the **fixture-scoped** geography set and ends up with tract geographies sufficient to locate each of the 10 test addresses and support spatial joins for scoring.
 
-**Why this priority**: Tract geometry is the spatial backbone for NeighborhoodIQ scores; healthcare distance and tract-level scoring depend on it.
+**Why this priority**: Tract geometry is the spatial backbone for NeighborhoodInsight scores; healthcare distance and tract-level scoring depend on it.
 
 **Independent Test**: Run census tract ingestion for the fixture geography set against the local PostGIS-enabled database; confirm each fixture address can be matched to a tract with geometry usable for distance/centroid queries.
 

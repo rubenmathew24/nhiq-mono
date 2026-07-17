@@ -16,11 +16,11 @@ const spaceGrotesk = Space_Grotesk({
 });
 
 export const metadata: Metadata = {
-  title: "NeighborhoodIQ — Know your neighborhood before you buy",
+  title: "NeighborhoodInsight — Know your neighborhood before you buy",
   description:
     "AI-powered neighborhood intelligence for U.S. home buyers. Healthcare, safety, environment, schools, and economy — scored for any address.",
   openGraph: {
-    title: "NeighborhoodIQ — Know your neighborhood before you buy",
+    title: "NeighborhoodInsight — Know your neighborhood before you buy",
     description:
       "AI-powered neighborhood intelligence for home buyers. Score any U.S. address on healthcare, safety, environment, schools, and economy.",
     type: "website",

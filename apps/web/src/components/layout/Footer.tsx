@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { MapPin } from "lucide-react";
+import { Eye } from "lucide-react";
 import { footerContent, navLinks } from "@/content/landing";
 import { auth } from "@/lib/auth";
 
@@ -15,10 +15,10 @@ export default async function Footer() {
           <div>
             <div className="flex items-center gap-2.5">
               <div className="w-8 h-8 rounded-lg bg-primary text-primary-foreground grid place-items-center">
-                <MapPin className="w-4 h-4" strokeWidth={2.5} aria-hidden="true" />
+                <Eye className="w-4 h-4" strokeWidth={2.5} aria-hidden="true" />
               </div>
               <span className="font-display font-bold text-foreground">
-                Neighborhood<span className="text-mint">IQ</span>
+                Neighborhood<span className="text-mint">Insight</span>
               </span>
             </div>
             <p className="mt-3 text-xs text-muted-foreground max-w-sm">
@@ -45,7 +45,7 @@ export default async function Footer() {
         </div>
 
         <p className="mt-8 text-xs text-muted-foreground">
-          © {year} NeighborhoodIQ · Data sources: {footerContent.dataSources}
+          © {year} NeighborhoodInsight · Data sources: {footerContent.dataSources}
         </p>
       </div>
     </footer>

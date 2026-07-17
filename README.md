@@ -1,6 +1,6 @@
-# NeighborhoodIQ
+# NeighborhoodInsight
 
-Monorepo for the NeighborhoodIQ platform — Next.js frontend, FastAPI backend, data ingestion workers, and infrastructure.
+Monorepo for the NeighborhoodInsight platform — Next.js frontend, FastAPI backend, data ingestion workers, and infrastructure.
 
 ## Quick start
 

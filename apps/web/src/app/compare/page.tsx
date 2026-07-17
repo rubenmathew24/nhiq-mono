@@ -4,7 +4,7 @@ import Footer from "@/components/layout/Footer";
 import { ButtonWithArrow } from "@/components/ui/Button";
 
 export const metadata = {
-  title: "Compare — NeighborhoodIQ",
+  title: "Compare — NeighborhoodInsight",
   description: "Side-by-side address comparison is coming soon.",
 };
 

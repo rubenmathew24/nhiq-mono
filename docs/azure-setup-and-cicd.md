@@ -1,6 +1,6 @@
 # Azure setup and CI/CD (as-built)
 
-This document describes **what we actually set up** for NeighborhoodIQ production hosting on Azure and continuous deploy from GitHub. It is written for someone new to Azure and cloud hosting, and is suitable to hand to an LLM that should walk through every step in plain language.
+This document describes **what we actually set up** for NeighborhoodInsight production hosting on Azure and continuous deploy from GitHub. It is written for someone new to Azure and cloud hosting, and is suitable to hand to an LLM that should walk through every step in plain language.
 
 It is **not** a secret store. Never put passwords, tokens, or Key Vault values into this file (or into git). Describe *where* secrets live and *how* to set them.
 
@@ -331,7 +331,7 @@ API defaults in [`apps/api/app/core/config.py`](../apps/api/app/core/config.py) 
 Set env on `niq-api` as a **JSON list** (Portal is often safer than PowerShell quoting):
 
 ```text
-CORS_ORIGINS=["https://niq-web.blackstone-0becc01d.eastus.azurecontainerapps.io","http://localhost:3000","https://neighborhoodiq.com"]
+CORS_ORIGINS=["https://niq-web.blackstone-0becc01d.eastus.azurecontainerapps.io","http://localhost:3000","https://nh-iq.com"]
 ```
 
 Verify with OPTIONS; allowed origins get `access-control-allow-origin`. Starlette returns **400** on preflight when the origin is **not** allow-listed (often *without* that header).
@@ -537,7 +537,7 @@ az containerapp job start --name niq-worker-status --resource-group neighborhood
 ```
 
 3. Import workbook gallery JSON [`infra/workbook-ingest-status.json`](../infra/workbook-ingest-status.json):
-   - Portal → Log Analytics workspace **`niq-logs`** → **Workbooks** → **New** / **Advanced editor** → paste JSON → **Save** as “NeighborhoodIQ ingest status”.
+   - Portal → Log Analytics workspace **`niq-logs`** → **Workbooks** → **New** / **Advanced editor** → paste JSON → **Save** as “NeighborhoodInsight ingest status”.
    - Bind the workbook to `niq-logs`. Table name may be `ContainerAppConsoleLogs_CL` or `ContainerAppConsoleLogs` depending on diagnostic schema — adjust the KQL if empty.
 4. Spot-check SQL (Docker `psql` as in §7):
 

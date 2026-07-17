@@ -22,7 +22,7 @@ git --version
 ```bash
 mkdir neighborhoodiq && cd neighborhoodiq
 git init
-echo "# NeighborhoodIQ" > README.md
+echo "# NeighborhoodInsight" > README.md
 ```
 
 ---
@@ -223,14 +223,14 @@ from app.api.v1.router import api_router
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Startup
-    print(f"Starting NeighborhoodIQ API — env: {settings.ENVIRONMENT}")
+    print(f"Starting NeighborhoodInsight API — env: {settings.ENVIRONMENT}")
     yield
     # Shutdown
     print("Shutting down")
 
 
 app = FastAPI(
-    title="NeighborhoodIQ API",
+    title="NeighborhoodInsight API",
     version="0.1.0",
     lifespan=lifespan,
     docs_url="/api/docs",
@@ -304,7 +304,7 @@ class Settings(BaseSettings):
     # CORS
     CORS_ORIGINS: List[str] = [
         "http://localhost:3000",
-        "https://neighborhoodiq.com",
+        "https://nh-iq.com",
     ]
 
     # Azure Storage

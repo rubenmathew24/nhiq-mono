@@ -1,4 +1,4 @@
-# NeighborhoodIQ Spec Kit — Git Workflow
+# NeighborhoodInsight Spec Kit — Git Workflow
 
 Canonical commit rhythm for Spec Kit feature branches. Skills that touch git **must** follow this file.
 

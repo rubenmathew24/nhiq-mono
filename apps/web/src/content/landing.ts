@@ -20,7 +20,7 @@ export const heroContent = {
   headline: "Know your neighborhood",
   headlineAccent: "before you buy.",
   subcopy:
-    "Zillow tells you what a home costs. NeighborhoodIQ tells you what living there actually feels like — healthcare, safety, environment, schools, and economic health, scored for any U.S. address.",
+    "Zillow tells you what a home costs. NeighborhoodInsight tells you what living there actually feels like — healthcare, safety, environment, schools, and economic health, scored for any U.S. address.",
   freeTierNote: "Free tier: 3 address lookups/month · No credit card required",
 };
 
@@ -52,7 +52,7 @@ export const problemContent = {
     "How do the schools actually stack up?",
   ],
   closing: "Buyers find out after closing.",
-  closingAccent: "NeighborhoodIQ changes that.",
+  closingAccent: "NeighborhoodInsight changes that.",
 };
 
 export interface ScoreDimension {

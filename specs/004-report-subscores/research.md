@@ -66,7 +66,7 @@ Preserve published overall weights. Within each category:
 **Quality**: reuse star map from nearest-3 ER avg.  
 **Timeliness**: map primary ED wait measure (prefer OP-18b or documented ED median minutes) vs state benchmark → 0–100 (at/below state → high).  
 **Personal / property (safety)**: personal = current HOM/ROB/ASS ratio map; property = BUR/LAR/MVT(/ARS) vs state with same curve.  
-**Hazard**: invert FEMA composite risk band/score to NeighborhoodIQ “higher = better” (e.g. Very High risk → low sub-score). Prefer `RISK_RATNG` band map + optional `RISK_SCORE` percentile.
+**Hazard**: invert FEMA composite risk band/score to NeighborhoodInsight “higher = better” (e.g. Very High risk → low sub-score). Prefer `RISK_RATNG` band map + optional `RISK_SCORE` percentile.
 
 **Rationale**: Matches research package; keeps backward-compatible scores when new tables empty.
 

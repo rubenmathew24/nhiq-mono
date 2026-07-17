@@ -70,7 +70,7 @@ Use those documents when detailing ETL for R1–R3; keep monorepo workers thin (
 ## Constitution Check
 
 *GATE: Must pass before Phase 0 research. Re-check after Phase 1 design.*
-*Source: `.specify/memory/constitution.md` (NeighborhoodIQ Constitution)*
+*Source: `.specify/memory/constitution.md` (NeighborhoodInsight Constitution)*
 
 - [x] **I. Locked Stack & Monorepo**: Python 3.12 workers under `workers/`; FastAPI in `apps/api`; PostGIS via Compose
 - [x] **II. Thin Client, Fat API**: Browser only searches/displays; scores assembled server-side

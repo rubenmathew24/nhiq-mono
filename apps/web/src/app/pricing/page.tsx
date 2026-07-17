@@ -9,8 +9,8 @@ import { pricingFootnote } from "@/content/landing";
 import { auth } from "@/lib/auth";
 
 export const metadata = {
-  title: "Upgrade — NeighborhoodIQ",
-  description: "Upgrade your NeighborhoodIQ plan for unlimited AI-powered reports.",
+  title: "Upgrade — NeighborhoodInsight",
+  description: "Upgrade your NeighborhoodInsight plan for unlimited AI-powered reports.",
 };
 
 export default async function PricingPage() {

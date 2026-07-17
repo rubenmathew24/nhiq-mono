@@ -39,7 +39,7 @@
 ## Constitution Check
 
 *GATE: Must pass before Phase 0 research. Re-check after Phase 1 design.*
-*Source: `.specify/memory/constitution.md` (NeighborhoodIQ Constitution v1.1.0)*
+*Source: `.specify/memory/constitution.md` (NeighborhoodInsight Constitution v1.1.0)*
 
 - [ ] **I. Locked Stack & Monorepo**: Plan stays within Next.js 14 / FastAPI
       (Python 3.12) / PostgreSQL+PostGIS / Redis / Azure Container Apps /
@@ -109,7 +109,7 @@ infra/
 └── bicep/
 ```
 
-**Structure Decision**: NeighborhoodIQ monorepo — place feature code under
+**Structure Decision**: NeighborhoodInsight monorepo — place feature code under
 `apps/web`, `apps/api`, and/or `workers/` per the constitution; do not
 introduce a parallel top-level app layout.
 

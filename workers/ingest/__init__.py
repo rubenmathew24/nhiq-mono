@@ -1,1 +1,1 @@
-"""NeighborhoodIQ ingestion workers package."""
+"""NeighborhoodInsight ingestion workers package."""

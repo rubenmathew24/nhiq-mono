@@ -13,13 +13,13 @@ Sync Impact Report
 - Follow-up TODOs: none
 -->
 
-# NeighborhoodIQ Constitution
+# NeighborhoodInsight Constitution
 
 ## Core Principles
 
 ### I. Locked Stack & Monorepo
 
-NeighborhoodIQ is a single Git monorepo. Application code lives under
+NeighborhoodInsight is a single Git monorepo. Application code lives under
 `apps/`, batch jobs under `workers/`, shared packages under `packages/`,
 Azure IaC under `infra/`, and Docker build contexts under `docker/`.
 

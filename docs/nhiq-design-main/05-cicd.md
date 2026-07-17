@@ -29,7 +29,7 @@ Set these in GitHub → Repo → Settings → Secrets and Variables → Actions:
 | `AZURE_CONTAINER_APP_API` | Container App name for api, e.g. `niq-api` |
 | `ANTHROPIC_API_KEY` | For runtime environment injection |
 | `MAPBOX_TOKEN` | For Next.js build arg |
-| `NEXT_PUBLIC_API_URL` | e.g. `https://api.neighborhoodiq.com` |
+| `NEXT_PUBLIC_API_URL` | e.g. `https://api.nh-iq.com` |
 
 ### Generate `AZURE_CREDENTIALS`
 

@@ -130,7 +130,7 @@ It MUST NOT:
 **Allowed git publish (success close only):** When the determined outcome is `closed` or
 `closed_with_warnings` (not `not_ready` / `cleanup_only`), this command **MUST** push the
 feature branch and open a draft/open pull request into **`dev`** per Step 12
-(NeighborhoodIQ Git Publish). That is the only exception to the usual no-push rule.
+(NeighborhoodInsight Git Publish). That is the only exception to the usual no-push rule.
 Never merge or auto-approve the PR.
 
 **Ownership Before Termination**: A process, container, or service MUST NOT be stopped unless
@@ -543,7 +543,7 @@ Omit the table only when no verification commands were discovered, and explain w
 
 Do not print secrets, raw environment variables, or unnecessarily long command output.
 
-### 12. NeighborhoodIQ Git Publish (success close only)
+### 12. NeighborhoodInsight Git Publish (success close only)
 
 Run this step **only** when the outcome from Step 10 is `closed` or `closed_with_warnings`.
 Skip entirely for `not_ready` and `cleanup_only`.

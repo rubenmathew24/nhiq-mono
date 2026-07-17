@@ -1,7 +1,7 @@
 #Requires -Version 5.1
 <#
 .SYNOPSIS
-  Start the NeighborhoodIQ monorepo (local dev or Docker).
+  Start the NeighborhoodInsight monorepo (local dev or Docker).
 
 .EXAMPLE
   .\scripts\start.ps1
@@ -121,7 +121,7 @@ function Start-Local {
     }
 
     Write-Host ""
-    Write-Host "NeighborhoodIQ - local dev" -ForegroundColor Green
+    Write-Host "NeighborhoodInsight - local dev" -ForegroundColor Green
     Write-Host "  Web:  http://localhost:3000"
     Write-Host "  API:  http://localhost:8000"
     Write-Host "  Docs: http://localhost:8000/api/docs"

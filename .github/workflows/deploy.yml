@@ -63,9 +63,6 @@ jobs:
           target: runner
           platforms: linux/amd64
           push: true
-          # One-shot: ignore GHA layer cache so a corrected NEXT_PUBLIC_API_URL
-          # cannot be skipped by a stale Next.js build layer.
-          no-cache: true
           tags: |
             ${{ secrets.ACR_LOGIN_SERVER }}/neighborhoodiq-web:${{ github.sha }}
             ${{ secrets.ACR_LOGIN_SERVER }}/neighborhoodiq-web:latest

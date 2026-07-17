@@ -52,7 +52,7 @@ You **MUST** consider the user input before proceeding (if not empty).
     After emitting the block above you MUST actually invoke the hook and wait for it to finish before continuing. Run it the same way you would run the command yourself in this agent/session (the invocation may differ from the literal `{command}` id shown above, e.g. a skills-mode agent runs it as `/skill:speckit-...` or `$speckit-...`). Emitting the block alone does not run the hook.
 - If no hooks are registered or `.specify/extensions.yml` does not exist, skip silently
 
-## NeighborhoodIQ Git Workflow (required)
+## NeighborhoodInsight Git Workflow (required)
 
 Follow `.cursor/skills/speckit-git-workflow.md`.
 
@@ -99,7 +99,7 @@ Follow `.cursor/skills/speckit-git-workflow.md`.
      - Display the table showing all checklists passed
      - Automatically proceed to step 3
 
-2b. **Commit #2 (Plan + Tasks)**: Perform the NeighborhoodIQ Git Workflow Commit #2. Do not start application changes until this completes (or is skipped as no-op).
+2b. **Commit #2 (Plan + Tasks)**: Perform the NeighborhoodInsight Git Workflow Commit #2. Do not start application changes until this completes (or is skipped as no-op).
 
 3. Load and analyze the implementation context:
    - **REQUIRED**: Read tasks.md for the complete task list and execution plan
@@ -188,7 +188,7 @@ Follow `.cursor/skills/speckit-git-workflow.md`.
    - Validate that tests pass and coverage meets requirements
    - Confirm the implementation follows the technical plan
 
-10. **Commit #3 (Implementation)**: If all required tasks are complete, perform the NeighborhoodIQ Git Workflow Commit #3 (no push unless user asks). Skip if halted early with open tasks.
+10. **Commit #3 (Implementation)**: If all required tasks are complete, perform the NeighborhoodInsight Git Workflow Commit #3 (no push unless user asks). Skip if halted early with open tasks.
 
 Note: This command assumes a complete task breakdown exists in tasks.md. If tasks are incomplete or missing, suggest running `/speckit-tasks` first to regenerate the task list.
 
