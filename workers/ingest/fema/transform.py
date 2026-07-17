@@ -6,7 +6,8 @@ from typing import Any
 
 from ingest.fixtures.constants import DATA_VINTAGE
 
-# Probe-aligned hazard prefixes (includes RFLD / ISTD from NRI layer naming).
+# Prefixes must match FeatureServer field names (*_RISKR). Layer uses ISTM/IFLD
+# (not older ISTD/RFLD names — those 400 the whole outFields query).
 FEMA_NRI_HAZARD_PREFIXES: tuple[str, ...] = (
     "AVLN",
     "CFLD",
@@ -16,17 +17,16 @@ FEMA_NRI_HAZARD_PREFIXES: tuple[str, ...] = (
     "HAIL",
     "HWAV",
     "HRCN",
-    "ISTD",
+    "ISTM",
     "LNDS",
     "LTNG",
-    "RFLD",
+    "IFLD",
     "SWND",
     "TRND",
     "TSUN",
     "VLCN",
     "WFIR",
     "WNTW",
-    "IFLD",
 )
 
 FEMA_NRI_HAZARD_PREFIX_TO_SLUG: dict[str, str] = {
@@ -39,10 +39,9 @@ FEMA_NRI_HAZARD_PREFIX_TO_SLUG: dict[str, str] = {
     "HRCN": "hurricane",
     "HWAV": "heat_wave",
     "IFLD": "inland_flooding",
-    "ISTD": "ice_storm",
+    "ISTM": "ice_storm",
     "LNDS": "landslide",
     "LTNG": "lightning",
-    "RFLD": "riverine_flooding",
     "SWND": "strong_wind",
     "TRND": "tornado",
     "TSUN": "tsunami",

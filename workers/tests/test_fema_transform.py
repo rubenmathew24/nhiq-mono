@@ -1,10 +1,26 @@
 """Tests for FEMA NRI transform helpers."""
 
+from ingest.fema.client import build_out_fields
 from ingest.fema.transform import (
+    FEMA_NRI_HAZARD_PREFIXES,
     build_geoid,
     build_hazards,
     transform_tract_feature,
 )
+
+
+def test_hazard_prefixes_match_current_arcgis_riskr_fields():
+    """ISTD/RFLD 400 the whole FeatureServer query; layer uses ISTM + IFLD."""
+    assert "ISTM" in FEMA_NRI_HAZARD_PREFIXES
+    assert "IFLD" in FEMA_NRI_HAZARD_PREFIXES
+    assert "ISTD" not in FEMA_NRI_HAZARD_PREFIXES
+    assert "RFLD" not in FEMA_NRI_HAZARD_PREFIXES
+    out = build_out_fields(FEMA_NRI_HAZARD_PREFIXES)
+    assert "ISTM_RISKR" in out
+    assert "IFLD_RISKR" in out
+    assert "ISTD_RISKR" not in out
+    assert "RFLD_RISKR" not in out
+
 
 
 def test_build_geoid_from_stcofips_and_tract():
