@@ -28,6 +28,15 @@ export interface Factor {
   name: string;
   value: string;
   impact: "positive" | "negative" | "neutral";
+  /** 0–100; when set, UI colors value with ScoreBar tiers */
+  tone_score?: number;
+}
+
+export interface SubScore {
+  id: string;
+  label: string;
+  score: number;
+  available?: boolean;
 }
 
 export interface ScoreDimension {
@@ -35,6 +44,7 @@ export interface ScoreDimension {
   label: string;
   summary: string;
   factors: Factor[];
+  sub_scores?: SubScore[];
 }
 
 export interface DimensionSource {

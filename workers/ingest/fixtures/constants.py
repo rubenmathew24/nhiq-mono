@@ -16,6 +16,9 @@ HOSPITAL_NEAR_MILES = 2.0
 HOSPITAL_FAR_MILES = 20.0
 HOSPITAL_SEARCH_RADIUS_MILES = 30.0
 
+# Schools expand: omit facilities farther than this (show no-schools-found instead).
+SCHOOL_MAX_EXPAND_MILES = 30.0
+
 SCORE_WEIGHTS = {
     "healthcare": 0.25,
     "safety": 0.25,
@@ -43,6 +46,8 @@ SOURCE_CMS_HOSPITALS = "cms_hospital_general_info"
 SOURCE_FBI_CDE = "fbi_cde"
 SOURCE_NCES_URBAN = "nces_urban"
 SOURCE_ACS_BLS = "acs_bls_laus"
+SOURCE_FEMA_NRI = "fema_nri"
+SOURCE_CMS_TIMELY = "cms_timely_effective_care"
 SOURCE_PLACEHOLDER = "placeholder"
 SOURCE_DEFAULT = "default"
 

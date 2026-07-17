@@ -31,6 +31,8 @@ CREATE TABLE IF NOT EXISTS neighborhood_scores (
     -- Per-dimension provenance for future "show sources" UI (JSONB object).
     -- Example: {"environment":{"source_id":"epa_aqs","reason":"primary","avg_aqi":42.1,"distinct_days":28}}
     score_sources JSONB NOT NULL DEFAULT '{}'::jsonb,
+    -- Sub-scores + expand stats for report accordion (see 007_report_detail.sql).
+    score_detail JSONB NOT NULL DEFAULT '{}'::jsonb,
     computed_at TIMESTAMPTZ DEFAULT NOW(),
     UNIQUE(geoid, data_vintage)
 );
@@ -237,11 +239,15 @@ CREATE TABLE IF NOT EXISTS acs_indicators (
     labor_force NUMERIC(12,2),
     employed NUMERIC(12,2),
     unemployed NUMERIC(12,2),
+    total_population NUMERIC(14,2),
     acs_year VARCHAR(8) NOT NULL,
     payload JSONB,
     updated_at TIMESTAMPTZ DEFAULT NOW(),
     UNIQUE (geoid, geo_level, acs_year)
 );
+
+-- Idempotent for DBs created before total_population existed
+ALTER TABLE acs_indicators ADD COLUMN IF NOT EXISTS total_population NUMERIC(14,2);
 
 CREATE INDEX IF NOT EXISTS idx_acs_geoid ON acs_indicators (geoid);
 
@@ -255,3 +261,39 @@ CREATE TABLE IF NOT EXISTS bls_laus_county (
 );
 
 CREATE INDEX IF NOT EXISTS idx_bls_laus_county ON bls_laus_county (county_fips);
+
+-- ── R4 Report detail (FEMA NRI + CMS Timely) ─────────────────
+CREATE TABLE IF NOT EXISTS fema_nri_tracts (
+    geoid VARCHAR(11) PRIMARY KEY,
+    state_fips VARCHAR(2),
+    county_fips VARCHAR(3),
+    risk_score NUMERIC(12,4),
+    risk_rating VARCHAR(64),
+    eal_score NUMERIC(12,4),
+    sovi_score NUMERIC(12,4),
+    resl_score NUMERIC(12,4),
+    hazards JSONB NOT NULL DEFAULT '{}'::jsonb,
+    data_vintage VARCHAR(10) NOT NULL DEFAULT '2026-Q3',
+    payload JSONB,
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_fema_nri_county ON fema_nri_tracts (state_fips, county_fips);
+
+CREATE TABLE IF NOT EXISTS hospital_timely_measures (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    cms_provider_id VARCHAR(10) NOT NULL,
+    measure_id VARCHAR(32) NOT NULL,
+    measure_name VARCHAR(255),
+    score_value NUMERIC(12,4),
+    score_text VARCHAR(64),
+    sample NUMERIC(12,2),
+    footnote TEXT,
+    state_score NUMERIC(12,4),
+    national_score NUMERIC(12,4),
+    start_date DATE,
+    end_date DATE,
+    data_vintage VARCHAR(10) NOT NULL DEFAULT '2026-Q3',
+    updated_at TIMESTAMPTZ DEFAULT NOW(),
+    UNIQUE (cms_provider_id, measure_id, data_vintage)
+);
+CREATE INDEX IF NOT EXISTS idx_timely_provider ON hospital_timely_measures (cms_provider_id);
