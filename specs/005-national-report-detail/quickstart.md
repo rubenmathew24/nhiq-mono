@@ -2,14 +2,14 @@
 
 **Feature**: `005-national-report-detail` | **Date**: 2026-07-16
 
-Validates production path for report expand data. **Not** satisfied by local Compose alone.
+Validates production path for report expand data. **Not** satisfied by local Compose alone. Full narrative: [`docs/azure-setup-and-cicd.md`](../../docs/azure-setup-and-cicd.md) §16.
 
 ## Prerequisites
 
 - [ ] Feature merged: `005` → `dev` → `master`; Deploy finished (API/web).
 - [ ] Worker image rebuilt/pushed; ACA jobs on new image.
 - [ ] `infra/sql/007_report_detail.sql` applied on Azure Postgres.
-- [ ] Jobs `niq-worker-fema` and `niq-worker-cms-timely` exist (see [contracts/azure-ops.md](./contracts/azure-ops.md)).
+- [ ] Jobs `niq-worker-fema` and `niq-worker-cms-timely` exist.
 
 ## V1 — Schema check
 
@@ -25,7 +25,7 @@ WHERE table_name = 'acs_indicators' AND column_name = 'total_population';
 
 ## V2 — Azure smoke fill
 
-Set smoke scope on relevant jobs (`INGEST_SCOPE=smoke`), then:
+Set `INGEST_SCOPE=smoke` on relevant jobs, then:
 
 ```powershell
 az containerapp job start --name niq-worker-acs --resource-group neighborhoodiq-rg
@@ -33,8 +33,6 @@ az containerapp job start --name niq-worker-fema --resource-group neighborhoodiq
 az containerapp job start --name niq-worker-cms-timely --resource-group neighborhoodiq-rg
 az containerapp job start --name niq-worker-scoring --resource-group neighborhoodiq-rg
 ```
-
-(Wait for each success / use execution list as in azure-setup.)
 
 **Expect**: Benton County tracts have non-empty `score_detail`; FEMA/timely rows where sources provide data.
 
@@ -55,10 +53,10 @@ GitHub → Actions → **National ingest** → e.g. `max_states=3`, empty `force
 ## V5 — Automated checks (dev machine)
 
 ```bash
-cd workers && PYTHONPATH=. python -m pytest tests/test_inventory_report_detail.py tests/test_acs_population_checkpoint.py tests/test_scope_national_fema_timely.py -q
+cd workers
+$env:PYTHONPATH="."
+python -m pytest tests/test_acs_population_checkpoint.py tests/test_inventory_report_detail.py tests/test_report_detail_checkpoints.py tests/test_scope_national_fema_timely.py tests/test_inventory.py -q
 ```
-
-(Exact test module names as implemented in `/speckit-implement`.)
 
 ## Contracts
 
@@ -72,6 +70,6 @@ cd workers && PYTHONPATH=. python -m pytest tests/test_inventory_report_detail.p
 |---------|--------------|
 | Orchestrator never picks AR/… | Inventory missing fema/timely/score_detail gaps |
 | ACS skipped but pop null | Checkpoint not requiring `total_population` |
-| `INGEST_SCOPE=national` refuse on fema/timely | `assert_dev_scope` not lifted |
+| `INGEST_SCOPE=national` refuse on fema/timely | Old worker image still calling `assert_dev_scope` |
 | Smoke UI stale | master Deploy / web image not updated |
 | Must use force_states for detail | Bug — force must not be required |

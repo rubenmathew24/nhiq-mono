@@ -133,4 +133,4 @@ Simpler operational definition matching clarify example:
 - Re-implementing score formulas / expand UI (004).
 - Auto-start national on Deploy.
 - Territories.
-- Provider-level CMS Timely download skip (optional later).
+- Provider-level CMS Timely download skip (optional later) — **still deferred after implement**; re-runs may re-fetch CMS pages but upserts remain idempotent (research §7).

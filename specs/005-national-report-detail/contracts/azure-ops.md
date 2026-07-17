@@ -2,7 +2,7 @@
 
 **Feature**: `005-national-report-detail` | **Date**: 2026-07-16
 
-Operator-facing contract for production. Authoritative narrative also lands in `docs/azure-setup-and-cicd.md`.
+Operator-facing contract. Narrative source of truth: [`docs/azure-setup-and-cicd.md`](../../../docs/azure-setup-and-cicd.md) §16.
 
 ## 1. Promote before smoke
 
@@ -16,7 +16,7 @@ Local Compose success does **not** clear the national gate.
 
 ## 2. Schema (Azure Postgres)
 
-Apply in order if missing:
+Apply in order if missing (see azure-setup §16 Schema on Azure):
 
 ```text
 … existing through 006 …
@@ -34,22 +34,22 @@ Expect: `neighborhood_scores.score_detail`, `fema_nri_tracts`, `hospital_timely_
 | `niq-worker-fema` | `python -m ingest.fema.run` | Same secrets/image as other ingest jobs |
 | `niq-worker-cms-timely` | `python -m ingest.cms_timely.run` | No new API keys |
 
-Add to orchestrator job map. Document in azure-setup §16 job list.
+Wire into orchestrator via `WORKER_ACA_JOB` in `workers/ingest/inventory.py`.
 
 ## 4. Azure smoke gate (required before National Ingest)
 
 1. Schema applied; worker image current.
 2. Configure smoke: `INGEST_SCOPE=smoke` (and/or allowlist `05007`) on fema, cms_timely, acs, scoring as needed.
-3. Run: `acs` (if pop gap) → `fema` → `cms_timely` → `scoring` (base data for Benton assumed present from prior metro/national).
-4. Open production site → Bentonville fixture address → expand report matches local/dev 004 experience.
+3. Run: `acs` (if pop gap) → `fema` → `cms_timely` → `scoring`.
+4. Open production site → Bentonville fixture → expand report matches local/dev 004 experience.
 5. **Stop** if gate fails; do not start National Ingest.
 
 ## 5. National Ingest after smoke
 
-GitHub → Actions → **National ingest** → `max_states` (e.g. 3), leave `force_states` empty.
+GitHub → Actions → **National ingest** → e.g. `max_states=3`, empty `force_states` / `state_filter`.
 
-Expect: previously gathered states with only report-detail gaps are preferred; only fema / cms_timely / acs-pop / scoring-detail jobs run for them.
+Expect: previously gathered states with only report-detail gaps are preferred; only fema / cms_timely / acs-pop / scoring-detail jobs run for them. **Force is not required.**
 
 ## 6. Status
 
-`niq-worker-status` includes `fema` and `cms_timely` in snapshot jobs after this feature. Re-run status; Workbook table expands dynamically.
+`niq-worker-status` includes `fema` and `cms_timely`. Scoring % requires non-empty `score_detail`. Re-run status; Workbook table expands dynamically from snapshot jobs.

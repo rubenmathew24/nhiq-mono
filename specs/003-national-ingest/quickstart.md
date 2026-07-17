@@ -23,9 +23,11 @@ Example Rhode Island (`44`):
 
 ```powershell
 # On each job: INGEST_SCOPE=national INGEST_STATE_BATCH=44
-# Order: census → epa → cms → fbi → nces → urban → acs → bls → scoring → status
+# Order: census → epa → cms → fbi → nces → urban → acs → bls → fema → cms_timely → scoring → status
 az containerapp job start --name niq-worker-census --resource-group neighborhoodiq-rg
 ```
+
+States that already finished base ingest but lack FEMA / CMS Timely / ACS population / `score_detail` are still inventory gaps — **do not** use `force_states` only to unlock report-detail. Prefer empty force and let the orchestrator pick them (it prefers those states over virgin ones). See [`specs/005-national-report-detail/quickstart.md`](../005-national-report-detail/quickstart.md).
 
 ## Restart safety
 

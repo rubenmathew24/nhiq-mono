@@ -25,8 +25,8 @@
 
 **Purpose**: Confirm repo assets and baseline for 005 work
 
-- [ ] T001 Verify `infra/sql/007_report_detail.sql` exists and matches plan (score_detail + fema_nri_tracts + hospital_timely_measures); note any gaps vs `infra/sql/init.sql` mirror
-- [ ] T002 [P] Confirm Compose already defines `worker-fema` / `worker-cms-timely` in `docker-compose.yml` (no duplicate services); list ACA job names to add in docs (`niq-worker-fema`, `niq-worker-cms-timely`)
+- [x] T001 Verify `infra/sql/007_report_detail.sql` exists and matches plan (score_detail + fema_nri_tracts + hospital_timely_measures); note any gaps vs `infra/sql/init.sql` mirror
+- [x] T002 [P] Confirm Compose already defines `worker-fema` / `worker-cms-timely` in `docker-compose.yml` (no duplicate services); list ACA job names to add in docs (`niq-worker-fema`, `niq-worker-cms-timely`)
 
 ---
 
@@ -36,13 +36,13 @@
 
 **⚠️ CRITICAL**: No user story implementation that depends on national FEMA/Timely or gap inventory should start until this phase is complete
 
-- [ ] T003 Replace `assert_dev_scope()` with national-capable scope (smoke | metro_10 | national + `INGEST_STATE_BATCH` when national) in `workers/ingest/fema/run.py`
-- [ ] T004 [P] Replace `assert_dev_scope()` with national-capable scope (same pattern as other national workers) in `workers/ingest/cms_timely/run.py`
-- [ ] T005 Tighten `counties_with_acs` in `workers/ingest/checkpoints.py` so a county is done only when tract ACS rows exist **and** `total_population IS NOT NULL` (per `data-model.md` / research §4)
-- [ ] T006 [P] Add county-level FEMA done helper (e.g. `counties_with_fema_nri`) in `workers/ingest/checkpoints.py` using tract coverage vs `fema_nri_tracts`
-- [ ] T007 [P] Add state-level CMS Timely done helper (e.g. `states_with_timely_measures`) in `workers/ingest/checkpoints.py` for hospitals in-scope vs `hospital_timely_measures` + active vintage
-- [ ] T008 [P] Add / extend scoring done helper so counties need fbi_cde safety **and** non-empty `score_detail` for active vintage in `workers/ingest/checkpoints.py` (align with `workers/scoring/compute.py` empty-detail re-score)
-- [ ] T009 Update `workers/tests/test_scope_refuse_national.py` (or replace) so FEMA/CMS Timely national-with-batch is allowed and national-without-batch still fails clearly
+- [x] T003 Replace `assert_dev_scope()` with national-capable scope (smoke | metro_10 | national + `INGEST_STATE_BATCH` when national) in `workers/ingest/fema/run.py`
+- [x] T004 [P] Replace `assert_dev_scope()` with national-capable scope (same pattern as other national workers) in `workers/ingest/cms_timely/run.py`
+- [x] T005 Tighten `counties_with_acs` in `workers/ingest/checkpoints.py` so a county is done only when tract ACS rows exist **and** `total_population IS NOT NULL` (per `data-model.md` / research §4)
+- [x] T006 [P] Add county-level FEMA done helper (e.g. `counties_with_fema_nri`) in `workers/ingest/checkpoints.py` using tract coverage vs `fema_nri_tracts`
+- [x] T007 [P] Add state-level CMS Timely done helper (e.g. `states_with_timely_measures`) in `workers/ingest/checkpoints.py` for hospitals in-scope vs `hospital_timely_measures` + active vintage
+- [x] T008 [P] Add / extend scoring done helper so counties need fbi_cde safety **and** non-empty `score_detail` for active vintage in `workers/ingest/checkpoints.py` (align with `workers/scoring/compute.py` empty-detail re-score)
+- [x] T009 Update `workers/tests/test_scope_refuse_national.py` (or replace) so FEMA/CMS Timely national-with-batch is allowed and national-without-batch still fails clearly
 
 **Checkpoint**: Foundation ready — US1 docs and US3 inventory can proceed
 
@@ -60,9 +60,9 @@
 
 ### Implementation for User Story 1
 
-- [ ] T010 [US1] Document `infra/sql/007_report_detail.sql` (and `total_population` confirm) in the Azure schema apply list in `docs/azure-setup-and-cicd.md` (§16 Schema on Azure)
-- [ ] T011 [P] [US1] Add brief operator note at top of `infra/sql/007_report_detail.sql` pointing to azure-setup apply-on-existing-volume pattern (idempotent, no truncate)
-- [ ] T012 [US1] Cross-link schema step from `specs/005-national-report-detail/contracts/azure-ops.md` §2 to the azure-setup section (keep contract accurate)
+- [x] T010 [US1] Document `infra/sql/007_report_detail.sql` (and `total_population` confirm) in the Azure schema apply list in `docs/azure-setup-and-cicd.md` (§16 Schema on Azure)
+- [x] T011 [P] [US1] Add brief operator note at top of `infra/sql/007_report_detail.sql` pointing to azure-setup apply-on-existing-volume pattern (idempotent, no truncate)
+- [x] T012 [US1] Cross-link schema step from `specs/005-national-report-detail/contracts/azure-ops.md` §2 to the azure-setup section (keep contract accurate)
 
 **Checkpoint**: US1 complete — prod schema runbook is discoverable
 
@@ -76,13 +76,13 @@
 
 ### Tests for User Story 2
 
-- [ ] T013 [P] [US2] Add/adjust pytest that smoke/metro scopes still work for FEMA and CMS Timely entrypoints in `workers/tests/test_scope_national_fema_timely.py` (or extend T009 module)
+- [x] T013 [P] [US2] Add/adjust pytest that smoke/metro scopes still work for FEMA and CMS Timely entrypoints in `workers/tests/test_scope_national_fema_timely.py` (or extend T009 module)
 
 ### Implementation for User Story 2
 
-- [ ] T014 [US2] Expand smoke gate section in `docs/azure-setup-and-cicd.md` (promote `005→dev→master`, worker image, `INGEST_SCOPE=smoke`, job order acs→fema→cms_timely→scoring, Bentonville UI check, **do not** start National Ingest on fail)
-- [ ] T015 [P] [US2] Align `specs/005-national-report-detail/quickstart.md` V1–V3 with the azure-setup smoke section (same commands / expectations)
-- [ ] T016 [P] [US2] Ensure `specs/005-national-report-detail/contracts/azure-ops.md` §1 and §4 match the documented promote + smoke gate
+- [x] T014 [US2] Expand smoke gate section in `docs/azure-setup-and-cicd.md` (promote `005→dev→master`, worker image, `INGEST_SCOPE=smoke`, job order acs→fema→cms_timely→scoring, Bentonville UI check, **do not** start National Ingest on fail)
+- [x] T015 [P] [US2] Align `specs/005-national-report-detail/quickstart.md` V1–V3 with the azure-setup smoke section (same commands / expectations)
+- [x] T016 [P] [US2] Ensure `specs/005-national-report-detail/contracts/azure-ops.md` §1 and §4 match the documented promote + smoke gate
 
 **Checkpoint**: US2 complete — Azure smoke gate is an explicit ops checklist
 
@@ -96,19 +96,19 @@
 
 ### Tests for User Story 3 (REQUIRED — Principle VI)
 
-- [ ] T017 [P] [US3] Unit tests for ACS population done-check in `workers/tests/test_acs_population_checkpoint.py`
-- [ ] T018 [P] [US3] Unit tests for `states_needing_work` class A-before-B priority and `workers_needed_for_state` detail-only stages in `workers/tests/test_inventory_report_detail.py`
-- [ ] T019 [P] [US3] Unit tests for FEMA county / CMS Timely state / scoring score_detail checkpoint helpers in `workers/tests/test_report_detail_checkpoints.py`
+- [x] T017 [P] [US3] Unit tests for ACS population done-check in `workers/tests/test_acs_population_checkpoint.py`
+- [x] T018 [P] [US3] Unit tests for `states_needing_work` class A-before-B priority and `workers_needed_for_state` detail-only stages in `workers/tests/test_inventory_report_detail.py`
+- [x] T019 [P] [US3] Unit tests for FEMA county / CMS Timely state / scoring score_detail checkpoint helpers in `workers/tests/test_report_detail_checkpoints.py`
 
 ### Implementation for User Story 3
 
-- [ ] T020 [US3] Extend `PIPELINE_WORKERS` and `WORKER_ACA_JOB` with `fema` → `niq-worker-fema` and `cms_timely` → `niq-worker-cms-timely` (order: … bls → fema → cms_timely → scoring) in `workers/ingest/inventory.py`
-- [ ] T021 [US3] Wire `build_inventory` gaps for `fema`, `cms_timely`, tightened `acs`, and score_detail-aware `scoring` using checkpoint helpers in `workers/ingest/inventory.py`
-- [ ] T022 [US3] Implement class A / class B ordering in `states_needing_work` in `workers/ingest/inventory.py` per research §5 and `contracts/national-orchestrator.md` (preserve force/exclusive behavior)
-- [ ] T023 [US3] Verify orchestrator starts new ACA job names via inventory map in `workers/ingest/orchestrate/run.py` (fix imports/maps if hard-coded)
-- [ ] T024 [US3] Extend `JOB_NAMES` and completion % for `fema` and `cms_timely` (and score_detail-aware scoring if needed) in `workers/ingest/status.py`
-- [ ] T025 [P] [US3] Confirm `workers/ingest/acs/run.py` uses updated `counties_with_acs` (no separate force path required for pop backfill)
-- [ ] T026 [US3] Update `specs/003-national-ingest/quickstart.md` pipeline order to include fema → cms_timely before scoring and note report-detail gap-fill without force
+- [x] T020 [US3] Extend `PIPELINE_WORKERS` and `WORKER_ACA_JOB` with `fema` → `niq-worker-fema` and `cms_timely` → `niq-worker-cms-timely` (order: … bls → fema → cms_timely → scoring) in `workers/ingest/inventory.py`
+- [x] T021 [US3] Wire `build_inventory` gaps for `fema`, `cms_timely`, tightened `acs`, and score_detail-aware `scoring` using checkpoint helpers in `workers/ingest/inventory.py`
+- [x] T022 [US3] Implement class A / class B ordering in `states_needing_work` in `workers/ingest/inventory.py` per research §5 and `contracts/national-orchestrator.md` (preserve force/exclusive behavior)
+- [x] T023 [US3] Verify orchestrator starts new ACA job names via inventory map in `workers/ingest/orchestrate/run.py` (fix imports/maps if hard-coded)
+- [x] T024 [US3] Extend `JOB_NAMES` and completion % for `fema` and `cms_timely` (and score_detail-aware scoring if needed) in `workers/ingest/status.py`
+- [x] T025 [P] [US3] Confirm `workers/ingest/acs/run.py` uses updated `counties_with_acs` (no separate force path required for pop backfill)
+- [x] T026 [US3] Update `specs/003-national-ingest/quickstart.md` pipeline order to include fema → cms_timely before scoring and note report-detail gap-fill without force
 
 **Checkpoint**: US3 complete — national path can backfill report-detail on previously gathered states without force
 
@@ -126,11 +126,11 @@
 
 ### Implementation for User Story 4
 
-- [ ] T027 [US4] Add `niq-worker-fema` and `niq-worker-cms-timely` to the manual ACA job list and run-order diagram in `docs/azure-setup-and-cicd.md` §16
-- [ ] T028 [P] [US4] Document how to create the two ACA jobs (image, command, secrets, timeout) in `docs/azure-setup-and-cicd.md` (or linked subsection)
-- [ ] T029 [P] [US4] Document status/Workbook expectations for new jobs in `docs/azure-setup-and-cicd.md` (re-run `niq-worker-status`; dynamic jobs table)
-- [ ] T030 [US4] Sync `specs/005-national-report-detail/contracts/azure-ops.md` §3–§6 with final azure-setup wording
-- [ ] T031 [P] [US4] Add failure-signal / no-force note to National ingest section in `docs/azure-setup-and-cicd.md` pointing at report-detail backfill behavior
+- [x] T027 [US4] Add `niq-worker-fema` and `niq-worker-cms-timely` to the manual ACA job list and run-order diagram in `docs/azure-setup-and-cicd.md` §16
+- [x] T028 [P] [US4] Document how to create the two ACA jobs (image, command, secrets, timeout) in `docs/azure-setup-and-cicd.md` (or linked subsection)
+- [x] T029 [P] [US4] Document status/Workbook expectations for new jobs in `docs/azure-setup-and-cicd.md` (re-run `niq-worker-status`; dynamic jobs table)
+- [x] T030 [US4] Sync `specs/005-national-report-detail/contracts/azure-ops.md` §3–§6 with final azure-setup wording
+- [x] T031 [P] [US4] Add failure-signal / no-force note to National ingest section in `docs/azure-setup-and-cicd.md` pointing at report-detail backfill behavior
 
 **Checkpoint**: US4 complete — ops docs match contracts
 
@@ -140,10 +140,10 @@
 
 **Purpose**: Consistency and quickstart dry-run readiness
 
-- [ ] T032 [P] Run `workers` pytest modules added/updated for 005 (`test_acs_population_checkpoint.py`, `test_inventory_report_detail.py`, `test_report_detail_checkpoints.py`, scope tests) and fix regressions
-- [ ] T033 [P] Re-read `specs/005-national-report-detail/quickstart.md` against implemented inventory/docs; fix command/name drift
-- [ ] T034 Confirm `.github/workflows/national-ingest.yml` needs no input changes (orchestrator discovers jobs via code); add a one-line comment in workflow or azure-setup if helpful
-- [ ] T035 Mark any deferred CMS Timely fetch-skip optimization as out of scope in `specs/005-national-report-detail/research.md` Notes if still deferred after implement
+- [x] T032 [P] Run `workers` pytest modules added/updated for 005 (`test_acs_population_checkpoint.py`, `test_inventory_report_detail.py`, `test_report_detail_checkpoints.py`, scope tests) and fix regressions
+- [x] T033 [P] Re-read `specs/005-national-report-detail/quickstart.md` against implemented inventory/docs; fix command/name drift
+- [x] T034 Confirm `.github/workflows/national-ingest.yml` needs no input changes (orchestrator discovers jobs via code); add a one-line comment in workflow or azure-setup if helpful
+- [x] T035 Mark any deferred CMS Timely fetch-skip optimization as out of scope in `specs/005-national-report-detail/research.md` Notes if still deferred after implement
 
 ---
 
