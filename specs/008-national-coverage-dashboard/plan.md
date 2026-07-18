@@ -6,7 +6,7 @@
 
 ## Summary
 
-Add a public `/coverage` page and a public FastAPI read endpoint that report national data coverage overall, by source, and by state using the same denominators as national ingest status (007): `geo_counties` for county-grain jobs; state grain for CMS / CMS Timely; scoring done at county grain with fbi_cde + non-empty `score_detail`.
+Add a public `/coverage` page and a public FastAPI read endpoint that report national data coverage using the same denominators as national ingest status (007): `geo_counties` for county-grain jobs; state grain for CMS / CMS Timely; scoring done at county grain with fbi_cde + non-empty `score_detail`. The web UI has two tabs — **Overall** (national per-source table) and **By state** (per-state table with a source filter that includes **Overall** plus each job).
 
 ## Technical Context
 

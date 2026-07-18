@@ -6,7 +6,7 @@
 
 **Status**: Draft
 
-**Input**: User description: "Add a public dashboard page on the site that shows how much of the national data has been loaded — overall, by state, and by source — with no auth. Use correct expected denominators from the national ingest redesign. Deliver via Spec Kit on the existing 007 branch."
+**Input**: User description: "Add a public dashboard page on the site that shows how much of the national data has been loaded — overall and by state (with a source filter including overall) — with no auth. Use correct expected denominators from the national ingest redesign. Deliver via Spec Kit on the existing 007 branch."
 
 ## User Scenarios & Testing *(mandatory)*
 
@@ -26,33 +26,20 @@ A visitor opens a public coverage page on the website and immediately sees how m
 
 ---
 
-### User Story 2 - Browse coverage by data source (Priority: P1)
+### User Story 2 - Browse coverage by state (with source filter) (Priority: P1)
 
-A visitor can focus on one source at a time (or see all sources listed) to understand which pipeline stages are lagging nationwide — e.g. hazards vs schools vs scoring — using the correct grain for each source.
+A visitor switches to a **By state** view and picks a filter: **Overall** (mean of sources) or one tracked ingest/scoring source. They see a per-state table for that filter — so they can spot lagging states for a single pipeline stage or for overall completeness — using the correct grain for each source. No separate “by source” tab: national per-source rows live on the Overall tab; geographic drill-down is always by state.
 
-**Why this priority**: Operators and stakeholders need source-level truth, not a single opaque number.
+**Why this priority**: Geographic unevenness is the main story during a multi-day national ingest; source lag is already visible on Overall.
 
-**Independent Test**: Compare each source’s done/total on the page against the known national completion rules for that source (county vs state grain).
-
-**Acceptance Scenarios**:
-
-1. **Given** national data is partially loaded, **When** the visitor views by-source coverage, **Then** each tracked ingest/scoring source shows done count, total expected, and percentage against the national universe for that source’s grain.
-2. **Given** CMS and CMS Timely are state-grain sources, **When** those rows are shown, **Then** totals reflect the expected state count for 50+DC (not county count).
-
----
-
-### User Story 3 - Browse coverage by state (Priority: P1)
-
-A visitor can switch to a by-state view and see, for each included state (and DC), how complete that jurisdiction is for the tracked sources — so they can see which states are missing data without auth.
-
-**Why this priority**: Geographic unevenness is the main story during a multi-day national ingest.
-
-**Independent Test**: Pick a state known to be fully loaded and one known incomplete; confirm the by-state view reflects that difference using that state’s county (or state-grain) expected totals from the national registry.
+**Independent Test**: Pick a state known to be fully loaded and one known incomplete; confirm the by-state view reflects that difference for both Overall and a single source, using that state’s county (or state-grain) expected totals from the national registry. Confirm CMS/Timely use state-grain totals when those filters are selected.
 
 **Acceptance Scenarios**:
 
-1. **Given** some states are complete for a source and others are not, **When** the visitor opens the by-state view, **Then** each included state shows coverage for the tracked sources against that state’s expected units.
-2. **Given** the visitor is on the coverage page, **When** they switch among overall, by source, and by state presentations, **Then** they can understand national coverage without leaving the page or authenticating.
+1. **Given** national data is partially loaded, **When** the visitor opens By state and selects a source, **Then** each included state shows done count, total expected, and percentage for that source against that state’s expected units (national summary for the selected source also shown).
+2. **Given** CMS and CMS Timely are state-grain sources, **When** those filters are selected, **Then** totals reflect the expected state count for 50+DC (not county count).
+3. **Given** the visitor selects **Overall** in By state, **When** the state table renders, **Then** each state shows mean-of-sources % (no fake done/total), and the summary uses the same overall mean as the national headline.
+4. **Given** the visitor is on the coverage page, **When** they switch between Overall and By state, **Then** they can understand national coverage without leaving the page or authenticating.
 
 ---
 
@@ -69,12 +56,12 @@ A visitor can switch to a by-state view and see, for each included state (and DC
 ### Functional Requirements
 
 - **FR-001**: The product MUST expose a public web page (path `/coverage`) that requires no authentication.
-- **FR-002**: The page MUST present national coverage in three ways: overall, by source, and by state.
+- **FR-002**: The page MUST present national coverage in two tabs: **Overall** (national per-source table) and **By state** (per-state breakdown with a source filter that includes **Overall** plus each tracked job).
 - **FR-003**: Coverage denominators MUST use the full included national universe (50 states + DC) from the county registry for county-grain sources — not “only counties already loaded into census.”
 - **FR-004**: Scoring coverage MUST use county-grain done-ness consistent with national ingest redesign (every tract in the county has required safety source + non-empty score detail) against the national county total.
 - **FR-005**: CMS and CMS Timely coverage MUST use state-grain totals for the included jurisdictions.
-- **FR-006**: By-state coverage MUST use each state’s share of the national registry as the expected total for county-grain sources (and state-grain rules for CMS/Timely).
-- **FR-007**: Coverage data MUST be served by the product API as a read-only public contract; the web page MUST not query the database or invent completion math in the browser beyond display formatting.
+- **FR-006**: By-state coverage MUST use each state’s share of the national registry as the expected total for county-grain sources (and state-grain rules for CMS/Timely). When the filter is Overall, each state shows mean-of-sources % only (display formatting; API still returns per-source state stats).
+- **FR-007**: Coverage data MUST be served by the product API as a read-only public contract; the web page MUST not query the database or invent completion math in the browser beyond display formatting (including mean-of-sources for the Overall filter).
 - **FR-008**: The API response MUST include enough structure for overall summary, per-source national stats, and per-state breakdowns (done/total/percent or equivalent).
 - **FR-009**: Existing authenticated `/dashboard` (saved lookups) MUST remain unchanged in purpose and auth requirements.
 - **FR-010**: Smoke/metro fixture scopes are not required on this public page; the page is national-coverage oriented.
@@ -90,9 +77,9 @@ A visitor can switch to a by-state view and see, for each included state (and DC
 
 ### Measurable Outcomes
 
-- **SC-001**: A visitor can open `/coverage` without signing in and see overall and by-source national percentages within a few seconds of a successful API response.
+- **SC-001**: A visitor can open `/coverage` without signing in and see overall and by-source national percentages (Overall tab) within a few seconds of a successful API response.
 - **SC-002**: With a known partial nation, scoring and other county-grain sources never report near-100% solely because only a subset of states exist in tract tables — percentages stay consistent with full-registry denominators.
-- **SC-003**: A visitor can identify at least one lagging source and at least one lagging state from the page without operator tools or auth.
+- **SC-003**: A visitor can identify at least one lagging source (Overall tab) and at least one lagging state (By state tab) from the page without operator tools or auth.
 - **SC-004**: CMS/Timely rows use state-scale totals; county-grain sources use county-scale totals — verified by spot-check against known registry sizes.
 
 ## Assumptions
@@ -104,3 +91,4 @@ A visitor can switch to a by-state view and see, for each included state (and DC
 - Page is informational (“roughly how much of the nation we cover”), not a live ops control panel; slight staleness from query time is acceptable.
 - No auth, rate-limit productization, or caching product is required for v1 beyond normal API practices.
 - Thin client / fat API: Next.js displays; FastAPI computes.
+- UI has exactly two tabs (Overall, By state); source drill-down is a filter on By state, not a third tab.

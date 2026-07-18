@@ -45,3 +45,12 @@ When `geo_counties` is empty for included FIPS: return a structured empty payloa
 ## Jobs
 
 Same order as national status: census, epa, cms, fbi, nces, urban, acs, bls, fema, cms_timely, scoring.
+
+## UI mapping (non-contract)
+
+| Tab | Uses |
+|-----|------|
+| Overall | `overall_pct`, `sources[]` |
+| By state | `states[]` + filter Overall (mean of state sources) or one `job_name` from `sources[]` |
+
+The API does not need an `overall` job entry; Overall is a UI filter over existing fields.

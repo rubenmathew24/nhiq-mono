@@ -3,27 +3,57 @@
 import { useMemo, useState } from "react";
 import type { SourceCoverage, StateCoverage } from "@/types/api";
 
-type Tab = "overall" | "source" | "state";
+type Tab = "overall" | "state";
+
+const OVERALL_FILTER = "overall";
+
+const JOB_LABELS: Record<string, string> = {
+  [OVERALL_FILTER]: "Overall",
+  census: "Census tracts",
+  epa: "Air quality (EPA)",
+  cms: "Hospitals (CMS)",
+  fbi: "Crime (FBI)",
+  nces: "Schools (NCES)",
+  urban: "Schools (Urban)",
+  acs: "ACS indicators",
+  bls: "Unemployment (BLS)",
+  fema: "Hazards (FEMA NRI)",
+  cms_timely: "Timely care (CMS)",
+  scoring: "Neighborhood scores",
+};
+
+function labelJob(name: string): string {
+  return JOB_LABELS[name] ?? name;
+}
+
+function meanPct(sources: SourceCoverage[]): number {
+  if (sources.length === 0) return 0;
+  return sources.reduce((a, s) => a + s.pct_complete, 0) / sources.length;
+}
 
 export default function CoverageViews({
   sources,
   states,
-  labelJob,
+  overallPct,
 }: {
   sources: SourceCoverage[];
   states: StateCoverage[];
-  labelJob: (name: string) => string;
+  overallPct: number;
 }) {
   const [tab, setTab] = useState<Tab>("overall");
-  const [selectedJob, setSelectedJob] = useState(sources[0]?.job_name ?? "scoring");
+  const [selectedFilter, setSelectedFilter] = useState(OVERALL_FILTER);
 
   const stateRows = useMemo(() => {
     return [...states].sort((a, b) => a.state_abbr.localeCompare(b.state_abbr));
   }, [states]);
 
+  const filterOptions = useMemo(
+    () => [OVERALL_FILTER, ...sources.map((s) => s.job_name)],
+    [sources],
+  );
+
   const tabs: { id: Tab; label: string }[] = [
     { id: "overall", label: "Overall" },
-    { id: "source", label: "By source" },
     { id: "state", label: "By state" },
   ];
 
@@ -52,97 +82,80 @@ export default function CoverageViews({
         ))}
       </div>
 
-      {tab === "overall" && (
-        <SourceTable sources={sources} labelJob={labelJob} />
-      )}
+      {tab === "overall" && <SourceTable sources={sources} />}
 
-      {tab === "source" && (
+      {tab === "state" && (
         <div className="space-y-4">
           <label className="block text-sm font-medium">
             Source
             <select
               className="mt-1 block w-full max-w-sm rounded-md border border-border bg-background px-3 py-2 text-sm"
-              value={selectedJob}
-              onChange={(e) => setSelectedJob(e.target.value)}
+              value={selectedFilter}
+              onChange={(e) => setSelectedFilter(e.target.value)}
             >
-              {sources.map((s) => (
-                <option key={s.job_name} value={s.job_name}>
-                  {labelJob(s.job_name)}
+              {filterOptions.map((name) => (
+                <option key={name} value={name}>
+                  {labelJob(name)}
                 </option>
               ))}
             </select>
           </label>
-          {(() => {
-            const src = sources.find((s) => s.job_name === selectedJob);
-            if (!src) return null;
-            return (
-              <div className="rounded-xl border border-border px-5 py-4 space-y-2">
-                <p className="font-display text-2xl font-bold tabular-nums">
-                  {src.pct_complete.toFixed(1)}%
-                </p>
-                <p className="text-sm text-muted-foreground">
-                  {src.done_count.toLocaleString()} / {src.total_count.toLocaleString()}{" "}
-                  ({src.grain}-grain)
-                </p>
-                <ProgressBar pct={src.pct_complete} />
-              </div>
-            );
-          })()}
-          <StateTableForJob
-            states={stateRows}
-            jobName={selectedJob}
-            labelJob={labelJob}
+          <StateFilterSummary
+            filter={selectedFilter}
+            sources={sources}
+            overallPct={overallPct}
           />
-        </div>
-      )}
-
-      {tab === "state" && (
-        <div className="overflow-x-auto rounded-xl border border-border">
-          <table className="w-full min-w-[640px] text-left text-sm">
-            <thead className="border-b border-border bg-muted/30 text-xs uppercase tracking-wide text-muted-foreground">
-              <tr>
-                <th className="px-4 py-3 font-medium">State</th>
-                <th className="px-4 py-3 font-medium">Counties</th>
-                <th className="px-4 py-3 font-medium">Mean %</th>
-                <th className="px-4 py-3 font-medium">Scoring</th>
-              </tr>
-            </thead>
-            <tbody>
-              {stateRows.map((st) => {
-                const mean =
-                  st.sources.length === 0
-                    ? 0
-                    : st.sources.reduce((a, s) => a + s.pct_complete, 0) /
-                      st.sources.length;
-                const scoring = st.sources.find((s) => s.job_name === "scoring");
-                return (
-                  <tr key={st.state_fips} className="border-b border-border/60">
-                    <td className="px-4 py-2.5 font-medium">{st.state_abbr}</td>
-                    <td className="px-4 py-2.5 tabular-nums">{st.county_total}</td>
-                    <td className="px-4 py-2.5 tabular-nums">{mean.toFixed(1)}%</td>
-                    <td className="px-4 py-2.5 tabular-nums">
-                      {scoring
-                        ? `${scoring.pct_complete.toFixed(1)}% (${scoring.done_count}/${scoring.total_count})`
-                        : "—"}
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
+          <StateTableForFilter
+            states={stateRows}
+            filter={selectedFilter}
+          />
         </div>
       )}
     </div>
   );
 }
 
-function SourceTable({
+function StateFilterSummary({
+  filter,
   sources,
-  labelJob,
+  overallPct,
 }: {
+  filter: string;
   sources: SourceCoverage[];
-  labelJob: (name: string) => string;
+  overallPct: number;
 }) {
+  if (filter === OVERALL_FILTER) {
+    return (
+      <div className="rounded-xl border border-border px-5 py-4 space-y-2">
+        <p className="font-display text-2xl font-bold tabular-nums">
+          {overallPct.toFixed(1)}%
+        </p>
+        <p className="text-sm text-muted-foreground">
+          Mean of all sources (national)
+        </p>
+        <ProgressBar pct={overallPct} />
+      </div>
+    );
+  }
+
+  const src = sources.find((s) => s.job_name === filter);
+  if (!src) return null;
+
+  return (
+    <div className="rounded-xl border border-border px-5 py-4 space-y-2">
+      <p className="font-display text-2xl font-bold tabular-nums">
+        {src.pct_complete.toFixed(1)}%
+      </p>
+      <p className="text-sm text-muted-foreground">
+        {src.done_count.toLocaleString()} / {src.total_count.toLocaleString()}{" "}
+        ({src.grain}-grain)
+      </p>
+      <ProgressBar pct={src.pct_complete} />
+    </div>
+  );
+}
+
+function SourceTable({ sources }: { sources: SourceCoverage[] }) {
   return (
     <div className="overflow-x-auto rounded-xl border border-border">
       <table className="w-full min-w-[560px] text-left text-sm">
@@ -184,30 +197,44 @@ function SourceTable({
   );
 }
 
-function StateTableForJob({
+function StateTableForFilter({
   states,
-  jobName,
-  labelJob,
+  filter,
 }: {
   states: StateCoverage[];
-  jobName: string;
-  labelJob: (name: string) => string;
+  filter: string;
 }) {
+  const isOverall = filter === OVERALL_FILTER;
+
   return (
     <div className="overflow-x-auto rounded-xl border border-border">
       <table className="w-full min-w-[480px] text-left text-sm">
         <thead className="border-b border-border bg-muted/30 text-xs uppercase tracking-wide text-muted-foreground">
           <tr>
             <th className="px-4 py-3 font-medium">State</th>
+            {!isOverall && (
+              <th className="px-4 py-3 font-medium">
+                {labelJob(filter)} done / total
+              </th>
+            )}
             <th className="px-4 py-3 font-medium">
-              {labelJob(jobName)} done / total
+              {isOverall ? "Mean %" : "%"}
             </th>
-            <th className="px-4 py-3 font-medium">%</th>
           </tr>
         </thead>
         <tbody>
           {states.map((st) => {
-            const src = st.sources.find((s) => s.job_name === jobName);
+            if (isOverall) {
+              const pct = meanPct(st.sources);
+              return (
+                <tr key={st.state_fips} className="border-b border-border/60">
+                  <td className="px-4 py-2.5 font-medium">{st.state_abbr}</td>
+                  <td className="px-4 py-2.5 tabular-nums">{pct.toFixed(1)}%</td>
+                </tr>
+              );
+            }
+
+            const src = st.sources.find((s) => s.job_name === filter);
             if (!src) return null;
             return (
               <tr key={st.state_fips} className="border-b border-border/60">

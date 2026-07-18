@@ -7,24 +7,6 @@ import CoverageViews from "@/components/coverage/CoverageViews";
 
 export const dynamic = "force-dynamic";
 
-const JOB_LABELS: Record<string, string> = {
-  census: "Census tracts",
-  epa: "Air quality (EPA)",
-  cms: "Hospitals (CMS)",
-  fbi: "Crime (FBI)",
-  nces: "Schools (NCES)",
-  urban: "Schools (Urban)",
-  acs: "ACS indicators",
-  bls: "Unemployment (BLS)",
-  fema: "Hazards (FEMA NRI)",
-  cms_timely: "Timely care (CMS)",
-  scoring: "Neighborhood scores",
-};
-
-function labelJob(name: string): string {
-  return JOB_LABELS[name] ?? name;
-}
-
 export default async function CoveragePage() {
   let data: CoverageResponse | null = null;
   let error: string | null = null;
@@ -51,9 +33,9 @@ export default async function CoveragePage() {
             Coverage
           </h1>
           <p className="text-muted-foreground max-w-2xl text-base md:text-lg">
-            How much of the 50 states + DC our batch data covers — overall, by
-            source, and by state. No login required. Denominators match national
-            ingest (full county registry, not only counties already loaded).
+            How much of the 50 states + DC our batch data covers — overall and by
+            state. No login required. Denominators match national ingest (full
+            county registry, not only counties already loaded).
           </p>
         </div>
 
@@ -90,17 +72,22 @@ export default async function CoveragePage() {
                 value={String(data.state_universe_count)}
               />
             </div>
-            <p className="mb-6 text-xs text-muted-foreground">
+            <p
+              className="mb-6 text-xs text-muted-foreground"
+              suppressHydrationWarning
+            >
               Snapshot{" "}
-              {new Date(data.captured_at).toLocaleString(undefined, {
+              {new Date(data.captured_at).toLocaleString("en-US", {
                 dateStyle: "medium",
                 timeStyle: "short",
-              })}
+                timeZone: "UTC",
+              })}{" "}
+              UTC
             </p>
             <CoverageViews
               sources={data.sources}
               states={data.states}
-              labelJob={labelJob}
+              overallPct={data.overall_pct}
             />
           </>
         )}

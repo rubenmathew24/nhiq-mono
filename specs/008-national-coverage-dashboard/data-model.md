@@ -14,3 +14,8 @@ No new tables. Read model only.
 - **CoverageResponse**: `captured_at`, `overall_pct`, `county_universe_count`, `state_universe_count`, `sources[]`, `states[]`
 - **SourceCoverage**: `job_name`, `grain` (`county`|`state`), `done_count`, `total_count`, `pct_complete`
 - **StateCoverage**: `state_fips`, `state_abbr`, `county_total`, `sources[]` (same shape, totals scoped to that state)
+
+## UI presentation (display only)
+
+- **Overall tab**: national `sources[]` table (+ headline `overall_pct`).
+- **By state tab**: filter = Overall | each `job_name`; rows from `states[]`. Overall filter shows mean of that state’s `sources[].pct_complete` (client display formatting).
