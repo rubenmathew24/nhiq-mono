@@ -229,7 +229,7 @@ class AzureJobClient:
         execution_name: str,
         *,
         poll_seconds: int = 30,
-        timeout_seconds: int = 7200,
+        timeout_seconds: int = 10800,
     ) -> str:
         deadline = time.time() + timeout_seconds
         while time.time() < deadline:

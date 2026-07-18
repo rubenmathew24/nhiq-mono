@@ -8,7 +8,7 @@ import sys
 import psycopg2
 
 from ingest.base import BaseIngestionWorker
-from ingest.bls.client import fetch_laus_series, laus_series_id
+from ingest.bls.client import fetch_laus_bulk, fetch_laus_series, laus_series_id, use_bulk_files
 from ingest.bls.transform import transform_laus_series
 from ingest.checkpoints import counties_with_bls, log_skip
 from ingest.force import force_enabled
@@ -50,10 +50,24 @@ class BlsLausWorker(BaseIngestionWorker):
         all_series = list(series_map.keys())
         observations_by_series: dict[str, list] = {}
 
-        for offset in range(0, len(all_series), BATCH_SIZE):
-            batch = all_series[offset : offset + BATCH_SIZE]
-            self.logger.info("Fetching BLS LAUS batch (%s series)…", len(batch))
-            observations_by_series.update(fetch_laus_series(batch))
+        if all_series and use_bulk_files():
+            try:
+                observations_by_series = fetch_laus_bulk(all_series)
+            except Exception as exc:  # noqa: BLE001
+                self.logger.warning(
+                    "BLS bulk failed (%s); falling back to API", exc
+                )
+                observations_by_series = {}
+
+        if all_series and not observations_by_series:
+            for offset in range(0, len(all_series), BATCH_SIZE):
+                batch = all_series[offset : offset + BATCH_SIZE]
+                self.logger.info("Fetching BLS LAUS batch (%s series)…", len(batch))
+                observations_by_series.update(fetch_laus_series(batch))
+        elif all_series:
+            self.logger.info(
+                "BLS LAUS bulk path series=%s", len(observations_by_series)
+            )
 
         self._records = []
         pulse = StatusPulse(self.database_url)

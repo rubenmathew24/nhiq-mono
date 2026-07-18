@@ -1,5 +1,5 @@
 from fastapi import APIRouter
-from app.api.v1.endpoints import score, lookup, compare, narrative, auth, users
+from app.api.v1.endpoints import score, lookup, compare, narrative, auth, users, coverage
 
 api_router = APIRouter()
 
@@ -9,3 +9,4 @@ api_router.include_router(lookup.router, prefix="/lookup", tags=["lookup"])
 api_router.include_router(score.router, prefix="/score", tags=["score"])
 api_router.include_router(compare.router, prefix="/compare", tags=["compare"])
 api_router.include_router(narrative.router, prefix="/narrative", tags=["narrative"])
+api_router.include_router(coverage.router, prefix="/coverage", tags=["coverage"])

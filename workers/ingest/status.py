@@ -29,7 +29,10 @@ from ingest.fixtures.canonical_addresses import (
 )
 from ingest.fixtures.constants import DATA_VINTAGE
 from ingest.geo.jurisdictions import STATE_FIPS_TO_ABBR
-from ingest.geo.scope import load_national_universe_counties
+from ingest.geo.scope import (
+    IncompleteNationalRegistryError,
+    require_complete_national_registry,
+)
 
 FIPS_TO_STATE_ABBR = STATE_FIPS_TO_ABBR
 
@@ -100,9 +103,8 @@ def resolve_scope_counties(
             database_url = os.getenv("DATABASE_URL")
         if not database_url:
             raise RuntimeError("DATABASE_URL required for INGEST_SCOPE=national status")
-        base = load_national_universe_counties(database_url)
-        if not base:
-            return frozenset()  # registry empty — caller reports 0%
+        # Fail closed: empty or incomplete registry is an error, not 0% success.
+        base = require_complete_national_registry(database_url)
     elif scope == "smoke":
         base = frozenset({SMOKE_COUNTY})
     else:
@@ -389,36 +391,40 @@ def compute_job_statuses(cur, counties: frozenset[str], scope: str) -> list[JobS
         )
     )
 
-    # scoring — tracts with fbi_cde + non-empty score_detail
+    # scoring — county grain vs full national universe (same as inventory
+    # counties_with_score_detail). Do NOT use loaded-tract count as denominator.
     cur.execute(
         """
+        WITH scoped AS (
+            SELECT geoid, (state_fips || county_fips) AS cf
+            FROM census_tracts
+            WHERE (state_fips || county_fips) = ANY(%s)
+        )
         SELECT COUNT(*)::int
-        FROM census_tracts
-        WHERE (state_fips || county_fips) = ANY(%s)
+        FROM (
+            SELECT s.cf
+            FROM scoped s
+            LEFT JOIN neighborhood_scores ns
+              ON ns.geoid = s.geoid AND ns.data_vintage = %s
+            GROUP BY s.cf
+            HAVING COUNT(*) > 0
+               AND COUNT(*) FILTER (
+                   WHERE ns.score_sources->'safety'->>'source_id' = 'fbi_cde'
+                     AND ns.score_detail IS NOT NULL
+                     AND ns.score_detail <> '{}'::jsonb
+               ) = COUNT(*)
+        ) done_counties
         """,
-        (county_list,),
-    )
-    tract_total = int(cur.fetchone()[0] or 0)
-    cur.execute(
-        """
-        SELECT COUNT(*)::int
-        FROM neighborhood_scores s
-        INNER JOIN census_tracts t ON t.geoid = s.geoid
-        WHERE (t.state_fips || t.county_fips) = ANY(%s)
-          AND s.score_sources->'safety'->>'source_id' = 'fbi_cde'
-          AND s.score_detail IS NOT NULL
-          AND s.score_detail <> '{}'::jsonb
-        """,
-        (county_list,),
+        (county_list, DATA_VINTAGE),
     )
     score_done = int(cur.fetchone()[0] or 0)
     statuses.append(
         JobStatus(
             "scoring",
-            _pct(score_done, tract_total),
+            _pct(score_done, n),
             score_done,
-            tract_total,
-            {"metric": "tracts_with_fbi_cde_and_score_detail"},
+            n,
+            {"metric": "counties_with_fbi_cde_and_score_detail"},
         )
     )
 
@@ -484,6 +490,9 @@ def main() -> int:
         counties = resolve_scope_counties(scope, database_url=database_url)
         persist_and_log(database_url, scope, counties)
         return 0
+    except IncompleteNationalRegistryError as exc:
+        logger.error("%s", exc)
+        return 1
     except Exception as exc:  # noqa: BLE001
         logger.error("%s", exc)
         return 1

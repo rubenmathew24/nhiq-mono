@@ -11,7 +11,12 @@ import psycopg2
 from psycopg2.extras import execute_values
 
 from ingest.base import BaseIngestionWorker
-from ingest.epa.client import fetch_daily_aqi, require_epa_credentials
+from ingest.epa.client import (
+    fetch_daily_aqi,
+    fetch_daily_aqi_bulk,
+    require_epa_credentials,
+    use_bulk_files,
+)
 from ingest.epa.transform import transform_aqi_records
 from ingest.checkpoints import counties_with_epa, log_skip
 from ingest.fixtures.constants import EPA_END_LAG_DAYS, EPA_LOOKBACK_DAYS
@@ -35,7 +40,6 @@ class EpaAqiWorker(BaseIngestionWorker):
         self._records: list[dict] = []
 
     def fetch(self) -> None:
-        require_epa_credentials()
         self._allow = active_county_fips(database_url=self.database_url)
         done = (
             set()
@@ -53,7 +57,33 @@ class EpaAqiWorker(BaseIngestionWorker):
             EPA_END_LAG_DAYS,
             EPA_LOOKBACK_DAYS,
         )
-        # Fetch whole states that still have pending counties (AQS is state-scoped).
+        self._raw_by_state = {}
+        if not pending:
+            return
+
+        if use_bulk_files():
+            try:
+                raw = fetch_daily_aqi_bulk(start, end)
+                # Bucket by state for transform logging compatibility.
+                by_state: dict[str, list[dict]] = {}
+                pending_states = {cf[:2] for cf in pending}
+                for row in raw:
+                    st = str(row.get("state_code") or "").zfill(2)[-2:]
+                    if st in pending_states:
+                        by_state.setdefault(st, []).append(row)
+                self._raw_by_state = by_state
+                self.logger.info(
+                    "EPA bulk path states=%s rows=%s",
+                    sorted(by_state),
+                    sum(len(v) for v in by_state.values()),
+                )
+                return
+            except Exception as exc:  # noqa: BLE001
+                self.logger.warning(
+                    "EPA bulk failed (%s); falling back to AQS API", exc
+                )
+
+        require_epa_credentials()
         states = frozenset(cf[:2] for cf in pending) or frozenset()
         self._raw_by_state = asyncio.run(self._fetch_states(states, start, end))
 

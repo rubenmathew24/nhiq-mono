@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 import math
 import os
+import threading
 import time
 from datetime import date
 from typing import Any
@@ -36,6 +37,40 @@ AGENCY_TYPE_DENYLIST = (
     "forest service",
     "tribal",
 )
+
+# Shared rate limiter: ~4 req/s matches prior 0.25s sleep between chart calls.
+_RATE_LOCK = threading.Lock()
+_RATE_NEXT = 0.0
+_RATE_INTERVAL = 0.25
+
+# Per-process agency list cache (state abbr -> agencies).
+_AGENCY_CACHE: dict[str, list[dict[str, Any]]] = {}
+_AGENCY_CACHE_LOCK = threading.Lock()
+
+
+def max_concurrency() -> int:
+    raw = (os.getenv("FBI_MAX_CONCURRENCY") or "4").strip()
+    try:
+        return max(1, min(16, int(raw)))
+    except ValueError:
+        return 4
+
+
+def pause_between_requests() -> None:
+    """Thread-safe pacer (~4 requests/sec shared across workers)."""
+    global _RATE_NEXT
+    with _RATE_LOCK:
+        now = time.monotonic()
+        wait = _RATE_NEXT - now
+        if wait > 0:
+            time.sleep(wait)
+            now = time.monotonic()
+        _RATE_NEXT = now + _RATE_INTERVAL
+
+
+def clear_agency_cache() -> None:
+    with _AGENCY_CACHE_LOCK:
+        _AGENCY_CACHE.clear()
 
 
 def require_api_key() -> str:
@@ -179,7 +214,15 @@ def _extract_agencies(payload: Any) -> list[dict[str, Any]]:
 
 
 def fetch_agencies_by_state(state_abbr: str) -> list[dict[str, Any]]:
-    st = quote(state_abbr.strip().upper(), safe="")
+    """Fetch agencies for a state; cached per-process by state abbr."""
+    key = state_abbr.strip().upper()
+    with _AGENCY_CACHE_LOCK:
+        cached = _AGENCY_CACHE.get(key)
+    if cached is not None:
+        return cached
+
+    st = quote(key, safe="")
+    pause_between_requests()
     data = _chart_get(f"/agency/byStateAbbr/{st}")
     agencies: list[dict[str, Any]] = []
     for raw in _extract_agencies(data):
@@ -197,6 +240,8 @@ def fetch_agencies_by_state(state_abbr: str) -> list[dict[str, Any]]:
                 "_cde_county_bucket": raw.get("_cde_county_bucket"),
             }
         )
+    with _AGENCY_CACHE_LOCK:
+        _AGENCY_CACHE[key] = agencies
     return agencies
 
 
@@ -317,7 +362,3 @@ def sum_last_n_month_counts(chart: dict[str, Any], *, n: int = 12) -> float:
     ordered = sorted(month_totals.keys(), key=sort_key)
     tail = ordered[-n:]
     return float(sum(month_totals[m] for m in tail))
-
-
-def pause_between_requests() -> None:
-    time.sleep(0.25)

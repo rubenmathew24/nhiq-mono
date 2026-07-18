@@ -34,7 +34,11 @@ from ingest.checkpoints import (
 )
 from ingest.fixtures.constants import DATA_VINTAGE
 from ingest.geo.jurisdictions import INCLUDED_STATE_FIPS, STATE_FIPS_TO_ABBR
-from ingest.geo.scope import load_national_universe_counties, parse_state_batch
+from ingest.geo.scope import (
+    IncompleteNationalRegistryError,
+    parse_state_batch,
+    require_complete_national_registry,
+)
 
 load_dotenv()
 
@@ -120,7 +124,9 @@ def build_inventory(
     by_state[worker][state_fips] = missing units in that state.
     """
     vintage = data_vintage or DATA_VINTAGE
-    universe = load_national_universe_counties(database_url)
+    # Full national inventory requires a complete 50+DC registry (fail closed).
+    # state_filter only narrows which gaps are reported after that check.
+    universe = require_complete_national_registry(database_url)
     universe = _filter_counties(universe, state_filter)
     county_list = sorted(universe)
 

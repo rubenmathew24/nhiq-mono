@@ -1,6 +1,6 @@
 # Azure setup and CI/CD (as-built)
 
-This document describes **what we actually set up** for NeighborhoodInsight production hosting on Azure and continuous deploy from GitHub. It is written for someone new to Azure and cloud hosting, and is suitable to hand to an LLM that should walk through every step in plain language.
+This document describes **what we actually set up** for NeighborhoodIQ production hosting on Azure and continuous deploy from GitHub. It is written for someone new to Azure and cloud hosting, and is suitable to hand to an LLM that should walk through every step in plain language.
 
 It is **not** a secret store. Never put passwords, tokens, or Key Vault values into this file (or into git). Describe *where* secrets live and *how* to set them.
 
@@ -331,7 +331,7 @@ API defaults in [`apps/api/app/core/config.py`](../apps/api/app/core/config.py) 
 Set env on `niq-api` as a **JSON list** (Portal is often safer than PowerShell quoting):
 
 ```text
-CORS_ORIGINS=["https://niq-web.blackstone-0becc01d.eastus.azurecontainerapps.io","http://localhost:3000","https://nh-iq.com"]
+CORS_ORIGINS=["https://niq-web.blackstone-0becc01d.eastus.azurecontainerapps.io","http://localhost:3000","https://neighborhoodiq.com"]
 ```
 
 Verify with OPTIONS; allowed origins get `access-control-allow-origin`. Starlette returns **400** on preflight when the origin is **not** allow-listed (often *without* that header).
@@ -511,19 +511,31 @@ az containerapp job start --name niq-worker-scoring --resource-group neighborhoo
 
 See also [`specs/005-national-report-detail/quickstart.md`](../specs/005-national-report-detail/quickstart.md).
 
-### National ingest (50 states + DC, phased)
+### National ingest (50 states + DC, continuous)
 
-See also [`specs/003-national-ingest/quickstart.md`](../specs/003-national-ingest/quickstart.md).
+See also [`specs/003-national-ingest/quickstart.md`](../specs/003-national-ingest/quickstart.md) and [`specs/007-national-ingest-redesign/quickstart.md`](../specs/007-national-ingest-redesign/quickstart.md).
 
 1. Apply [`infra/sql/006_geo_counties.sql`](../infra/sql/006_geo_counties.sql) (and **`007_report_detail.sql`** if not already applied for expand reports).
 2. Bootstrap registry (all included jurisdictions): `INGEST_GEO_LOAD_ALL=1` on `niq-worker-geo`, then start it.
-3. **Preferred:** GitHub → Actions → **National ingest** → Run workflow (`max_states`, optional `state_filter`, optional `force_states`, optional `state_exclude`). This starts `niq-worker-orchestrate`, which inventories DB gaps (including FEMA, CMS Timely, ACS population, and empty `score_detail`) and only starts ACA jobs that still need work—or force-reruns all workers for states listed in `force_states`. **`force_states` / `state_filter` are exclusive lists** (no padding other gap states to fill `max_states`). **`state_exclude`** blacklists FIPS before the `max_states` slice (`force_states` overrides). The **Poll until complete** step echoes orchestrator progress from ACA console logs (`Exclude states`, `Will process states`, `orch_start worker=… state=…`, etc.); early polls may show empty until Log Analytics / job logs catch up.
-4. **No force required for report-detail backfill:** states that already finished base ingest but lack hazard/timely/pop/`score_detail` remain gap states. Orchestrator **prefers** those states over virgin states when filling `max_states`. For a selected state it runs only missing stages (e.g. `fema` → `cms_timely` → `scoring`), not a full census…bls redo.
-5. Manual fallback: set on ingest/scoring jobs `INGEST_SCOPE=national`, `INGEST_STATE_BATCH=<SS>`; run workers in order; re-start to resume (`skip_checkpoint`). Set `INGEST_FORCE=1` to re-upsert without skip-done (formula changes / bad data only).
-6. Status with `INGEST_SCOPE=national` for Workbook % against full `geo_counties` universe (includes `fema` / `cms_timely`). Orchestrator emits slim `INGEST_STATUS_SNAPSHOT` after each worker. Re-import [`infra/workbook-ingest-status.json`](../infra/workbook-ingest-status.json) if the gallery is stale (jobs table expands dynamically).
-7. Territories are **not** in v1; enable later by moving FIPS from `TERRITORY_STATE_FIPS` → `INCLUDED_STATE_FIPS` in code.
+3. **Preferred:** GitHub → Actions → **National ingest** → Run workflow with **`continuous=true`** (default). Optional: `batch_states` (default 10), `state_filter`, `force_states`, `state_exclude`. Set `continuous=false` + `max_states` for a bounded diagnostic nibble. The Action sets `ORCH_CONTINUOUS=1`, starts `niq-worker-orchestrate`, and **chains** orchestrator executions (then self-redispatches the workflow with `chain_depth`, max 50) until logs show `orch_cycle_result=complete`. Progress echoes include `orch_start`, `orch_cycle_result`, `national_progress`.
+4. **Local one-command path:** `.\scripts\national-ingest.ps1` (optional `-AllowMyIp` for Postgres firewall). Same exit-code loop: `0` complete, `2` more work → restart, `1` hard fail.
+5. **Bulk / wide fetch (007):** FEMA downloads the national NRI tracts CSV zip once per national run; ACS uses `in=state:SS county:*`; Urban pages `?fips=` per state with skip-done; FBI caches per-state agency lists and uses bounded county concurrency (`FBI_MAX_CONCURRENCY`); EPA/BLS prefer AirData / LAUS flat files (`EPA_USE_BULK_FILES` / `BLS_USE_BULK_FILES`, default on, API fallback). CMS Timely skips when the batch’s states already have measures for the active vintage.
+6. **Progress %:** every job — including **scoring** — uses the full `geo_counties` national county universe as denominator (scoring done = counties where every tract has `fbi_cde` + non-empty `score_detail`). Exclusion only affects scheduling, not the meaning of 100%. Status with `INGEST_SCOPE=national` for Workbook %; orchestrator emits slim `INGEST_STATUS_SNAPSHOT` after workers. Re-import [`infra/workbook-ingest-status.json`](../infra/workbook-ingest-status.json) if the gallery is stale.
+7. **ACA timeouts:** orchestrator `--replica-timeout 21600` (6h); per-source / scoring jobs `10800` (3h). Apply with:
 
-Orchestrator job: `niq-worker-orchestrate`. GitHub Actions **National ingest** injects the Deploy service principal from `AZURE_CREDENTIALS` into the job env on each run (no separate Key Vault SP required). The SP must be able to start/update jobs in the RG. **Do not** wire national ingest to the `master` Deploy workflow. Workflow inputs unchanged — new jobs are discovered via worker inventory code.
+```bash
+az containerapp job update -n niq-worker-orchestrate -g <rg> --replica-timeout 21600
+for j in census epa cms fbi nces urban acs bls fema cms-timely scoring; do
+  az containerapp job update -n niq-worker-$j -g <rg> --replica-timeout 10800
+done
+```
+
+8. Manual fallback: set on ingest/scoring jobs `INGEST_SCOPE=national`, `INGEST_STATE_BATCH=<SS,SS,...>`; run workers in order; re-start to resume (`skip_checkpoint`). Set `INGEST_FORCE=1` to re-upsert without skip-done (formula changes / bad data only).
+9. Territories are **not** in v1; enable later by moving FIPS from `TERRITORY_STATE_FIPS` → `INCLUDED_STATE_FIPS` in code.
+
+Orchestrator job: `niq-worker-orchestrate`. GitHub Actions **National ingest** injects the Deploy service principal from `AZURE_CREDENTIALS` into the job env on each run and needs `permissions: actions: write` for self-redispatch. The SP must be able to start/update jobs in the RG. **Do not** wire national ingest to the `master` Deploy workflow. Rebuild/push `neighborhoodiq-worker:dev` after worker code changes so ACA runs the new image.
+
+**Exit codes (continuous):** `0` = nation complete, `2` = time budget with gaps remaining (chain another cycle), `1` = hard failure.
 
 ### Ingest progress Workbook (ops)
 
@@ -537,7 +549,7 @@ az containerapp job start --name niq-worker-status --resource-group neighborhood
 ```
 
 3. Import workbook gallery JSON [`infra/workbook-ingest-status.json`](../infra/workbook-ingest-status.json):
-   - Portal → Log Analytics workspace **`niq-logs`** → **Workbooks** → **New** / **Advanced editor** → paste JSON → **Save** as “NeighborhoodInsight ingest status”.
+   - Portal → Log Analytics workspace **`niq-logs`** → **Workbooks** → **New** / **Advanced editor** → paste JSON → **Save** as “NeighborhoodIQ ingest status”.
    - Bind the workbook to `niq-logs`. Table name may be `ContainerAppConsoleLogs_CL` or `ContainerAppConsoleLogs` depending on diagnostic schema — adjust the KQL if empty.
 4. Spot-check SQL (Docker `psql` as in §7):
 
