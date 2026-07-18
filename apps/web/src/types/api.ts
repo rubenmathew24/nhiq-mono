@@ -78,3 +78,30 @@ export interface LookupResponse {
   address_normalized: string;
   geoid?: string | null;
 }
+
+export type CoverageGrain = "county" | "state";
+
+export interface SourceCoverage {
+  job_name: string;
+  grain: CoverageGrain;
+  done_count: number;
+  total_count: number;
+  pct_complete: number;
+}
+
+export interface StateCoverage {
+  state_fips: string;
+  state_abbr: string;
+  county_total: number;
+  sources: SourceCoverage[];
+}
+
+export interface CoverageResponse {
+  captured_at: string;
+  overall_pct: number;
+  county_universe_count: number;
+  state_universe_count: number;
+  empty_universe: boolean;
+  sources: SourceCoverage[];
+  states: StateCoverage[];
+}
