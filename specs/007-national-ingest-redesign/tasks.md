@@ -219,7 +219,7 @@ T016 EPA bulk  | T017 BLS bulk  | T018 CMS Timely skip
 
 ## Phase 8: Convergence
 
-- [ ] T030 CRITICAL: Fail closed when national `geo_counties` universe is empty in `workers/ingest/status.py`, `workers/ingest/inventory.py`, and `workers/ingest/orchestrate/run.py` — clear error log + non-zero exit; never emit `orch_cycle_result=complete` or treat empty registry as success per Edge Cases / Assumptions / FR-014 (`missing`)
-- [ ] T031 Fail closed (or refuse national continuous/status success) when `geo_counties` is incomplete for included 50+DC jurisdictions (e.g. distinct included `state_fips` ≠ 51) in `workers/ingest/geo/scope.py` and callers per Edge Cases / FR-001 / SC-001 (`partial`)
-- [ ] T032 Distinguish “nothing left to schedule” vs “nation inventory clear” in `workers/ingest/orchestrate/run.py`: when remaining gaps exist only on `exclude_states`, do not emit `orch_cycle_result=complete` (use non-complete stop + clear log) per Edge Cases / FR-014 (`contradicts`)
-- [ ] T033 [P] Add regression tests in `workers/tests/` for empty registry fail-closed, incomplete registry fail-closed, and exclude-only remaining gaps ≠ complete per Constitution VI / T030–T032 (`missing`)
+- [x] T030 CRITICAL: Fail closed when national `geo_counties` universe is empty in `workers/ingest/status.py`, `workers/ingest/inventory.py`, and `workers/ingest/orchestrate/run.py` — clear error log + non-zero exit; never emit `orch_cycle_result=complete` or treat empty registry as success per Edge Cases / Assumptions / FR-014 (`missing`)
+- [x] T031 Fail closed (or refuse national continuous/status success) when `geo_counties` is incomplete for included 50+DC jurisdictions (e.g. distinct included `state_fips` ≠ 51) in `workers/ingest/geo/scope.py` and callers per Edge Cases / FR-001 / SC-001 (`partial`)
+- [x] T032 Distinguish “nothing left to schedule” vs “nation inventory clear” in `workers/ingest/orchestrate/run.py`: when remaining gaps exist only on `exclude_states`, do not emit `orch_cycle_result=complete` (use non-complete stop + clear log) per Edge Cases / FR-014 (`contradicts`)
+- [x] T033 [P] Add regression tests in `workers/tests/` for empty registry fail-closed, incomplete registry fail-closed, and exclude-only remaining gaps ≠ complete per Constitution VI / T030–T032 (`missing`)

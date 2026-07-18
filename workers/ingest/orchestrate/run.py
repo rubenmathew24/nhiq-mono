@@ -17,7 +17,10 @@ import time
 
 from dotenv import load_dotenv
 
-from ingest.geo.scope import parse_state_batch
+from ingest.geo.scope import (
+    IncompleteNationalRegistryError,
+    parse_state_batch,
+)
 from ingest.inventory import (
     PIPELINE_WORKERS,
     WORKER_ACA_JOB,
@@ -120,6 +123,24 @@ def _inventory_has_gaps(
         exclusive=exclusive,
     )
     return bool(states)
+
+
+def _nation_has_required_gaps(inv: dict) -> bool:
+    """True if any gaps remain ignoring exclude/force/filter scheduling controls."""
+    return bool(
+        states_needing_work(
+            inv,
+            max_states=None,
+            force_states=frozenset(),
+            exclude_states=frozenset(),
+            exclusive=False,
+        )
+    )
+
+
+def _blocked_by_exclude(inv: dict, exclude_states: frozenset[str]) -> bool:
+    """Gaps remain nationally but every remaining gap state is excluded from scheduling."""
+    return bool(exclude_states) and _nation_has_required_gaps(inv)
 
 
 def _run_bounded_pass(
@@ -291,7 +312,12 @@ def run() -> int:
 
     hard_fail = False
     while True:
-        inv = build_inventory(database_url, state_filter=state_filter)
+        try:
+            inv = build_inventory(database_url, state_filter=state_filter)
+        except IncompleteNationalRegistryError as exc:
+            logger.error("%s", exc)
+            logger.info("orch_cycle_result=registry_incomplete")
+            return 1
         logger.info("Inventory summary %s", inv["summary"])
         if force_states:
             logger.info("Force states=%s", sorted(force_states))
@@ -309,6 +335,15 @@ def run() -> int:
             exclusive=exclusive,
         )
         if not states:
+            if _blocked_by_exclude(inv, exclude_states):
+                logger.error(
+                    "Remaining national gaps exist only on ORCH_STATE_EXCLUDE=%s — "
+                    "not marking nation complete",
+                    sorted(exclude_states),
+                )
+                _safe_status(database_url, "blocked by exclude")
+                logger.info("orch_cycle_result=blocked_excluded")
+                return 1
             logger.info("No gaps for selected universe — nothing to start")
             _safe_status(database_url, "no gaps")
             logger.info("orch_cycle_result=complete")
@@ -332,7 +367,12 @@ def run() -> int:
         )
         hard_fail = hard_fail or pass_hard
 
-        inv2 = build_inventory(database_url, state_filter=state_filter)
+        try:
+            inv2 = build_inventory(database_url, state_filter=state_filter)
+        except IncompleteNationalRegistryError as exc:
+            logger.error("%s", exc)
+            logger.info("orch_cycle_result=registry_incomplete")
+            return 1
         logger.info("Final inventory summary %s", inv2["summary"])
         summary = inv2.get("summary") or {}
         logger.info("national_progress %s", summary)
@@ -345,6 +385,14 @@ def run() -> int:
             exclusive=exclusive,
         )
         if not still_gaps:
+            if _blocked_by_exclude(inv2, exclude_states):
+                logger.error(
+                    "Remaining national gaps exist only on ORCH_STATE_EXCLUDE=%s — "
+                    "not marking nation complete",
+                    sorted(exclude_states),
+                )
+                logger.info("orch_cycle_result=blocked_excluded")
+                return 1
             logger.info("orch_cycle_result=complete")
             return 0 if not hard_fail else 1
 
@@ -363,6 +411,9 @@ def run() -> int:
 def main() -> int:
     try:
         return run()
+    except IncompleteNationalRegistryError as exc:
+        logger.error("%s", exc)
+        return 1
     except Exception as exc:  # noqa: BLE001
         logger.error("%s", exc)
         return 1

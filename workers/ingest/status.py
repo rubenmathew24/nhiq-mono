@@ -29,7 +29,10 @@ from ingest.fixtures.canonical_addresses import (
 )
 from ingest.fixtures.constants import DATA_VINTAGE
 from ingest.geo.jurisdictions import STATE_FIPS_TO_ABBR
-from ingest.geo.scope import load_national_universe_counties
+from ingest.geo.scope import (
+    IncompleteNationalRegistryError,
+    require_complete_national_registry,
+)
 
 FIPS_TO_STATE_ABBR = STATE_FIPS_TO_ABBR
 
@@ -100,9 +103,8 @@ def resolve_scope_counties(
             database_url = os.getenv("DATABASE_URL")
         if not database_url:
             raise RuntimeError("DATABASE_URL required for INGEST_SCOPE=national status")
-        base = load_national_universe_counties(database_url)
-        if not base:
-            return frozenset()  # registry empty — caller reports 0%
+        # Fail closed: empty or incomplete registry is an error, not 0% success.
+        base = require_complete_national_registry(database_url)
     elif scope == "smoke":
         base = frozenset({SMOKE_COUNTY})
     else:
@@ -488,6 +490,9 @@ def main() -> int:
         counties = resolve_scope_counties(scope, database_url=database_url)
         persist_and_log(database_url, scope, counties)
         return 0
+    except IncompleteNationalRegistryError as exc:
+        logger.error("%s", exc)
+        return 1
     except Exception as exc:  # noqa: BLE001
         logger.error("%s", exc)
         return 1

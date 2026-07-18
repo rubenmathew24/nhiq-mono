@@ -16,6 +16,12 @@ from ingest.geo.jurisdictions import INCLUDED_STATE_FIPS, STATE_FIPS_TO_ABBR
 SMOKE_COUNTY = "05007"
 VALID_SCOPES = frozenset({"smoke", "metro_10", "national"})
 
+EXPECTED_INCLUDED_STATE_COUNT = len(INCLUDED_STATE_FIPS)
+
+
+class IncompleteNationalRegistryError(RuntimeError):
+    """Raised when geo_counties is empty or missing included 50+DC jurisdictions."""
+
 
 @dataclass(frozen=True)
 class CountyPoint:
@@ -120,6 +126,67 @@ def load_national_universe_counties(database_url: str) -> frozenset[str]:
             return frozenset(str(r[0]) for r in cur.fetchall() if r and r[0])
     finally:
         conn.close()
+
+
+def load_national_registry_state_fips(database_url: str) -> frozenset[str]:
+    """Distinct included state_fips present in geo_counties."""
+    conn = psycopg2.connect(database_url)
+    try:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT DISTINCT state_fips
+                FROM geo_counties
+                WHERE state_fips = ANY(%s)
+                """,
+                (sorted(INCLUDED_STATE_FIPS),),
+            )
+            return frozenset(
+                str(r[0]).zfill(2)[-2:] for r in cur.fetchall() if r and r[0]
+            )
+    finally:
+        conn.close()
+
+
+def validate_national_registry(
+    counties: frozenset[str],
+    *,
+    present_states: frozenset[str] | None = None,
+) -> None:
+    """
+    Fail closed if the national registry is empty or incomplete for 50+DC.
+
+    ``present_states`` should be distinct included state_fips from geo_counties
+    when available; otherwise derived from county FIPS prefixes.
+    """
+    if not counties:
+        raise IncompleteNationalRegistryError(
+            "geo_counties is empty for included 50+DC. "
+            "Bootstrap with python -m ingest.geo.run (INGEST_GEO_LOAD_ALL=1) "
+            "before national status or continuous ingest."
+        )
+    states = present_states
+    if states is None:
+        states = frozenset(c[:2] for c in counties if len(c) >= 2)
+    states = frozenset(s.zfill(2)[-2:] for s in states) & INCLUDED_STATE_FIPS
+    missing = sorted(INCLUDED_STATE_FIPS - states)
+    if missing:
+        sample = ", ".join(missing[:12])
+        more = f" (+{len(missing) - 12} more)" if len(missing) > 12 else ""
+        raise IncompleteNationalRegistryError(
+            f"geo_counties incomplete for national progress: "
+            f"{len(states)}/{EXPECTED_INCLUDED_STATE_COUNT} included jurisdictions "
+            f"present; missing state_fips e.g. {sample}{more}. "
+            "Bootstrap remaining states before claiming national completion."
+        )
+
+
+def require_complete_national_registry(database_url: str) -> frozenset[str]:
+    """Load geo_counties for 50+DC or raise IncompleteNationalRegistryError."""
+    counties = load_national_universe_counties(database_url)
+    present_states = load_national_registry_state_fips(database_url)
+    validate_national_registry(counties, present_states=present_states)
+    return counties
 
 
 def active_county_fips(*, database_url: str | None = None) -> frozenset[str]:

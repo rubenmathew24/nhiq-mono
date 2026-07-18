@@ -17,16 +17,19 @@ For each pipeline worker in order, select up to `ORCH_BATCH_STATES` (default `10
 |------|---------|---------------|
 | `0` | Full inventory pass with zero required gaps | Stop; nation complete |
 | `2` | Time budget hit; gaps remain | Start another orchestrator execution / redispatch workflow / PowerShell loop |
-| `1` | Hard failure | Fail the Action / stop PowerShell |
+| `1` | Hard failure (worker failures, empty/incomplete `geo_counties`, or gaps remain only on `ORCH_STATE_EXCLUDE`) | Fail the Action / stop PowerShell |
+
+Empty or incomplete national registry MUST fail closed (exit `1`) — never treat as complete.
 
 ## Log markers (must appear for GHA progress)
 
 - `Exclude states=...` (when set)
 - `Will process states=...` / batch lines per worker
 - `orch_start worker=... state=...` (or multi-state batch equivalent)
-- `orch_cycle_result=complete` | `orch_cycle_result=more_work`
+- `orch_cycle_result=complete` | `orch_cycle_result=more_work` | `orch_cycle_result=blocked_excluded` | `orch_cycle_result=registry_incomplete`
 - Optional: `national_progress` summary after status emit
 
+When remaining gaps exist only on excluded states: emit `orch_cycle_result=blocked_excluded` and exit `1` (do **not** claim `complete`).
 ## Time budget
 
 `ORCH_TIME_BUDGET_SECONDS` default `20700`. Stop starting new work when elapsed ≥ budget; emit `orch_cycle_result=more_work` and exit `2`.
