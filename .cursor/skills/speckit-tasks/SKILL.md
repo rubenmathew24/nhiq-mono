@@ -86,7 +86,7 @@ You **MUST** consider the user input before proceeding (if not empty).
    - Parallel execution examples per story
    - Implementation strategy section (MVP first, incremental delivery)
 
-## NeighborhoodIQ Git Workflow (required)
+## NeighborhoodInsight Git Workflow (required)
 
 Follow `.cursor/skills/speckit-git-workflow.md`.
 

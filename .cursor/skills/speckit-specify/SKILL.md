@@ -267,7 +267,7 @@ Check if `.specify/extensions.yml` exists in the project root.
     To execute: `/{command}`
     ```
 
-## NeighborhoodIQ Git Workflow (required)
+## NeighborhoodInsight Git Workflow (required)
 
 Follow `.cursor/skills/speckit-git-workflow.md`.
 
@@ -290,7 +290,7 @@ Report completion to the user with:
 - Readiness for the next phase (`/speckit-clarify` or `/speckit-plan`)
 - Reminder: draft spec is uncommitted until `/speckit-plan` starts (Commit #1)
 
-**NOTE:** Branch creation is handled by the `before_specify` hook (git extension) when present. Spec directory and file creation are always handled by this core command. NeighborhoodIQ always publishes the branch at the end of specify.
+**NOTE:** Branch creation is handled by the `before_specify` hook (git extension) when present. Spec directory and file creation are always handled by this core command. NeighborhoodInsight always publishes the branch at the end of specify.
 
 ## Quick Guidelines
 

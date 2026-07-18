@@ -1,4 +1,4 @@
-# 🏡 NeighborhoodIQ — Startup Brief
+# 🏡 NeighborhoodInsight — Startup Brief
 ### *Know Your Neighborhood Before You Buy*
 
 ---
@@ -12,13 +12,13 @@ Buying a home is the largest financial decision most people will ever make — y
 - Is the neighborhood getting safer or more dangerous over time?
 - How do the schools stack up, really?
 
-**Buyers find out after closing. NeighborhoodIQ changes that.**
+**Buyers find out after closing. NeighborhoodInsight changes that.**
 
 ---
 
 ## The Solution
 
-**NeighborhoodIQ** is an AI-powered neighborhood intelligence platform that gives home buyers a comprehensive, plain-English picture of any U.S. address — before they make an offer.
+**NeighborhoodInsight** is an AI-powered neighborhood intelligence platform that gives home buyers a comprehensive, plain-English picture of any U.S. address — before they make an offer.
 
 We aggregate public government data across healthcare, safety, environment, education, and economic health into a single **Neighborhood Score**, with AI-generated narratives that explain what the numbers actually mean for *your* lifestyle.
 
@@ -65,7 +65,7 @@ We aggregate public government data across healthcare, safety, environment, educ
 - First-time buyers especially lack the local knowledge that repeat buyers accumulate
 
 ### Secondary: Real Estate Agents
-- Agents can white-label NeighborhoodIQ reports as part of their client service
+- Agents can white-label NeighborhoodInsight reports as part of their client service
 - Adds value to listing presentations and buyer consultations
 
 ### Tertiary: Mortgage Lenders & Insurers
@@ -204,7 +204,7 @@ Product Layer
 
 ## The Vision
 
-NeighborhoodIQ starts with home buyers. But every piece of infrastructure we build — the data pipelines, the scoring models, the AI narratives — applies to renters, employers doing workforce planning, urban planners, and insurance underwriters.
+NeighborhoodInsight starts with home buyers. But every piece of infrastructure we build — the data pipelines, the scoring models, the AI narratives — applies to renters, employers doing workforce planning, urban planners, and insurance underwriters.
 
 > **The long-term vision: the definitive intelligence layer for any location-based decision in the United States.**
 

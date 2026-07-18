@@ -3,7 +3,7 @@ description: Branch from dev for Spec Kit features; master is production
 alwaysApply: true
 ---
 
-# Git branching (NeighborhoodIQ)
+# Git branching (NeighborhoodInsight)
 
 - **`master`**: production. Deploy / promote here only after `dev` is verified.
 - **`dev`**: integration / staging. Default base for all new work.

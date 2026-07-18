@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Start the NeighborhoodIQ monorepo (local dev or Docker).
+# Start the NeighborhoodInsight monorepo (local dev or Docker).
 # Usage: ./scripts/start.sh [local|docker] [--install]
 
 set -euo pipefail
@@ -49,7 +49,7 @@ start_local() {
   ensure_root_deps
 
   echo ""
-  echo "NeighborhoodIQ - local dev"
+  echo "NeighborhoodInsight - local dev"
   echo "  Web:  http://localhost:3000"
   echo "  API:  http://localhost:8000"
   echo "  Docs: http://localhost:8000/api/docs"

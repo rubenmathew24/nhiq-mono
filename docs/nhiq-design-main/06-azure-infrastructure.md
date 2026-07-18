@@ -280,7 +280,7 @@ az containerapp create \
   --memory 1Gi \
   --env-vars \
     "NEXT_PUBLIC_API_URL=https://${API_FQDN}" \
-    "NEXTAUTH_URL=https://neighborhoodiq.com" \
+    "NEXTAUTH_URL=https://nh-iq.com" \
     "NEXTAUTH_SECRET=secretref:nextauth-secret" \
   --secrets \
     "nextauth-secret=$(az keyvault secret show --vault-name $KV_NAME --name NEXTAUTH-SECRET --query value -o tsv)"

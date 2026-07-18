@@ -266,7 +266,7 @@ Check if `.specify/extensions.yml` exists in the project root.
     To execute: `/{command}`
     ```
 
-## NeighborhoodIQ Git Workflow (required)
+## NeighborhoodInsight Git Workflow (required)
 
 Follow `.cursor/skills/speckit-git-workflow.md`.
 

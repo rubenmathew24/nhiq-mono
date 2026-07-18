@@ -1,4 +1,4 @@
-# NeighborhoodIQ — Project Overview
+# NeighborhoodInsight — Project Overview
 
 > **Read this file first before working on any part of the codebase.**
 > It is the authoritative source of product context, architecture decisions, and conventions.
@@ -7,7 +7,7 @@
 
 ## What We're Building
 
-NeighborhoodIQ is an AI-powered neighborhood intelligence platform. Given any U.S. address, it produces a comprehensive **Neighborhood Score** with plain-English AI narratives across five dimensions:
+NeighborhoodInsight is an AI-powered neighborhood intelligence platform. Given any U.S. address, it produces a comprehensive **Neighborhood Score** with plain-English AI narratives across five dimensions:
 
 | Score Dimension | Data Sources |
 |---|---|

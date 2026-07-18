@@ -52,7 +52,7 @@ You **MUST** consider the user input before proceeding (if not empty).
     After emitting the block above you MUST actually invoke the hook and wait for it to finish before continuing. Run it the same way you would run the command yourself in this agent/session (the invocation may differ from the literal `{command}` id shown above, e.g. a skills-mode agent runs it as `/skill:speckit-...` or `$speckit-...`). Emitting the block alone does not run the hook.
 - If no hooks are registered or `.specify/extensions.yml` does not exist, skip silently
 
-## NeighborhoodIQ Git Workflow (required)
+## NeighborhoodInsight Git Workflow (required)
 
 Follow `.cursor/skills/speckit-git-workflow.md`.
 
@@ -68,7 +68,7 @@ Do **not** wait for `/speckit-tasks` to commit the spec — planning artifacts s
 
 1. **Setup**: Run `.specify/scripts/powershell/setup-plan.ps1 -Json` from repo root and parse JSON for FEATURE_SPEC, IMPL_PLAN, SPECS_DIR, BRANCH. For single quotes in args like "I'm Groot", use escape syntax: e.g 'I'\''m Groot' (or double-quote if possible: "I'm Groot").
 
-2. **Commit #1 (finalized spec)**: Perform the NeighborhoodIQ Git Workflow Commit #1 above. Halt plan writing until this step completes (or is skipped as no-op).
+2. **Commit #1 (finalized spec)**: Perform the NeighborhoodInsight Git Workflow Commit #1 above. Halt plan writing until this step completes (or is skipped as no-op).
 
 3. **Load context**: Read FEATURE_SPEC and `.specify/memory/constitution.md`. Load IMPL_PLAN template (already copied).
 

@@ -40,7 +40,7 @@ Local/dev report: five categories with sub-scores and in-place expand from an ob
 ## Constitution Check
 
 *GATE: Must pass before Phase 0 research. Re-check after Phase 1 design.*
-*Source: `.specify/memory/constitution.md` (NeighborhoodIQ Constitution v1.1.0)*
+*Source: `.specify/memory/constitution.md` (NeighborhoodInsight Constitution v1.1.0)*
 
 - [x] **I. Locked Stack & Monorepo**
 - [x] **II. Thin Client, Fat API**: UI-only gesture handling

@@ -4,7 +4,7 @@
     {
       "type": 1,
       "content": {
-        "json": "## NeighborhoodIQ ingest status\n\nScope + per-worker **data completion %** from slim `INGEST_STATUS_SNAPSHOT` logs (metrics only — no full county lists).\n\nEmitted by orchestrator / workers mid-run, or: `az containerapp job start --name niq-worker-status --resource-group neighborhoodiq-rg`\n\nPrimary durable source: Postgres table `ingest_status_snapshot` (includes full detail)."
+        "json": "## NeighborhoodInsight ingest status\n\nScope + per-worker **data completion %** from slim `INGEST_STATUS_SNAPSHOT` logs (metrics only — no full county lists).\n\nEmitted by orchestrator / workers mid-run, or: `az containerapp job start --name niq-worker-status --resource-group neighborhoodiq-rg`\n\nPrimary durable source: Postgres table `ingest_status_snapshot` (includes full detail)."
       },
       "name": "title"
     },

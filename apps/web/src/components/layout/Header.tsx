@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { MapPin } from "lucide-react";
+import { Eye } from "lucide-react";
 import { auth } from "@/lib/auth";
 import { navLinks } from "@/content/landing";
 import { ButtonWithArrow } from "@/components/ui/Button";
@@ -14,10 +14,10 @@ export default async function Header() {
       <div className="max-w-7xl mx-auto px-6 h-20 flex items-center justify-between">
         <Link href="/" className="flex items-center gap-2.5">
           <div className="w-9 h-9 rounded-lg bg-primary text-primary-foreground grid place-items-center">
-            <MapPin className="w-5 h-5" strokeWidth={2.5} aria-hidden="true" />
+            <Eye className="w-5 h-5" strokeWidth={2.5} aria-hidden="true" />
           </div>
           <span className="text-lg font-display font-bold tracking-tight text-foreground">
-            Neighborhood<span className="text-mint">IQ</span>
+            Neighborhood<span className="text-mint">Insight</span>
           </span>
         </Link>
 

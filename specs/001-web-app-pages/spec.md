@@ -12,7 +12,7 @@
 
 ### User Story 1 - Sign up and sign in (Priority: P1)
 
-A prospective or returning home buyer opens NeighborhoodIQ, creates an account with email and password, or signs in to an existing account, then lands somewhere useful (home or the page they were trying to reach).
+A prospective or returning home buyer opens NeighborhoodInsight, creates an account with email and password, or signs in to an existing account, then lands somewhere useful (home or the page they were trying to reach).
 
 **Why this priority**: Account access unlocks saved history, paid features later, and is the first missing page called out by the user and the product docs. Without it, dashboard and personalized flows cannot ship.
 

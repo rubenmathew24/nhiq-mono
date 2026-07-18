@@ -11,7 +11,7 @@ Also: `docs/nhiq-design-main/07-data-ingestion-workers.md`, `08-database-schema.
 
 ---
 
-## 0. Source map (probe → NeighborhoodIQ pillars)
+## 0. Source map (probe → NeighborhoodInsight pillars)
 
 Probe `source_id` values grouped by product pillar. **002 status** = role in *this* feature.
 

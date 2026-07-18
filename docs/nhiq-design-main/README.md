@@ -1,6 +1,6 @@
-# NeighborhoodIQ Design Specs
+# NeighborhoodInsight Design Specs
 
-NeighborhoodIQ is an AI-powered neighborhood intelligence platform that produces a comprehensive **Neighborhood Score** for any U.S. address — covering healthcare access, safety, environment, education, and economic health, with plain-English AI narratives.
+NeighborhoodInsight is an AI-powered neighborhood intelligence platform that produces a comprehensive **Neighborhood Score** for any U.S. address — covering healthcare access, safety, environment, education, and economic health, with plain-English AI narratives.
 
 This repository stores **design specifications and implementation playbooks only**. It does not contain application code. The specs describe a future monorepo (`apps/`, `workers/`, `infra/`) that will be built from these documents.
 
@@ -14,7 +14,7 @@ Choose a path based on your goal. Each document links to the next in sequence so
 
 For investors, co-founders, and non-technical readers who want to understand the problem, market, and go-to-market strategy.
 
-1. [NeighborhoodIQ — Startup Brief](./NeighborhoodIQ_Startup.md)
+1. [NeighborhoodInsight — Startup Brief](./NeighborhoodInsight_Startup.md)
 
 ### Path B — Technical Blueprint
 
@@ -27,7 +27,7 @@ For architects and senior engineers who need the locked stack, conventions, and 
 
 For implementation — read end to end when scaffolding the product.
 
-1. [NeighborhoodIQ — Startup Brief](./NeighborhoodIQ_Startup.md) *(optional context)*
+1. [NeighborhoodInsight — Startup Brief](./NeighborhoodInsight_Startup.md) *(optional context)*
 2. [00 — Project Overview](./00-project-overview.md)
 3. [10 — System Design](./10-system-design.md)
 4. [01 — Monorepo Setup](./01-monorepo-setup.md) through [09 — Testing](./09-testing.md) **in order**
@@ -35,7 +35,7 @@ For implementation — read end to end when scaffolding the product.
 ```mermaid
 flowchart TD
     start[Start_here] --> audience{Your_goal}
-    audience -->|Business_vision| startup[NeighborhoodIQ_Startup.md]
+    audience -->|Business_vision| startup[NeighborhoodInsight_Startup.md]
     audience -->|Architecture| overview[00-project-overview.md]
     overview --> systemDesign[10-system-design.md]
     audience -->|Build_the_product| overview2[00-project-overview.md]
@@ -57,7 +57,7 @@ flowchart TD
 
 | # | Document | Summary |
 |---|----------|---------|
-| — | [NeighborhoodIQ — Startup Brief](./NeighborhoodIQ_Startup.md) | Problem, solution, market size, competitive landscape, GTM, vision |
+| — | [NeighborhoodInsight — Startup Brief](./NeighborhoodInsight_Startup.md) | Problem, solution, market size, competitive landscape, GTM, vision |
 | 00 | [Project Overview](./00-project-overview.md) | Locked stack, repo layout, env vars, conventions, build status |
 | 01 | [Monorepo Setup](./01-monorepo-setup.md) | Scaffold repo, `.env`, docker-compose local dev |
 | 02 | [Next.js Frontend](./02-nextjs-frontend.md) | App Router UI, Auth.js, Mapbox, Tailwind |

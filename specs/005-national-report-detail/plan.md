@@ -33,7 +33,7 @@ Extend production schema docs and the **national ingest path** so report expand 
 ## Constitution Check
 
 *GATE: Must pass before Phase 0 research. Re-check after Phase 1 design.*
-*Source: `.specify/memory/constitution.md` (NeighborhoodIQ Constitution v1.1.0)*
+*Source: `.specify/memory/constitution.md` (NeighborhoodInsight Constitution v1.1.0)*
 
 - [x] **I. Locked Stack & Monorepo**: Workers + infra SQL + Azure ACA Jobs + GHA only
 - [x] **II. Thin Client, Fat API**: No web/API logic changes required (004 already maps `score_detail`); ops/docs only for report surface

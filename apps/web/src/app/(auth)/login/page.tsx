@@ -70,7 +70,7 @@ function LoginForm() {
           Welcome back
         </h1>
         <p className="text-muted-foreground text-sm">
-          Sign in to your NeighborhoodIQ account.
+          Sign in to your NeighborhoodInsight account.
         </p>
       </div>
 

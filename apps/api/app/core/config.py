@@ -17,7 +17,7 @@ class Settings(BaseSettings):
 
     CORS_ORIGINS: List[str] = [
         "http://localhost:3000",
-        "https://neighborhoodiq.com",
+        "https://nh-iq.com",
     ]
 
     AZURE_STORAGE_CONNECTION_STRING: str = ""

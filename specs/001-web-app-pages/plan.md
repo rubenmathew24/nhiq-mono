@@ -32,7 +32,7 @@ Ship the missing web surfaces (login, register, user menu, **signed-in upgrade/p
 ## Constitution Check
 
 *GATE: Must pass before Phase 0 research. Re-check after Phase 1 design.*
-*Source: `.specify/memory/constitution.md` (NeighborhoodIQ Constitution v1.1.0)*
+*Source: `.specify/memory/constitution.md` (NeighborhoodInsight Constitution v1.1.0)*
 
 - [x] **I. Locked Stack & Monorepo**: Next.js + FastAPI + existing monorepo layout; Postgres via Docker Compose
 - [x] **II. Thin Client, Fat API**: Auth/register/login/lookups live in FastAPI services; web uses `apiFetch` + Auth.js session chrome only

@@ -1,6 +1,6 @@
 # 10 — System Design
 
-> Authoritative technical design document for NeighborhoodIQ. Covers architecture decisions, data flows, service interactions, scaling strategy, failure modes, and security model. Read this before making any structural changes to the system.
+> Authoritative technical design document for NeighborhoodInsight. Covers architecture decisions, data flows, service interactions, scaling strategy, failure modes, and security model. Read this before making any structural changes to the system.
 
 ---
 
@@ -30,7 +30,7 @@
 
 ## 1. System Overview
 
-NeighborhoodIQ aggregates public government data across six federal sources, runs a geospatial scoring pipeline, and surfaces results through an AI-generated narrative layer. The system has four distinct subsystems:
+NeighborhoodInsight aggregates public government data across six federal sources, runs a geospatial scoring pipeline, and surfaces results through an AI-generated narrative layer. The system has four distinct subsystems:
 
 ```
 ┌─────────────────────────────────────────────────────────┐
@@ -956,8 +956,8 @@ Secret rotation procedure:
 ```python
 CORS_ORIGINS = [
     "http://localhost:3000",           # Local dev
-    "https://neighborhoodiq.com",      # Production
-    "https://www.neighborhoodiq.com",  # Production www
+    "https://nh-iq.com",      # Production
+    "https://www.nh-iq.com",  # Production www
 ]
 # B2B API consumers: no CORS needed (server-to-server)
 ```
@@ -1084,7 +1084,7 @@ Agent-tier reports need custom branding (logo, color scheme, agent contact). Imp
 
 ### Webhook / CRM Integration (Brokerage Tier)
 
-Brokerages want NeighborhoodIQ data pushed to their CRM when a new listing is analyzed. Implementation: add `webhooks` table, fire POST requests to registered URLs after score computation. This is a simple async background task — no new infrastructure.
+Brokerages want NeighborhoodInsight data pushed to their CRM when a new listing is analyzed. Implementation: add `webhooks` table, fire POST requests to registered URLs after score computation. This is a simple async background task — no new infrastructure.
 
 ### Multi-Region (Series B+)
 

@@ -8,7 +8,7 @@ import { apiFetchServer } from "@/lib/api";
 import type { LookupListResponse } from "@/types/api";
 
 export const metadata = {
-  title: "Dashboard — NeighborhoodIQ",
+  title: "Dashboard — NeighborhoodInsight",
 };
 
 export default async function DashboardPage() {
