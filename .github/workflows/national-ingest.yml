@@ -5,10 +5,19 @@ name: National ingest
 on:
   workflow_dispatch:
     inputs:
+      continuous:
+        description: Continuous mode (ORCH_CONTINUOUS=1) — loop until nation complete
+        required: false
+        default: "true"
+        type: boolean
       max_states:
-        description: Max states to process this run (ORCH_MAX_STATE_UNITS)
+        description: Max states this run when continuous=false (ORCH_MAX_STATE_UNITS)
         required: false
         default: "5"
+      batch_states:
+        description: Max gap states per worker execution (ORCH_BATCH_STATES)
+        required: false
+        default: "10"
       state_filter:
         description: Optional comma-separated state FIPS (e.g. 44 or 44,09)
         required: false
@@ -17,22 +26,51 @@ on:
         description: Optional comma-separated state FIPS to force full re-ingest (bypass skip-done)
         required: false
         default: ""
+      state_exclude:
+        description: Optional comma-separated state FIPS to skip (blacklist); force_states overrides
+        required: false
+        default: ""
+      chain_depth:
+        description: Auto-incremented self-redispatch depth (do not set manually)
+        required: false
+        default: "0"
+
+permissions:
+  contents: read
+  actions: write
 
 jobs:
   orchestrate:
     name: Start niq-worker-orchestrate
     runs-on: ubuntu-latest
+    timeout-minutes: 350
     steps:
       - name: Azure Login
         uses: azure/login@v2
         with:
           creds: ${{ secrets.AZURE_CREDENTIALS }}
 
+      - name: Guard chain depth
+        env:
+          CHAIN_DEPTH: ${{ github.event.inputs.chain_depth }}
+        run: |
+          set -euo pipefail
+          DEPTH="${CHAIN_DEPTH:-0}"
+          if [ "$DEPTH" -gt 50 ]; then
+            echo "chain_depth=$DEPTH exceeds safety limit 50 — stop auto-chaining"
+            echo "Remaining work needs a new manual dispatch or investigation."
+            exit 1
+          fi
+          echo "chain_depth=$DEPTH"
+
       - name: Configure orchestrator inputs + SP env
         env:
+          CONTINUOUS: ${{ github.event.inputs.continuous }}
           MAX_STATES: ${{ github.event.inputs.max_states }}
+          BATCH_STATES: ${{ github.event.inputs.batch_states }}
           STATE_FILTER: ${{ github.event.inputs.state_filter }}
           FORCE_STATES: ${{ github.event.inputs.force_states }}
+          STATE_EXCLUDE: ${{ github.event.inputs.state_exclude }}
           AZURE_CREDENTIALS: ${{ secrets.AZURE_CREDENTIALS }}
           AZURE_RESOURCE_GROUP: ${{ secrets.AZURE_RESOURCE_GROUP }}
         run: |
@@ -40,21 +78,28 @@ jobs:
           python3 <<'PY'
           import json, os, subprocess
           creds = json.loads(os.environ["AZURE_CREDENTIALS"])
-          # azure/login JSON keys
           client_id = creds.get("clientId") or creds.get("appId")
           secret = creds.get("clientSecret") or creds.get("password")
           tenant = creds.get("tenantId") or creds.get("tenant")
           sub = creds.get("subscriptionId")
           if not all([client_id, secret, tenant, sub]):
               raise SystemExit(f"AZURE_CREDENTIALS missing fields: {sorted(creds)}")
+          continuous_raw = (os.environ.get("CONTINUOUS") or "true").strip().lower()
+          continuous = continuous_raw in ("1", "true", "yes")
           max_states = os.environ.get("MAX_STATES") or "5"
+          batch_states = os.environ.get("BATCH_STATES") or "10"
           state_filter = os.environ.get("STATE_FILTER") or ""
           force_states = os.environ.get("FORCE_STATES") or ""
+          state_exclude = os.environ.get("STATE_EXCLUDE") or ""
           rg = os.environ["AZURE_RESOURCE_GROUP"]
           env_vars = [
+              f"ORCH_CONTINUOUS={'1' if continuous else '0'}",
               f"ORCH_MAX_STATE_UNITS={max_states}",
+              f"ORCH_BATCH_STATES={batch_states}",
+              "ORCH_TIME_BUDGET_SECONDS=20700",
               f"ORCH_STATE_FILTER={state_filter}",
               f"ORCH_FORCE_STATES={force_states}",
+              f"ORCH_STATE_EXCLUDE={state_exclude}",
               f"AZURE_RESOURCE_GROUP={rg}",
               f"AZURE_SUBSCRIPTION_ID={sub}",
               f"AZURE_TENANT_ID={tenant}",
@@ -69,42 +114,208 @@ jobs:
               "-o", "none",
           ]
           subprocess.check_call(cmd)
-          print("Orchestrator env updated (SP injected from AZURE_CREDENTIALS)")
+          print(
+              f"Orchestrator env updated continuous={continuous} "
+              f"batch_states={batch_states}"
+          )
           PY
 
-      - name: Start orchestrator job
-        id: start
-        run: |
-          set -euo pipefail
-          RG="${{ secrets.AZURE_RESOURCE_GROUP }}"
-          JOB=niq-worker-orchestrate
-          OUT=$(az containerapp job start --name "$JOB" --resource-group "$RG" -o json)
-          NAME=$(echo "$OUT" | python3 -c "import sys,json; print(json.load(sys.stdin).get('name',''))")
-          echo "execution=$NAME" >> "$GITHUB_OUTPUT"
-          echo "Started execution: $NAME"
-
-      - name: Poll until complete
+      - name: Poll / chain orchestrator until complete
         env:
-          EXECUTION: ${{ steps.start.outputs.execution }}
+          GH_TOKEN: ${{ github.token }}
+          CONTINUOUS: ${{ github.event.inputs.continuous }}
+          MAX_STATES: ${{ github.event.inputs.max_states }}
+          BATCH_STATES: ${{ github.event.inputs.batch_states }}
+          STATE_FILTER: ${{ github.event.inputs.state_filter }}
+          FORCE_STATES: ${{ github.event.inputs.force_states }}
+          STATE_EXCLUDE: ${{ github.event.inputs.state_exclude }}
+          CHAIN_DEPTH: ${{ github.event.inputs.chain_depth }}
         run: |
           set -euo pipefail
           RG="${{ secrets.AZURE_RESOURCE_GROUP }}"
           JOB=niq-worker-orchestrate
-          for i in $(seq 1 240); do
-            ST=$(az containerapp job execution show \
-              --name "$JOB" \
-              --resource-group "$RG" \
-              --job-execution-name "$EXECUTION" \
-              --query "properties.status" -o tsv)
-            echo "poll=$i status=$ST"
-            if [ "$ST" = "Succeeded" ]; then
-              exit 0
-            fi
-            if [ "$ST" = "Failed" ] || [ "$ST" = "Stopped" ]; then
-              echo "Orchestrator ended with status=$ST"
+          WORKFLOW_START=$(date +%s)
+          # Leave ~25 minutes for self-redispatch before job timeout (350m).
+          WORKFLOW_BUDGET_SECONDS=$((325 * 60))
+          CONTINUOUS_RAW="${CONTINUOUS:-true}"
+          CONTINUOUS=0
+          case "${CONTINUOUS_RAW,,}" in
+            1|true|yes) CONTINUOUS=1 ;;
+          esac
+
+          CONTAINER=$(az containerapp job show \
+            --name "$JOB" \
+            --resource-group "$RG" \
+            --query "properties.template.containers[0].name" -o tsv 2>/dev/null || true)
+          if [ -z "${CONTAINER:-}" ]; then
+            CONTAINER="$JOB"
+          fi
+
+          INTERESTING='Exclude states|Will process states|Force states|Inventory summary|State |orch_|Final inventory|national_progress'
+
+          start_execution() {
+            local OUT NAME
+            OUT=$(az containerapp job start --name "$JOB" --resource-group "$RG" -o json)
+            NAME=$(echo "$OUT" | python3 -c "import sys,json; print(json.load(sys.stdin).get('name',''))")
+            if [ -z "$NAME" ]; then
+              echo "Failed to start orchestrator execution"
               exit 1
             fi
-            sleep 30
+            echo "$NAME"
+          }
+
+          dump_progress() {
+            local EXECUTION="$1"
+            local SEEN_FILE="$2"
+            local tail_n="$3"
+            local raw matched new_lines last
+            raw=$(az containerapp job logs show \
+              --name "$JOB" \
+              --resource-group "$RG" \
+              --execution "$EXECUTION" \
+              --container "$CONTAINER" \
+              --tail "$tail_n" 2>/dev/null || true)
+            if [ -z "$raw" ]; then
+              echo "last_activity=(orchestrator logs not available yet)"
+              return 0
+            fi
+            matched=$(printf '%s\n' "$raw" | grep -E "$INTERESTING" || true)
+            if [ -z "$matched" ]; then
+              echo "last_activity=(no orch progress lines in last $tail_n log lines yet)"
+              return 0
+            fi
+            new_lines=$(printf '%s\n' "$matched" | while IFS= read -r line || [ -n "$line" ]; do
+              [ -z "$line" ] && continue
+              if ! grep -Fxq -- "$line" "$SEEN_FILE" 2>/dev/null; then
+                printf '%s\n' "$line" >> "$SEEN_FILE"
+                printf '%s\n' "$line"
+              fi
+            done)
+            if [ -n "$new_lines" ]; then
+              echo "--- new orchestrator progress ---"
+              printf '%s\n' "$new_lines"
+              echo "---"
+            fi
+            last=$(printf '%s\n' "$matched" | tail -n 1)
+            echo "last_activity=$last"
+          }
+
+          cycle_result_from_logs() {
+            local EXECUTION="$1"
+            local raw
+            raw=$(az containerapp job logs show \
+              --name "$JOB" \
+              --resource-group "$RG" \
+              --execution "$EXECUTION" \
+              --container "$CONTAINER" \
+              --tail 200 2>/dev/null || true)
+            if printf '%s\n' "$raw" | grep -q 'orch_cycle_result=complete'; then
+              echo complete
+              return 0
+            fi
+            if printf '%s\n' "$raw" | grep -q 'orch_cycle_result=more_work'; then
+              echo more_work
+              return 0
+            fi
+            echo unknown
+          }
+
+          redispatch_workflow() {
+            local next_depth=$(( ${CHAIN_DEPTH:-0} + 1 ))
+            echo "Self-redispatching national-ingest.yml chain_depth=$next_depth"
+            gh api \
+              --method POST \
+              -H "Accept: application/vnd.github+json" \
+              "/repos/${{ github.repository }}/actions/workflows/national-ingest.yml/dispatches" \
+              -f ref="${{ github.ref_name }}" \
+              -f "inputs[continuous]=${CONTINUOUS_RAW}" \
+              -f "inputs[max_states]=${MAX_STATES}" \
+              -f "inputs[batch_states]=${BATCH_STATES}" \
+              -f "inputs[state_filter]=${STATE_FILTER}" \
+              -f "inputs[force_states]=${FORCE_STATES}" \
+              -f "inputs[state_exclude]=${STATE_EXCLUDE}" \
+              -f "inputs[chain_depth]=${next_depth}"
+            echo "Handed off to new workflow run (chain_depth=$next_depth)"
+          }
+
+          while true; do
+            NOW=$(date +%s)
+            ELAPSED=$((NOW - WORKFLOW_START))
+            if [ "$ELAPSED" -ge "$WORKFLOW_BUDGET_SECONDS" ]; then
+              if [ "$CONTINUOUS" = "1" ]; then
+                redispatch_workflow
+                exit 0
+              fi
+              echo "Workflow time budget hit in bounded mode"
+              exit 1
+            fi
+
+            EXECUTION=$(start_execution)
+            echo "Started execution: $EXECUTION"
+            SEEN_FILE=$(mktemp)
+            CYCLE_DONE=0
+            for i in $(seq 1 700); do
+              NOW=$(date +%s)
+              ELAPSED=$((NOW - WORKFLOW_START))
+              if [ "$ELAPSED" -ge "$WORKFLOW_BUDGET_SECONDS" ]; then
+                echo "Workflow approaching timeout while polling $EXECUTION"
+                if [ "$CONTINUOUS" = "1" ]; then
+                  redispatch_workflow
+                  exit 0
+                fi
+                exit 1
+              fi
+
+              ST=$(az containerapp job execution show \
+                --name "$JOB" \
+                --resource-group "$RG" \
+                --job-execution-name "$EXECUTION" \
+                --query "properties.status" -o tsv)
+              echo "poll=$i status=$ST"
+              dump_progress "$EXECUTION" "$SEEN_FILE" 80 || true
+
+              if [ "$ST" = "Succeeded" ] || [ "$ST" = "Failed" ] || [ "$ST" = "Stopped" ]; then
+                RESULT=$(cycle_result_from_logs "$EXECUTION")
+                echo "execution_terminal status=$ST cycle_result=$RESULT"
+                if [ "$RESULT" = "complete" ]; then
+                  if [ "$ST" = "Succeeded" ]; then
+                    exit 0
+                  fi
+                  echo "Nation complete signal with status=$ST"
+                  exit 1
+                fi
+                if [ "$CONTINUOUS" != "1" ]; then
+                  if [ "$ST" = "Succeeded" ]; then
+                    exit 0
+                  fi
+                  az containerapp job logs show \
+                    --name "$JOB" --resource-group "$RG" \
+                    --execution "$EXECUTION" --container "$CONTAINER" \
+                    --tail 200 2>/dev/null || true
+                  exit 1
+                fi
+                # Continuous: more_work or unknown with Failed → hard fail; else chain execution.
+                if [ "$ST" = "Failed" ] && [ "$RESULT" != "more_work" ]; then
+                  echo "Orchestrator hard-failed without more_work signal"
+                  az containerapp job logs show \
+                    --name "$JOB" --resource-group "$RG" \
+                    --execution "$EXECUTION" --container "$CONTAINER" \
+                    --tail 200 2>/dev/null || true
+                  exit 1
+                fi
+                echo "Chaining new orchestrator execution (more work remains)"
+                CYCLE_DONE=1
+                break
+              fi
+              sleep 30
+            done
+            rm -f "$SEEN_FILE"
+            if [ "$CYCLE_DONE" != "1" ]; then
+              echo "Timed out waiting for orchestrator execution"
+              if [ "$CONTINUOUS" = "1" ]; then
+                redispatch_workflow
+                exit 0
+              fi
+              exit 1
+            fi
           done
-          echo "Timed out waiting for orchestrator"
-          exit 1

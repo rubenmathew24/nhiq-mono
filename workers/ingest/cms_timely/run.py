@@ -8,12 +8,15 @@ import sys
 import psycopg2
 
 from ingest.base import BaseIngestionWorker
+from ingest.checkpoints import log_skip, states_with_timely_measures
 from ingest.cms_timely.client import (
     discover_timely_dataset_ids,
     fetch_benchmark_by_measure,
     iter_dataset_pages,
 )
 from ingest.cms_timely.transform import transform_measure_rows
+from ingest.fixtures.constants import DATA_VINTAGE
+from ingest.force import force_enabled
 from ingest.geo.scope import active_state_abbrs
 
 logger = logging.getLogger("cms_timely")
@@ -70,13 +73,33 @@ class CmsTimelyWorker(BaseIngestionWorker):
 
     def fetch(self) -> None:
         # active_state_abbrs → active_county_fips (national requires INGEST_STATE_BATCH)
-        self._states = active_state_abbrs(database_url=self.database_url)
+        all_states = active_state_abbrs(database_url=self.database_url)
+        if force_enabled():
+            self._states = all_states
+            skipped = 0
+        else:
+            done = states_with_timely_measures(
+                self.database_url,
+                sorted(all_states),
+                data_vintage=DATA_VINTAGE,
+            )
+            pending = all_states - done
+            skipped = len(done)
+            self._states = frozenset(pending)
+        log_skip(self.logger, "cms_timely", skipped, len(self._states))
         self._providers = _load_hospital_provider_ids(self.database_url, self._states)
         self.logger.info(
             "Active states=%s hospitals=%d",
             sorted(self._states),
             len(self._providers),
         )
+
+        self._raw_pages = []
+        self._state_benchmarks = {}
+        self._national_benchmarks = {}
+        if not self._states:
+            self.logger.info("CMS Timely skip-done: no pending states")
+            return
 
         dataset_ids = discover_timely_dataset_ids()
         hospital_id = dataset_ids["hospital"]
@@ -92,7 +115,6 @@ class CmsTimelyWorker(BaseIngestionWorker):
             len(self._national_benchmarks),
         )
 
-        self._raw_pages = []
         page = 0
         for raw_page in iter_dataset_pages(hospital_id):
             page += 1

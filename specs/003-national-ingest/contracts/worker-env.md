@@ -24,6 +24,7 @@
 | `ORCH_MAX_STATE_UNITS` | Max states to process this run (default `5`) |
 | `ORCH_STATE_FILTER` | Optional comma state FIPS — **exclusive** list when set (only gaps within filter; no padding outside). Empty = unscoped national gap-fill. |
 | `ORCH_FORCE_STATES` | Optional comma state FIPS to force full pipeline re-run. **Exclusive** when set (only these FIPS, capped by max; no gap padding). |
+| `ORCH_STATE_EXCLUDE` | Optional comma state FIPS blacklist — skipped before `max_states` slice so other gap states fill the quota. `ORCH_FORCE_STATES` overrides exclude for overlapping FIPS. |
 
 ## Status snapshot log contract (`INGEST_STATUS_SNAPSHOT`)
 

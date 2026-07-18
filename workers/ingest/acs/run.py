@@ -9,8 +9,8 @@ import psycopg2
 
 from ingest.acs.client import (
     DEFAULT_ACS_YEAR,
-    fetch_county_tract_rows,
     fetch_state_rows,
+    fetch_state_tract_rows,
     tabular_to_dicts,
 )
 from ingest.acs.transform import transform_acs_rows, transform_acs_state_rows
@@ -59,24 +59,32 @@ class AcsTractWorker(BaseIngestionWorker):
             else counties_with_acs(self.database_url, sorted(allow))
         )
         pending = sorted(allow - done)
+        pending_set = set(pending)
         log_skip(self.logger, "acs", len(done), len(pending))
         pulse = StatusPulse(self.database_url)
-        for county_fips in pending:
-            state_fips = county_fips[:2]
-            county = county_fips[2:]
+        # One Census call per state (`county:*`), then keep only pending counties.
+        pending_states = sorted({c[:2] for c in pending})
+        for state_fips in pending_states:
             self.logger.info(
-                "Fetching ACS tracts for county %s (year=%s)…",
-                county_fips,
+                "Fetching ACS tracts for state %s (year=%s)…",
+                state_fips,
                 self._acs_year,
             )
-            tabular = fetch_county_tract_rows(
-                state_fips,
-                county,
-                acs_year=self._acs_year,
-            )
+            tabular = fetch_state_tract_rows(state_fips, acs_year=self._acs_year)
             rows = tabular_to_dicts(tabular)
-            self._raw_rows.extend(rows)
-            self.logger.info("  Got %s tract rows", len(rows))
+            kept = 0
+            for row in rows:
+                county = str(row.get("county") or "").zfill(3)[-3:]
+                cf = f"{state_fips}{county}"
+                if cf in pending_set:
+                    self._raw_rows.append(row)
+                    kept += 1
+            self.logger.info(
+                "  State %s: %s tract rows, kept %s for pending counties",
+                state_fips,
+                len(rows),
+                kept,
+            )
             pulse.tick()
 
         # Always refresh state population for states covered by active counties
