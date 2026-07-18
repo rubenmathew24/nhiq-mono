@@ -389,36 +389,40 @@ def compute_job_statuses(cur, counties: frozenset[str], scope: str) -> list[JobS
         )
     )
 
-    # scoring — tracts with fbi_cde + non-empty score_detail
+    # scoring — county grain vs full national universe (same as inventory
+    # counties_with_score_detail). Do NOT use loaded-tract count as denominator.
     cur.execute(
         """
+        WITH scoped AS (
+            SELECT geoid, (state_fips || county_fips) AS cf
+            FROM census_tracts
+            WHERE (state_fips || county_fips) = ANY(%s)
+        )
         SELECT COUNT(*)::int
-        FROM census_tracts
-        WHERE (state_fips || county_fips) = ANY(%s)
+        FROM (
+            SELECT s.cf
+            FROM scoped s
+            LEFT JOIN neighborhood_scores ns
+              ON ns.geoid = s.geoid AND ns.data_vintage = %s
+            GROUP BY s.cf
+            HAVING COUNT(*) > 0
+               AND COUNT(*) FILTER (
+                   WHERE ns.score_sources->'safety'->>'source_id' = 'fbi_cde'
+                     AND ns.score_detail IS NOT NULL
+                     AND ns.score_detail <> '{}'::jsonb
+               ) = COUNT(*)
+        ) done_counties
         """,
-        (county_list,),
-    )
-    tract_total = int(cur.fetchone()[0] or 0)
-    cur.execute(
-        """
-        SELECT COUNT(*)::int
-        FROM neighborhood_scores s
-        INNER JOIN census_tracts t ON t.geoid = s.geoid
-        WHERE (t.state_fips || t.county_fips) = ANY(%s)
-          AND s.score_sources->'safety'->>'source_id' = 'fbi_cde'
-          AND s.score_detail IS NOT NULL
-          AND s.score_detail <> '{}'::jsonb
-        """,
-        (county_list,),
+        (county_list, DATA_VINTAGE),
     )
     score_done = int(cur.fetchone()[0] or 0)
     statuses.append(
         JobStatus(
             "scoring",
-            _pct(score_done, tract_total),
+            _pct(score_done, n),
             score_done,
-            tract_total,
-            {"metric": "tracts_with_fbi_cde_and_score_detail"},
+            n,
+            {"metric": "counties_with_fbi_cde_and_score_detail"},
         )
     )
 

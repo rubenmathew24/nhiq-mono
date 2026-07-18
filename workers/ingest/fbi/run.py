@@ -8,6 +8,8 @@ from __future__ import annotations
 
 import logging
 import sys
+import threading
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import date
 
 import psycopg2
@@ -121,6 +123,115 @@ def _points_for_run(database_url: str) -> list[CanonicalAddress | CountyPoint]:
     return list(points.values())
 
 
+def _process_one_county(
+    addr: CanonicalAddress | CountyPoint,
+    *,
+    offenses: list[str],
+    from_mm: str,
+    to_mm: str,
+    database_url: str,
+    logger_: logging.Logger,
+) -> tuple[str, list[dict], list[dict], bool]:
+    """Fetch + upsert one county. Returns (county_fips, agencies, offenses, hom_ok)."""
+    logger_.info(
+        "CDE county=%s state=%s lat=%.4f lon=%.4f",
+        addr.county_fips,
+        addr.state_abbr,
+        addr.latitude,
+        addr.longitude,
+    )
+    county_agency_rows: list[dict] = []
+    county_offense_rows: list[dict] = []
+    try:
+        agencies = cde.fetch_agencies_by_state(addr.state_abbr)
+        selected = cde.select_nearest_agencies(
+            agencies,
+            lat=addr.latitude,
+            lon=addr.longitude,
+            county_name=addr.county_name,
+        )
+    except Exception as exc:  # noqa: BLE001
+        logger_.error("Agency selection failed for %s: %s", addr.county_fips, exc)
+        return addr.county_fips, [], [], False
+
+    if not selected:
+        logger_.warning("No agencies selected for %s", addr.county_fips)
+        return addr.county_fips, [], [], False
+
+    county_agency_rows = agencies_to_rows(
+        county_fips=addr.county_fips,
+        state_abbr=addr.state_abbr,
+        agencies=selected,
+        data_vintage=DATA_VINTAGE,
+    )
+
+    hom_ok = False
+    for slug in offenses:
+        local_total = 0.0
+        charts_ok = 0
+        for agency in selected:
+            try:
+                cde.pause_between_requests()
+                chart = cde.fetch_agency_offense_chart(
+                    agency["ori"], slug, from_mm, to_mm
+                )
+                local_total += cde.sum_last_n_month_counts(chart, n=12)
+                charts_ok += 1
+            except Exception as exc:  # noqa: BLE001
+                logger_.warning(
+                    "Chart %s/%s failed: %s", agency["ori"], slug, exc
+                )
+        if slug == "HOM" and charts_ok > 0:
+            hom_ok = True
+
+        state_bench: float | None = None
+        try:
+            cde.pause_between_requests()
+            state_chart = cde.fetch_state_offense_chart(
+                addr.state_abbr, slug, from_mm, to_mm
+            )
+            state_bench = cde.sum_last_n_month_counts(state_chart, n=12)
+        except Exception as exc:  # noqa: BLE001
+            logger_.warning(
+                "State chart %s/%s failed: %s", addr.state_abbr, slug, exc
+            )
+
+        row = offense_aggregate_row(
+            county_fips=addr.county_fips,
+            offense_slug=slug,
+            incidents_12mo=local_total,
+            state_benchmark_12mo=state_bench,
+            data_vintage=DATA_VINTAGE,
+            period_end=date.today().replace(day=1),
+            payload={
+                "from": from_mm,
+                "to": to_mm,
+                "ori_count": len(selected),
+            },
+        )
+        row["payload"] = Json(row["payload"]) if row["payload"] else None
+        county_offense_rows.append(row)
+
+    if not hom_ok:
+        logger_.error(
+            "HOM charts failed for county %s — safety may use default",
+            addr.county_fips,
+        )
+
+    try:
+        _upsert_county_rows(
+            database_url,
+            county_agency_rows,
+            county_offense_rows,
+            logger_=logger_,
+        )
+    except Exception as exc:  # noqa: BLE001
+        logger_.error("Checkpoint upsert failed for %s: %s", addr.county_fips, exc)
+        return addr.county_fips, [], [], False
+
+    return addr.county_fips, county_agency_rows, county_offense_rows, hom_ok
+
+
 class FbiCdeWorker(BaseIngestionWorker):
     def __init__(self) -> None:
         super().__init__("fbi")
@@ -128,6 +239,7 @@ class FbiCdeWorker(BaseIngestionWorker):
         self._offense_rows: list[dict] = []
         self._seen_counties: set[str] = set()
         self._counties_with_offenses: set[str] = set()
+        self._lock = threading.Lock()
 
     def run(self) -> None:
         # Fail before "Starting" logs if the key is missing.
@@ -148,12 +260,12 @@ class FbiCdeWorker(BaseIngestionWorker):
         self._offense_rows = []
         self._seen_counties = set()
         self._counties_with_offenses = set()
+        cde.clear_agency_cache()
 
     def transform(self) -> None:
         offenses = cde.chart_offenses()
         from_mm, to_mm = cde.chart_window()
 
-        # Metro: also skip counties that already have agencies (unless forced)
         points = _points_for_run(self.database_url)
         if resolve_ingest_scope() != "national" and not force_enabled():
             counties = {p.county_fips for p in points}
@@ -163,117 +275,69 @@ class FbiCdeWorker(BaseIngestionWorker):
                 points = [p for p in points if p.county_fips not in done]
                 log_skip(self.logger, "fbi", before - len(points), len(points))
 
-        pulse = StatusPulse(self.database_url)
+        seen_local: set[str] = set()
+        unique_points: list[CanonicalAddress | CountyPoint] = []
         for addr in points:
-            if addr.county_fips in self._seen_counties:
+            if addr.county_fips in seen_local:
                 continue
-            self._seen_counties.add(addr.county_fips)
-            self.logger.info(
-                "CDE county=%s state=%s lat=%.4f lon=%.4f",
-                addr.county_fips,
-                addr.state_abbr,
-                addr.latitude,
-                addr.longitude,
-            )
-            county_agency_rows: list[dict] = []
-            county_offense_rows: list[dict] = []
-            try:
-                agencies = cde.fetch_agencies_by_state(addr.state_abbr)
-                selected = cde.select_nearest_agencies(
-                    agencies,
-                    lat=addr.latitude,
-                    lon=addr.longitude,
-                    county_name=addr.county_name,
-                )
-            except Exception as exc:  # noqa: BLE001
-                self.logger.error(
-                    "Agency selection failed for %s: %s", addr.county_fips, exc
-                )
-                continue
+            seen_local.add(addr.county_fips)
+            unique_points.append(addr)
 
-            if not selected:
-                self.logger.warning("No agencies selected for %s", addr.county_fips)
-                continue
+        workers = cde.max_concurrency()
+        self.logger.info(
+            "FBI county concurrency=%s counties=%s", workers, len(unique_points)
+        )
+        pulse = StatusPulse(self.database_url)
 
-            county_agency_rows = agencies_to_rows(
-                county_fips=addr.county_fips,
-                state_abbr=addr.state_abbr,
-                agencies=selected,
-                data_vintage=DATA_VINTAGE,
-            )
+        def _handle_result(
+            county_fips: str,
+            agency_rows: list[dict],
+            offense_rows: list[dict],
+            hom_ok: bool,
+        ) -> None:
+            with self._lock:
+                self._seen_counties.add(county_fips)
+                if offense_rows and hom_ok:
+                    self._counties_with_offenses.add(county_fips)
+                self._agency_rows.extend(agency_rows)
+                self._offense_rows.extend(offense_rows)
+            pulse.tick()
 
-            hom_ok = False
-            for slug in offenses:
-                local_total = 0.0
-                charts_ok = 0
-                for agency in selected:
-                    try:
-                        chart = cde.fetch_agency_offense_chart(
-                            agency["ori"], slug, from_mm, to_mm
-                        )
-                        local_total += cde.sum_last_n_month_counts(chart, n=12)
-                        charts_ok += 1
-                        cde.pause_between_requests()
-                    except Exception as exc:  # noqa: BLE001
-                        self.logger.warning(
-                            "Chart %s/%s failed: %s", agency["ori"], slug, exc
-                        )
-                if slug == "HOM" and charts_ok > 0:
-                    hom_ok = True
-
-                state_bench: float | None = None
-                try:
-                    state_chart = cde.fetch_state_offense_chart(
-                        addr.state_abbr, slug, from_mm, to_mm
-                    )
-                    state_bench = cde.sum_last_n_month_counts(state_chart, n=12)
-                    cde.pause_between_requests()
-                except Exception as exc:  # noqa: BLE001
-                    self.logger.warning(
-                        "State chart %s/%s failed: %s", addr.state_abbr, slug, exc
-                    )
-
-                row = offense_aggregate_row(
-                    county_fips=addr.county_fips,
-                    offense_slug=slug,
-                    incidents_12mo=local_total,
-                    state_benchmark_12mo=state_bench,
-                    data_vintage=DATA_VINTAGE,
-                    period_end=date.today().replace(day=1),
-                    payload={
-                        "from": from_mm,
-                        "to": to_mm,
-                        "ori_count": len(selected),
-                    },
-                )
-                row["payload"] = Json(row["payload"]) if row["payload"] else None
-                county_offense_rows.append(row)
-
-            if county_offense_rows and hom_ok:
-                self._counties_with_offenses.add(addr.county_fips)
-            elif not hom_ok:
-                self.logger.error(
-                    "HOM charts failed for county %s — safety may use default",
-                    addr.county_fips,
-                )
-
-            # Checkpoint this county immediately (idempotent upserts).
-            try:
-                _upsert_county_rows(
-                    self.database_url,
-                    county_agency_rows,
-                    county_offense_rows,
+        if workers <= 1 or len(unique_points) <= 1:
+            for addr in unique_points:
+                cf, ar, orows, hom_ok = _process_one_county(
+                    addr,
+                    offenses=offenses,
+                    from_mm=from_mm,
+                    to_mm=to_mm,
+                    database_url=self.database_url,
                     logger_=self.logger,
                 )
-            except Exception as exc:  # noqa: BLE001
-                self.logger.error(
-                    "Checkpoint upsert failed for %s: %s", addr.county_fips, exc
-                )
-                continue
-
-            self._agency_rows.extend(county_agency_rows)
-            self._offense_rows.extend(county_offense_rows)
-            pulse.tick()
+                _handle_result(cf, ar, orows, hom_ok)
+        else:
+            with ThreadPoolExecutor(max_workers=workers) as pool:
+                futures = {
+                    pool.submit(
+                        _process_one_county,
+                        addr,
+                        offenses=offenses,
+                        from_mm=from_mm,
+                        to_mm=to_mm,
+                        database_url=self.database_url,
+                        logger_=self.logger,
+                    ): addr.county_fips
+                    for addr in unique_points
+                }
+                for fut in as_completed(futures):
+                    try:
+                        cf, ar, orows, hom_ok = fut.result()
+                    except Exception as exc:  # noqa: BLE001
+                        cf = futures[fut]
+                        self.logger.error("County %s worker crashed: %s", cf, exc)
+                        with self._lock:
+                            self._seen_counties.add(cf)
+                        continue
+                    _handle_result(cf, ar, orows, hom_ok)
 
         pulse.flush()
         total_counties = len(self._seen_counties)

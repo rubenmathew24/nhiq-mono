@@ -28,8 +28,8 @@
 
 **Purpose**: Confirm feature workspace and design artifacts are ready for implementation
 
-- [ ] T001 Verify branch `007-national-ingest-redesign` and that `specs/007-national-ingest-redesign/{plan,research,data-model,quickstart}.md` plus `contracts/` exist
-- [ ] T002 [P] Confirm Commit #2 prerequisites: plan + tasks ready to commit at start of `/speckit-implement` (no code yet)
+- [x] T001 Verify branch `007-national-ingest-redesign` and that `specs/007-national-ingest-redesign/{plan,research,data-model,quickstart}.md` plus `contracts/` exist
+- [x] T002 [P] Confirm Commit #2 prerequisites: plan + tasks ready to commit at start of `/speckit-implement` (no code yet)
 
 ---
 
@@ -39,8 +39,8 @@
 
 **⚠️ CRITICAL**: Status denominator (US1) and worker fetch rewrites (US3) can proceed after this; continuous orchestration (US2) depends on exit-code contract documented here
 
-- [ ] T003 Document/implement shared env defaults used by orchestrator and workers per `specs/007-national-ingest-redesign/contracts/worker-env.md` (reference constants or parse helpers as needed in `workers/ingest/`)
-- [ ] T004 Confirm inventory / `parse_state_batch` already accepts multi-state `INGEST_STATE_BATCH` in `workers/ingest/inventory.py` and workers’ `active_county_fips()` (no change if already true; note any gap)
+- [x] T003 Document/implement shared env defaults used by orchestrator and workers per `specs/007-national-ingest-redesign/contracts/worker-env.md` (reference constants or parse helpers as needed in `workers/ingest/`)
+- [x] T004 Confirm inventory / `parse_state_batch` already accepts multi-state `INGEST_STATE_BATCH` in `workers/ingest/inventory.py` and workers’ `active_county_fips()` (no change if already true; note any gap)
 
 **Checkpoint**: Foundation ready — US1–US3 can proceed in parallel where marked [P]
 
@@ -54,11 +54,11 @@
 
 ### Tests for User Story 1
 
-- [ ] T005 [P] [US1] Add scoring-denominator regression test in `workers/tests/test_status_scoring_denominator.py` (or extend existing status tests) covering incomplete census vs full `geo_counties`
+- [x] T005 [P] [US1] Add scoring-denominator regression test in `workers/tests/test_status_scoring_denominator.py` (or extend existing status tests) covering incomplete census vs full `geo_counties`
 
 ### Implementation for User Story 1
 
-- [ ] T006 [US1] Fix scoring progress denominator in `workers/ingest/status.py` to use national `geo_counties` count and county-grain done (every tract has fbi_cde + non-empty `score_detail`)
+- [x] T006 [US1] Fix scoring progress denominator in `workers/ingest/status.py` to use national `geo_counties` count and county-grain done (every tract has fbi_cde + non-empty `score_detail`)
 
 **Checkpoint**: Status snapshot scoring % is trustworthy for partial nations
 
@@ -72,21 +72,21 @@
 
 ### Tests for User Story 3
 
-- [ ] T007 [P] [US3] Add FEMA bulk CSV parse/upsert unit test in `workers/tests/test_fema_bulk.py`
-- [ ] T008 [P] [US3] Add ACS per-state `county:*` fetch unit test in `workers/tests/test_acs_state_fetch.py`
-- [ ] T009 [P] [US3] Add Urban per-state fips fetch + skip-done unit test in `workers/tests/test_urban_state_fetch.py`
-- [ ] T010 [P] [US3] Add FBI agency-list cache unit test in `workers/tests/test_fbi_agency_cache.py`
-- [ ] T011 [P] [US3] Add CMS Timely skip-done unit test in `workers/tests/test_cms_timely_skip.py`
+- [x] T007 [P] [US3] Add FEMA bulk CSV parse/upsert unit test in `workers/tests/test_fema_bulk.py`
+- [x] T008 [P] [US3] Add ACS per-state `county:*` fetch unit test in `workers/tests/test_acs_state_fetch.py`
+- [x] T009 [P] [US3] Add Urban per-state fips fetch + skip-done unit test in `workers/tests/test_urban_state_fetch.py`
+- [x] T010 [P] [US3] Add FBI agency-list cache unit test in `workers/tests/test_fbi_agency_cache.py`
+- [x] T011 [P] [US3] Add CMS Timely skip-done unit test in `workers/tests/test_cms_timely_skip.py`
 
 ### Implementation for User Story 3
 
-- [ ] T012 [P] [US3] Rewrite FEMA to national NRI tracts CSV zip bulk download/parse/upsert in `workers/ingest/fema/client.py` and `workers/ingest/fema/run.py` (remove per-county ArcGIS + N+1 checkpoint)
-- [ ] T013 [P] [US3] Change ACS to `fetch_state_tract_rows` with `in=state:{SS} county:*` and pending-state loop in `workers/ingest/acs/client.py` and `workers/ingest/acs/run.py`
-- [ ] T014 [P] [US3] Add Urban `fetch_directory_for_states` via `?fips=` + skip-done in `workers/ingest/urban/client.py` and `workers/ingest/urban/run.py`
-- [ ] T015 [P] [US3] Cache FBI `fetch_agencies_by_state`, shared rate limiter, and `ThreadPoolExecutor` county concurrency in `workers/ingest/fbi/client.py` and `workers/ingest/fbi/run.py`
-- [ ] T016 [P] [US3] Add EPA bulk AirData file path with `EPA_USE_BULK_FILES` fallback in `workers/ingest/epa/client.py` and `workers/ingest/epa/run.py`
-- [ ] T017 [P] [US3] Add BLS LAUS bulk flat-file path with `BLS_USE_BULK_FILES` fallback in `workers/ingest/bls/client.py` and `workers/ingest/bls/run.py`
-- [ ] T018 [P] [US3] Add CMS Timely skip-done for active `data_vintage` in `workers/ingest/cms_timely/run.py`
+- [x] T012 [P] [US3] Rewrite FEMA to national NRI tracts CSV zip bulk download/parse/upsert in `workers/ingest/fema/client.py` and `workers/ingest/fema/run.py` (remove per-county ArcGIS + N+1 checkpoint)
+- [x] T013 [P] [US3] Change ACS to `fetch_state_tract_rows` with `in=state:{SS} county:*` and pending-state loop in `workers/ingest/acs/client.py` and `workers/ingest/acs/run.py`
+- [x] T014 [P] [US3] Add Urban `fetch_directory_for_states` via `?fips=` + skip-done in `workers/ingest/urban/client.py` and `workers/ingest/urban/run.py`
+- [x] T015 [P] [US3] Cache FBI `fetch_agencies_by_state`, shared rate limiter, and `ThreadPoolExecutor` county concurrency in `workers/ingest/fbi/client.py` and `workers/ingest/fbi/run.py`
+- [x] T016 [P] [US3] Add EPA bulk AirData file path with `EPA_USE_BULK_FILES` fallback in `workers/ingest/epa/client.py` and `workers/ingest/epa/run.py`
+- [x] T017 [P] [US3] Add BLS LAUS bulk flat-file path with `BLS_USE_BULK_FILES` fallback in `workers/ingest/bls/client.py` and `workers/ingest/bls/run.py`
+- [x] T018 [P] [US3] Add CMS Timely skip-done for active `data_vintage` in `workers/ingest/cms_timely/run.py`
 
 **Checkpoint**: Primary bottleneck sources use bulk/wide/concurrent paths; secondary flags default on
 
@@ -100,14 +100,14 @@
 
 ### Tests for User Story 2
 
-- [ ] T019 [P] [US2] Add orchestrator batching + exit-code unit tests in `workers/tests/test_orchestrate_continuous.py` (or extend `test_inventory.py` / `test_force_status_arm.py`)
+- [x] T019 [P] [US2] Add orchestrator batching + exit-code unit tests in `workers/tests/test_orchestrate_continuous.py` (or extend `test_inventory.py` / `test_force_status_arm.py`)
 
 ### Implementation for User Story 2
 
-- [ ] T020 [US2] Implement `ORCH_CONTINUOUS`, `ORCH_BATCH_STATES`, `ORCH_TIME_BUDGET_SECONDS`, multi-state one-execution batching, and exit codes 0/2/1 with log markers in `workers/ingest/orchestrate/run.py` and `workers/ingest/orchestrate/azure_jobs.py`
-- [ ] T021 [US2] Update `.github/workflows/national-ingest.yml`: `continuous` input (default true), `timeout-minutes: 350`, chain executions on `more_work`, self-redispatch with `chain_depth` (max 50), `actions: write`, extend interesting-log regex for `orch_cycle_result` / `national_progress`
-- [ ] T022 [US2] Create `scripts/national-ingest.ps1` continuous loop (exit 2→retry, 0/1 stop) with optional `-AllowMyIp` firewall helper
-- [ ] T023 [US2] Apply ACA `--replica-timeout` updates: orchestrator `21600`, per-source/scoring jobs `10800` via `az containerapp job update` (document commands if env unavailable in CI)
+- [x] T020 [US2] Implement `ORCH_CONTINUOUS`, `ORCH_BATCH_STATES`, `ORCH_TIME_BUDGET_SECONDS`, multi-state one-execution batching, and exit codes 0/2/1 with log markers in `workers/ingest/orchestrate/run.py` and `workers/ingest/orchestrate/azure_jobs.py`
+- [x] T021 [US2] Update `.github/workflows/national-ingest.yml`: `continuous` input (default true), `timeout-minutes: 350`, chain executions on `more_work`, self-redispatch with `chain_depth` (max 50), `actions: write`, extend interesting-log regex for `orch_cycle_result` / `national_progress`
+- [x] T022 [US2] Create `scripts/national-ingest.ps1` continuous loop (exit 2→retry, 0/1 stop) with optional `-AllowMyIp` firewall helper
+- [x] T023 [US2] Apply ACA `--replica-timeout` updates: orchestrator `21600`, per-source/scoring jobs `10800` via `az containerapp job update` (document commands if env unavailable in CI)
 
 **Checkpoint**: One Action or one PowerShell command can drive the nation to completion with chaining
 
@@ -121,8 +121,8 @@
 
 ### Implementation for User Story 4
 
-- [ ] T024 [US4] Verify FEMA/ACS/Urban/FBI/CMS Timely skip-done and orchestrator inventory selection resume from gaps only; fix any wipe or force-all regressions in affected `workers/ingest/**/run.py` and `workers/ingest/orchestrate/run.py`
-- [ ] T025 [P] [US4] Add or extend a resume/skip regression assertion in `workers/tests/` covering at least one primary source + continuous inventory selection
+- [x] T024 [US4] Verify FEMA/ACS/Urban/FBI/CMS Timely skip-done and orchestrator inventory selection resume from gaps only; fix any wipe or force-all regressions in affected `workers/ingest/**/run.py` and `workers/ingest/orchestrate/run.py`
+- [x] T025 [P] [US4] Add or extend a resume/skip regression assertion in `workers/tests/` covering at least one primary source + continuous inventory selection
 
 **Checkpoint**: Interrupt + restart does not re-fetch completed units
 
@@ -132,10 +132,10 @@
 
 **Purpose**: Docs, image ship, Commit #3
 
-- [ ] T026 Update National ingest section in `docs/azure-setup-and-cicd.md` (bulk strategy, continuous env, timeouts, exit codes, PowerShell, scoring denominator note)
-- [ ] T027 Run pytest for new/changed tests under `workers/tests/` and fix failures
-- [ ] T028 Rebuild and push worker image `neighborhoodiqacr.azurecr.io/neighborhoodiq-worker:dev` so ACA runs new code
-- [ ] T029 Commit #3 implementation on `007-national-ingest-redesign` (after Commit #2 plan+tasks at implement start)
+- [x] T026 Update National ingest section in `docs/azure-setup-and-cicd.md` (bulk strategy, continuous env, timeouts, exit codes, PowerShell, scoring denominator note)
+- [x] T027 Run pytest for new/changed tests under `workers/tests/` and fix failures
+- [x] T028 Rebuild and push worker image `neighborhoodiqacr.azurecr.io/neighborhoodiq-worker:dev` so ACA runs new code
+- [x] T029 Commit #3 implementation on `007-national-ingest-redesign` (after Commit #2 plan+tasks at implement start)
 
 ---
 
