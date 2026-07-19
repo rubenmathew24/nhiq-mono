@@ -24,6 +24,7 @@ def test_counties_with_fema_nri_sql(monkeypatch):
     monkeypatch.setattr("ingest.checkpoints._fetch_set", fake_fetch)
     assert counties_with_fema_nri("postgresql://x", ["05007"]) == {"05007"}
     assert "fema_nri_tracts" in seen["sql"]
+    assert "99%" in seen["sql"] or "99%%" in seen["sql"]
 
 
 def test_counties_with_score_detail_sql(monkeypatch):

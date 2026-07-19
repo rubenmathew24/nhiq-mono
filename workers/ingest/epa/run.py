@@ -18,7 +18,12 @@ from ingest.epa.client import (
     use_bulk_files,
 )
 from ingest.epa.transform import transform_aqi_records
-from ingest.checkpoints import counties_with_epa, log_skip
+from ingest.checkpoints import (
+    counties_with_epa,
+    counties_with_epa_monitors,
+    log_skip,
+    upsert_epa_monitor_counties,
+)
 from ingest.fixtures.constants import EPA_END_LAG_DAYS, EPA_LOOKBACK_DAYS
 from ingest.force import force_enabled
 from ingest.geo.scope import active_county_fips
@@ -33,29 +38,51 @@ def _ingest_date_window() -> tuple[date, date]:
     return start, end
 
 
+def _monitor_fips_from_raw(raw: list[dict]) -> set[str]:
+    out: set[str] = set()
+    for r in raw:
+        try:
+            st = str(r["state_code"]).zfill(2)[-2:]
+            co = str(r["county_code"]).zfill(3)[-3:]
+            out.add(f"{st}{co}")
+        except (KeyError, TypeError, ValueError):
+            continue
+    return out
+
+
 class EpaAqiWorker(BaseIngestionWorker):
     def __init__(self) -> None:
         super().__init__("epa")
         self._raw_by_state: dict[str, list[dict]] = {}
         self._records: list[dict] = []
+        self._discovered_monitors: set[str] = set()
 
     def fetch(self) -> None:
         self._allow = active_county_fips(database_url=self.database_url)
+        # Monitor catalog = counties EPA publishes for. Until discovered (or
+        # backfilled), bootstrap against the full allowlist so the first bulk
+        # can populate epa_aqs_monitor_counties.
+        monitors = counties_with_epa_monitors(
+            self.database_url, sorted(self._allow)
+        )
         done = (
             set()
             if force_enabled()
             else counties_with_epa(self.database_url, sorted(self._allow))
         )
-        pending = self._allow - done
-        log_skip(self.logger, "epa", len(done), len(pending))
+        universe = monitors if monitors else set(self._allow)
+        pending = universe - done
+        log_skip(self.logger, "epa", len(done & universe), len(pending))
         self._pending_counties = pending
+        self._discovered_monitors = set()
         start, end = _ingest_date_window()
         self.logger.info(
-            "EPA date window %s → %s (lag=%sd, lookback=%sd)",
+            "EPA date window %s → %s (lag=%sd, lookback=%sd) monitor_universe=%s",
             start,
             end,
             EPA_END_LAG_DAYS,
             EPA_LOOKBACK_DAYS,
+            len(monitors) if monitors else "bootstrap",
         )
         self._raw_by_state = {}
         if not pending:
@@ -63,7 +90,8 @@ class EpaAqiWorker(BaseIngestionWorker):
 
         if use_bulk_files():
             try:
-                raw = fetch_daily_aqi_bulk(start, end)
+                raw, monitors_found = fetch_daily_aqi_bulk(start, end)
+                self._discovered_monitors |= monitors_found
                 # Bucket by state for transform logging compatibility.
                 by_state: dict[str, list[dict]] = {}
                 pending_states = {cf[:2] for cf in pending}
@@ -73,9 +101,10 @@ class EpaAqiWorker(BaseIngestionWorker):
                         by_state.setdefault(st, []).append(row)
                 self._raw_by_state = by_state
                 self.logger.info(
-                    "EPA bulk path states=%s rows=%s",
+                    "EPA bulk path states=%s rows=%s monitors_found=%s",
                     sorted(by_state),
                     sum(len(v) for v in by_state.values()),
+                    len(monitors_found),
                 )
                 return
             except Exception as exc:  # noqa: BLE001
@@ -94,6 +123,7 @@ class EpaAqiWorker(BaseIngestionWorker):
         for state_code in sorted(states):
             try:
                 raw = await fetch_daily_aqi(state_code, start, end)
+                self._discovered_monitors |= _monitor_fips_from_raw(raw)
                 out[state_code] = raw
                 self.logger.info(
                     "State %s: fetched %d raw EPA rows for %s..%s",
@@ -123,6 +153,15 @@ class EpaAqiWorker(BaseIngestionWorker):
         self._records = combined
 
     def load(self) -> None:
+        start, _end = _ingest_date_window()
+        if self._discovered_monitors:
+            n = upsert_epa_monitor_counties(
+                self.database_url,
+                self._discovered_monitors,
+                source_year=start.year,
+            )
+            self.logger.info("EPA monitor catalog upserted=%s", n)
+
         if not self._records:
             self.logger.warning("No EPA records to load")
             return

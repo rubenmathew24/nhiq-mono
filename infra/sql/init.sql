@@ -105,6 +105,14 @@ CREATE TABLE IF NOT EXISTS epa_aqi_readings (
 CREATE INDEX IF NOT EXISTS idx_epa_aqi_county ON epa_aqi_readings(county_fips);
 CREATE INDEX IF NOT EXISTS idx_epa_aqi_date ON epa_aqi_readings(date_local);
 
+-- Counties EPA AQS/AirData publishes for (monitor presence). EPA coverage
+-- denominator — not all geo_counties (most have no monitors).
+CREATE TABLE IF NOT EXISTS epa_aqs_monitor_counties (
+    county_fips VARCHAR(5) PRIMARY KEY,
+    source_year INTEGER,
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
 -- ─────────────────────────────────────────────────────────────
 -- Hospitals (from CMS ingestion worker)
 -- ─────────────────────────────────────────────────────────────

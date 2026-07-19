@@ -70,6 +70,9 @@ def _finite_float(value: Any) -> float | None:
 def build_geoid(stcofips: str, tract: str) -> str | None:
     stco = str(stcofips or "").strip()
     tr = str(tract or "").strip()
+    # ArcGIS / CSV may emit TRACT as 40100.0
+    if tr.endswith(".0") and tr[:-2].isdigit():
+        tr = tr[:-2]
     if len(stco) != 5 or not stco.isdigit():
         return None
     if not tr:
@@ -78,6 +81,19 @@ def build_geoid(stcofips: str, tract: str) -> str | None:
     if len(tr6) != 6 or not tr6.isdigit():
         return None
     return f"{stco}{tr6}"
+
+
+def _geoid_from_attrs(attrs: dict[str, Any]) -> str | None:
+    for key in ("TRACTFIPS", "GEOID", "CensusTract", "census_tract"):
+        raw = attrs.get(key)
+        if raw is None:
+            continue
+        text = str(raw).strip()
+        if text.endswith(".0") and text[:-2].isdigit():
+            text = text[:-2]
+        if len(text) == 11 and text.isdigit():
+            return text
+    return build_geoid(str(attrs.get("STCOFIPS") or ""), str(attrs.get("TRACT") or ""))
 
 
 def build_hazards(attrs: dict[str, Any]) -> dict[str, dict[str, Any]]:
@@ -103,7 +119,7 @@ def transform_tract_feature(
     *,
     known_geoids: frozenset[str] | None = None,
 ) -> dict[str, Any] | None:
-    geoid = build_geoid(str(attrs.get("STCOFIPS") or ""), str(attrs.get("TRACT") or ""))
+    geoid = _geoid_from_attrs(attrs)
     if not geoid:
         return None
     if known_geoids is not None and geoid not in known_geoids:

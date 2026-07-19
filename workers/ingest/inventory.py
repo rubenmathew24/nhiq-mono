@@ -24,6 +24,7 @@ from ingest.checkpoints import (
     counties_with_bls,
     counties_with_census_tracts,
     counties_with_epa,
+    counties_with_epa_monitors,
     counties_with_fbi_agencies,
     counties_with_fema_nri,
     counties_with_nces,
@@ -148,6 +149,16 @@ def build_inventory(
     gaps: dict[str, list[str]] = {}
     by_state: dict[str, dict[str, list[str]]] = {}
 
+    # EPA gaps are vs the AQS monitor catalog (not all geo_counties). When the
+    # catalog is empty (fresh DB), bootstrap against the full allowlist so the
+    # first bulk can discover monitors. Injected done_fns (tests) skip the
+    # catalog lookup so mocks stay DB-free.
+    if done_fns is None and county_list:
+        epa_monitors = counties_with_epa_monitors(database_url, county_list)
+        epa_universe = epa_monitors if epa_monitors else set(county_list)
+    else:
+        epa_universe = set(county_list)
+
     for worker in (
         "census",
         "epa",
@@ -160,7 +171,8 @@ def build_inventory(
         "scoring",
     ):
         done = fns[worker](database_url, county_list) if county_list else set()
-        missing = sorted(set(county_list) - done)
+        scope = epa_universe if worker == "epa" else set(county_list)
+        missing = sorted(scope - done)
         gaps[worker] = missing
         by_state[worker] = _group_by_state(missing)
 
