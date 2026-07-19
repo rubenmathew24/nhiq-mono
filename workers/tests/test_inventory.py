@@ -18,7 +18,7 @@ def test_build_inventory_gaps_with_mocked_done(monkeypatch):
         return frozenset({"44001", "44003", "06001"})
 
     monkeypatch.setattr(
-        "ingest.inventory.load_national_universe_counties", fake_universe
+        "ingest.inventory.require_complete_national_registry", fake_universe
     )
 
     def census_done(_url, counties):

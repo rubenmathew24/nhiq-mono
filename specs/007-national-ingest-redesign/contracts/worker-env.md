@@ -21,7 +21,7 @@ Extends `specs/003-national-ingest/contracts/worker-env.md`.
 | `URBAN_MAX_CONCURRENCY` | Unused if per-state fetch; keep only if retained |
 | `EPA_USE_BULK_FILES` | Default `1` — AirData zips vs AQS API |
 | `BLS_USE_BULK_FILES` | Default `1` — LAUS flat files vs series API |
-| `FEMA_NRI_BULK_URL` | Override national tracts CSV zip URL if upstream moves |
+| `FEMA_NRI_BULK_URL` | Override national tracts CSV zip URL (default: OpenFEMA v1.20). If bulk returns non-zip / 403, national FEMA falls back to ArcGIS per-county queries. |
 
 ## ACA timeouts (ops)
 

@@ -137,6 +137,16 @@ async def compute_national_coverage(session: AsyncSession) -> CoverageResponse:
         """,
         params_cf,
     )
+    # AQS monitor catalog — EPA coverage ÷ this set (urban ÷ NCES pattern).
+    epa_monitors = await _fetch_cf_set(
+        session,
+        """
+        SELECT county_fips
+        FROM epa_aqs_monitor_counties
+        WHERE county_fips = ANY(:counties)
+        """,
+        params_cf,
+    )
     cms_ok = await _fetch_cf_set(
         session,
         """
@@ -210,6 +220,7 @@ async def compute_national_coverage(session: AsyncSession) -> CoverageResponse:
             SELECT geoid, (state_fips || county_fips) AS cf
             FROM census_tracts
             WHERE (state_fips || county_fips) = ANY(:counties)
+              AND tract_fips NOT LIKE '99%'
         )
         SELECT s.cf
         FROM scoped s
@@ -242,7 +253,8 @@ async def compute_national_coverage(session: AsyncSession) -> CoverageResponse:
         SELECT hc.state
         FROM hospital_counts hc
         LEFT JOIN timely_counts tc ON tc.state = hc.state
-        WHERE hc.n = 0 OR COALESCE(tc.n, 0) = hc.n
+        WHERE hc.n = 0
+           OR COALESCE(tc.n, 0)::float / hc.n >= 0.80
         """,
         params_states,
     )
@@ -273,9 +285,12 @@ async def compute_national_coverage(session: AsyncSession) -> CoverageResponse:
     )
 
     urban_den = len(nces_ok) if nces_ok else n
+    # EPA: only counties with AQS monitors (008 exception, same idea as urban).
+    epa_den = len(epa_monitors) if epa_monitors else n
+    epa_done = len(epa_ok & epa_monitors) if epa_monitors else len(epa_ok)
     national_sources = [
         _source("census", grain="county", done=len(census_ok), total=n),
-        _source("epa", grain="county", done=len(epa_ok), total=n),
+        _source("epa", grain="county", done=epa_done, total=epa_den),
         _source("cms", grain="state", done=len(cms_ok), total=len(state_abbrs)),
         _source("fbi", grain="county", done=len(fbi_ok), total=n),
         _source("nces", grain="county", done=len(nces_ok), total=n),
@@ -312,6 +327,8 @@ async def compute_national_coverage(session: AsyncSession) -> CoverageResponse:
         scounty_set = set(scounties)
         snces = nces_ok & scounty_set
         surban_den = len(snces) if snces else sn
+        sepa_mon = epa_monitors & scounty_set
+        sepa_den = len(sepa_mon) if sepa_mon else sn
         srcs = [
             _source(
                 "census",
@@ -320,7 +337,10 @@ async def compute_national_coverage(session: AsyncSession) -> CoverageResponse:
                 total=sn,
             ),
             _source(
-                "epa", grain="county", done=len(epa_ok & scounty_set), total=sn
+                "epa",
+                grain="county",
+                done=len((epa_ok & sepa_mon) if sepa_mon else (epa_ok & scounty_set)),
+                total=sepa_den,
             ),
             _source(
                 "cms",

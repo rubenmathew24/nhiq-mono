@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 
 import psycopg2
+from psycopg2.extras import execute_values
 
 
 def _fetch_set(database_url: str, sql: str, params: tuple) -> set[str]:
@@ -52,6 +53,57 @@ def counties_with_epa(database_url: str, counties: list[str]) -> set[str]:
         """,
         (counties,),
     )
+
+
+def counties_with_epa_monitors(database_url: str, counties: list[str]) -> set[str]:
+    """Counties EPA AirData/AQS has published for (monitor catalog).
+
+    Used as the EPA coverage / inventory denominator — most US counties have no
+    AQS monitors, so dividing by |geo_counties| permanently capped EPA at ~5%.
+    """
+    if not counties:
+        return set()
+    return _fetch_set(
+        database_url,
+        """
+        SELECT county_fips FROM epa_aqs_monitor_counties
+        WHERE county_fips = ANY(%s)
+        """,
+        (counties,),
+    )
+
+
+def upsert_epa_monitor_counties(
+    database_url: str,
+    county_fips: set[str] | list[str],
+    *,
+    source_year: int | None = None,
+) -> int:
+    """Persist discovered AQS monitor counties. Returns rows touched."""
+    counties = sorted({str(c).zfill(5)[-5:] for c in county_fips if c})
+    if not counties:
+        return 0
+    conn = psycopg2.connect(database_url)
+    try:
+        with conn.cursor() as cur:
+            rows = [(cf, source_year) for cf in counties]
+            execute_values(
+                cur,
+                """
+                INSERT INTO epa_aqs_monitor_counties (county_fips, source_year, updated_at)
+                VALUES %s
+                ON CONFLICT (county_fips) DO UPDATE
+                    SET source_year = COALESCE(EXCLUDED.source_year, epa_aqs_monitor_counties.source_year),
+                        updated_at = NOW()
+                """,
+                rows,
+                template="(%s, %s, NOW())",
+                page_size=500,
+            )
+        conn.commit()
+        return len(counties)
+    finally:
+        conn.close()
 
 
 def states_with_hospitals(database_url: str, state_abbrs: list[str]) -> set[str]:
@@ -207,7 +259,11 @@ def counties_with_score_detail(
 
 
 def counties_with_fema_nri(database_url: str, counties: list[str]) -> set[str]:
-    """Counties where every census tract has a fema_nri_tracts row."""
+    """Counties where every *land* census tract has a fema_nri_tracts row.
+
+    Coastal/water tracts (TRACTCE 99xxxx) are omitted — FEMA NRI does not publish
+    them, so requiring them made coastal counties permanently incomplete.
+    """
     if not counties:
         return set()
     return _fetch_set(
@@ -217,6 +273,7 @@ def counties_with_fema_nri(database_url: str, counties: list[str]) -> set[str]:
             SELECT geoid, (state_fips || county_fips) AS cf
             FROM census_tracts
             WHERE (state_fips || county_fips) = ANY(%s)
+              AND tract_fips NOT LIKE '99%%'
         )
         SELECT s.cf
         FROM scoped s
@@ -234,8 +291,14 @@ def states_with_timely_measures(
     state_abbrs: list[str],
     *,
     data_vintage: str,
+    min_coverage: float = 0.80,
 ) -> set[str]:
-    """USPS state abbrs where every hospital has ≥1 timely measure (or no hospitals)."""
+    """USPS state abbrs where CMS Timely coverage is sufficient (or no hospitals).
+
+    CMS Timely does not publish measures for every hospital in ``hospitals``.
+    Requiring 100% left every state permanently incomplete. Default: ≥80% of
+    hospitals in the state have ≥1 timely measure for ``data_vintage``.
+    """
     if not state_abbrs:
         return set()
     conn = psycopg2.connect(database_url)
@@ -264,12 +327,12 @@ def states_with_timely_measures(
                 SELECT hc.state
                 FROM hospital_counts hc
                 LEFT JOIN timely_counts tc ON tc.state = hc.state
-                WHERE hc.n = 0 OR COALESCE(tc.n, 0) = hc.n
+                WHERE hc.n = 0
+                   OR COALESCE(tc.n, 0)::float / hc.n >= %s
                 """,
-                (state_abbrs, data_vintage),
+                (state_abbrs, data_vintage, min_coverage),
             )
             have = {str(r[0]) for r in cur.fetchall() if r and r[0]}
-            # States with zero hospitals are done (nothing to fetch)
             cur.execute(
                 """
                 SELECT DISTINCT state FROM hospitals WHERE state = ANY(%s)
