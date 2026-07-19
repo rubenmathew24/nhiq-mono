@@ -162,7 +162,7 @@ def compute_job_statuses(cur, counties: frozenset[str], scope: str) -> list[JobS
         )
     ]
 
-    # epa — county_fips is SSCCC
+    # epa — county_fips is SSCCC; denominator = AQS monitor counties (not all geo)
     cur.execute(
         """
         SELECT DISTINCT county_fips
@@ -172,13 +172,28 @@ def compute_job_statuses(cur, counties: frozenset[str], scope: str) -> list[JobS
         (county_list,),
     )
     epa_ok = _county_set_from_rows(cur.fetchall())
+    cur.execute(
+        """
+        SELECT county_fips
+        FROM epa_aqs_monitor_counties
+        WHERE county_fips = ANY(%s)
+        """,
+        (county_list,),
+    )
+    epa_monitors = _county_set_from_rows(cur.fetchall())
+    # Same pattern as urban ÷ NCES: fall back to full N until catalog exists.
+    epa_den = len(epa_monitors) if epa_monitors else n
+    epa_done_set = epa_ok & epa_monitors if epa_monitors else epa_ok
+    epa_missing = (
+        sorted(epa_monitors - epa_ok) if epa_monitors else sorted(set(county_list) - epa_ok)
+    )
     statuses.append(
         JobStatus(
             "epa",
-            _pct(len(epa_ok), n),
-            len(epa_ok),
-            n,
-            {"missing": sorted(set(county_list) - epa_ok)},
+            _pct(len(epa_done_set), epa_den),
+            len(epa_done_set),
+            epa_den,
+            {"missing": epa_missing},
         )
     )
 
@@ -324,13 +339,15 @@ def compute_job_statuses(cur, counties: frozenset[str], scope: str) -> list[JobS
         )
     )
 
-    # fema — counties where every tract has fema_nri_tracts
+    # fema — counties where every land tract has fema_nri_tracts
+    # (exclude Census water tracts 99xxxx — absent from FEMA NRI)
     cur.execute(
         """
         WITH scoped AS (
             SELECT geoid, (state_fips || county_fips) AS cf
             FROM census_tracts
             WHERE (state_fips || county_fips) = ANY(%s)
+              AND tract_fips NOT LIKE '99%%'
         )
         SELECT s.cf
         FROM scoped s
@@ -352,7 +369,7 @@ def compute_job_statuses(cur, counties: frozenset[str], scope: str) -> list[JobS
         )
     )
 
-    # cms_timely — states where every hospital has timely measures
+    # cms_timely — ≥80% of hospitals have timely measures (CMS does not cover 100%)
     cur.execute(
         """
         WITH hospitals_in AS (
@@ -374,7 +391,8 @@ def compute_job_statuses(cur, counties: frozenset[str], scope: str) -> list[JobS
         SELECT hc.state
         FROM hospital_counts hc
         LEFT JOIN timely_counts tc ON tc.state = hc.state
-        WHERE hc.n = 0 OR COALESCE(tc.n, 0) = hc.n
+        WHERE hc.n = 0
+           OR COALESCE(tc.n, 0)::float / hc.n >= 0.80
         """,
         (state_abbrs, DATA_VINTAGE),
     )

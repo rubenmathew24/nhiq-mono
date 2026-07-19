@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import sys
 
 import psycopg2
@@ -17,7 +18,11 @@ from ingest.fema.client import (
     query_county_features,
     use_bulk_files,
 )
-from ingest.fema.transform import FEMA_NRI_HAZARD_PREFIXES, transform_tract_features
+from ingest.fema.transform import (
+    FEMA_NRI_HAZARD_PREFIXES,
+    _geoid_from_attrs,
+    transform_tract_features,
+)
 from ingest.force import force_enabled
 from ingest.geo.scope import active_county_fips, resolve_ingest_scope
 
@@ -37,6 +42,7 @@ def _load_tract_geoids_by_county(
                 SELECT geoid, (state_fips || county_fips) AS county_fips
                 FROM census_tracts
                 WHERE (state_fips || county_fips) = ANY(%s)
+                  AND tract_fips NOT LIKE '99%%'
                 """,
                 (sorted(counties),),
             )
@@ -107,30 +113,46 @@ class FemaNriWorker(BaseIngestionWorker):
 
         scope = resolve_ingest_scope()
         prefer_bulk = use_bulk_files() and scope == "national"
-        if prefer_bulk:
+        # Small batches: ArcGIS is faster and avoids downloading a ~600MB zip into
+        # a 2Gi ACA job. Bulk is for larger multi-state gap fills.
+        bulk_min = 100
+        raw_min = (os.getenv("FEMA_BULK_MIN_COUNTIES") or "").strip()
+        if raw_min:
             try:
-                sha, rows = download_national_tract_rows()
-                # Filter to in-scope pending counties (STCOFIPS) before transform.
-                pending_stco = set(pending_counties)
-                filtered = [
-                    r
-                    for r in rows
-                    if str(r.get("STCOFIPS") or "") in pending_stco
-                ]
-                self._raw_bulk = filtered
+                bulk_min = max(1, int(raw_min))
+            except ValueError:
+                bulk_min = 100
+        use_bulk_now = prefer_bulk and len(pending_counties) >= bulk_min
+        if prefer_bulk and not use_bulk_now:
+            self.logger.info(
+                "FEMA skipping bulk (pending_counties=%s < FEMA_BULK_MIN_COUNTIES=%s); "
+                "using ArcGIS",
+                len(pending_counties),
+                bulk_min,
+            )
+        if use_bulk_now:
+            try:
+                pending_stco = frozenset(pending_counties)
+                sha, rows = download_national_tract_rows(
+                    stcofips_filter=pending_stco
+                )
+                self._raw_bulk = rows
                 self._use_bulk = True
                 self.logger.info(
-                    "FEMA bulk path sha256=%s national_rows=%s in_scope=%s",
+                    "FEMA bulk path sha256=%s in_scope_rows=%s counties=%s",
                     sha[:12],
                     len(rows),
-                    len(filtered),
+                    len(pending_stco),
                 )
                 return
             except Exception as exc:  # noqa: BLE001
-                self.logger.error(
-                    "FEMA bulk download failed (fail-closed for national): %s", exc
+                # Bulk zip is preferred but often blocked (Akamai 403) or too heavy.
+                # Fall back to ArcGIS per-county queries so national gaps can close.
+                self.logger.warning(
+                    "FEMA bulk download failed; falling back to ArcGIS "
+                    "per-county queries: %s",
+                    exc,
                 )
-                raise
 
         out_fields = build_out_fields(FEMA_NRI_HAZARD_PREFIXES)
         for county in pending_counties:
@@ -160,6 +182,17 @@ class FemaNriWorker(BaseIngestionWorker):
         combined: list[dict] = []
         for county, raw in self._raw_by_county.items():
             records = transform_tract_features(raw, known_geoids=pending)
+            if raw and not records:
+                sample_built = [_geoid_from_attrs(attrs) for attrs in raw[:3]]
+                self.logger.warning(
+                    "County %s: %d features → 0 records after known_geoids "
+                    "filter (known=%s sample_built=%s sample_known=%s)",
+                    county,
+                    len(raw),
+                    len(pending),
+                    sample_built,
+                    list(pending)[:3],
+                )
             self.logger.info(
                 "County %s: %d tract records after transform",
                 county,

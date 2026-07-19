@@ -89,10 +89,16 @@ def fetch_daily_aqi_bulk(
     end_date: date,
     *,
     timeout: float = 300.0,
-) -> list[dict]:
-    """Download EPA AirData daily zips for param codes overlapping the window."""
+) -> tuple[list[dict], set[str]]:
+    """Download EPA AirData daily zips for param codes overlapping the window.
+
+    Returns (rows_in_window, monitor_county_fips). Monitor counties are every
+    distinct county that appears in the date window — the coverage denominator
+    for EPA (counties with AQS data in this ingest window).
+    """
     years = sorted({start_date.year, end_date.year})
     out: list[dict] = []
+    monitors: set[str] = set()
     with httpx.Client(timeout=timeout, follow_redirects=True) as client:
         for year in years:
             for param in _param_codes():
@@ -122,9 +128,15 @@ def fetch_daily_aqi_bulk(
                     except ValueError:
                         continue
                     if start_date <= row_date <= end_date:
+                        cf = f"{mapped['state_code']}{mapped['county_code']}"
+                        monitors.add(cf)
                         out.append(mapped)
-    logger.info("EPA AirData bulk rows in window=%s", len(out))
-    return out
+    logger.info(
+        "EPA AirData bulk rows in window=%s monitor_counties=%s",
+        len(out),
+        len(monitors),
+    )
+    return out, monitors
 
 
 async def fetch_daily_aqi(
