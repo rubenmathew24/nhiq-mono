@@ -82,7 +82,7 @@ export interface LookupResponse {
   geoid?: string | null;
 }
 
-export type CoverageGrain = "county" | "state";
+export type CoverageGrain = "county" | "state" | "hospital";
 
 export interface SourceCoverage {
   job_name: string;

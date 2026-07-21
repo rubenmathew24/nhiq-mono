@@ -32,13 +32,22 @@ JOB_ORDER: tuple[str, ...] = (
 COUNTY_JOBS = frozenset(
     {"census", "epa", "fbi", "nces", "urban", "acs", "bls", "fema", "scoring"}
 )
-STATE_JOBS = frozenset({"cms", "cms_timely"})
+STATE_JOBS = frozenset({"cms"})
+HOSPITAL_JOBS = frozenset({"cms_timely"})
 
 
 def _pct(done: int, total: int) -> float:
     if total <= 0:
         return 0.0
     return round(100.0 * done / total, 1)
+
+
+def _grain_for_job(job_name: str) -> str:
+    if job_name in STATE_JOBS:
+        return "state"
+    if job_name in HOSPITAL_JOBS:
+        return "hospital"
+    return "county"
 
 
 def _source(
@@ -60,6 +69,49 @@ def _source(
 async def _fetch_cf_set(session: AsyncSession, sql: str, params: dict[str, Any]) -> set[str]:
     result = await session.execute(text(sql), params)
     return {str(r[0]) for r in result.fetchall() if r and r[0]}
+
+
+async def _fetch_timely_hospital_counts(
+    session: AsyncSession, *, states: list[str], vintage: str
+) -> dict[str, tuple[int, int]]:
+    """Per-state (hospitals_with_timely, hospital_total) for cms_timely coverage.
+
+    Continuous hospital share — not the ingest 80% state pass/fail checkpoint.
+    """
+    result = await session.execute(
+        text(
+            """
+            WITH hospitals_in AS (
+                SELECT cms_provider_id, state
+                FROM hospitals
+                WHERE state = ANY(:states)
+            ),
+            hospital_counts AS (
+                SELECT state, COUNT(*)::int AS n FROM hospitals_in GROUP BY state
+            ),
+            timely_counts AS (
+                SELECT h.state, COUNT(DISTINCT h.cms_provider_id)::int AS n
+                FROM hospitals_in h
+                INNER JOIN hospital_timely_measures t
+                  ON t.cms_provider_id = h.cms_provider_id
+                 AND t.data_vintage = :vintage
+                GROUP BY h.state
+            )
+            SELECT hc.state,
+                   COALESCE(tc.n, 0)::int AS timely_n,
+                   hc.n AS hospital_n
+            FROM hospital_counts hc
+            LEFT JOIN timely_counts tc ON tc.state = hc.state
+            """
+        ),
+        {"states": states, "vintage": vintage},
+    )
+    out: dict[str, tuple[int, int]] = {}
+    for row in result.fetchall():
+        if not row or not row[0]:
+            continue
+        out[str(row[0])] = (int(row[1] or 0), int(row[2] or 0))
+    return out
 
 
 async def compute_national_coverage(session: AsyncSession) -> CoverageResponse:
@@ -100,7 +152,7 @@ async def compute_national_coverage(session: AsyncSession) -> CoverageResponse:
         empty_sources = [
             _source(
                 name,
-                grain="state" if name in STATE_JOBS else "county",
+                grain=_grain_for_job(name),
                 done=0,
                 total=0,
             )
@@ -117,7 +169,6 @@ async def compute_national_coverage(session: AsyncSession) -> CoverageResponse:
         )
 
     params_cf = {"counties": counties}
-    params_states = {"states": state_abbrs, "vintage": vintage}
 
     census_ok = await _fetch_cf_set(
         session,
@@ -231,35 +282,11 @@ async def compute_national_coverage(session: AsyncSession) -> CoverageResponse:
         """,
         params_cf,
     )
-    timely_ok = await _fetch_cf_set(
-        session,
-        """
-        WITH hospitals_in AS (
-            SELECT cms_provider_id, state
-            FROM hospitals
-            WHERE state = ANY(:states)
-        ),
-        hospital_counts AS (
-            SELECT state, COUNT(*)::int AS n FROM hospitals_in GROUP BY state
-        ),
-        timely_counts AS (
-            SELECT h.state, COUNT(DISTINCT h.cms_provider_id)::int AS n
-            FROM hospitals_in h
-            INNER JOIN hospital_timely_measures t
-              ON t.cms_provider_id = h.cms_provider_id
-             AND t.data_vintage = :vintage
-            GROUP BY h.state
-        )
-        SELECT hc.state
-        FROM hospital_counts hc
-        LEFT JOIN timely_counts tc ON tc.state = hc.state
-        WHERE hc.n = 0
-           OR COALESCE(tc.n, 0)::float / hc.n >= 0.80
-        """,
-        params_states,
+    timely_by_state = await _fetch_timely_hospital_counts(
+        session, states=state_abbrs, vintage=vintage
     )
-    no_hosp = set(state_abbrs) - cms_ok
-    timely_done = timely_ok | no_hosp
+    timely_done_n = sum(d for d, _t in timely_by_state.values())
+    timely_total_n = sum(t for _d, t in timely_by_state.values())
 
     scoring_ok = await _fetch_cf_set(
         session,
@@ -300,9 +327,9 @@ async def compute_national_coverage(session: AsyncSession) -> CoverageResponse:
         _source("fema", grain="county", done=len(fema_ok), total=n),
         _source(
             "cms_timely",
-            grain="state",
-            done=len(timely_done),
-            total=len(state_abbrs),
+            grain="hospital",
+            done=timely_done_n,
+            total=timely_total_n,
         ),
         _source("scoring", grain="county", done=len(scoring_ok), total=n),
     ]
@@ -327,8 +354,10 @@ async def compute_national_coverage(session: AsyncSession) -> CoverageResponse:
         scounty_set = set(scounties)
         snces = nces_ok & scounty_set
         surban_den = len(snces) if snces else sn
+        # EPA: same as national — only AQS monitor counties (0/0 if none in state).
         sepa_mon = epa_monitors & scounty_set
-        sepa_den = len(sepa_mon) if sepa_mon else sn
+        sepa_den = len(sepa_mon)
+        sepa_done = len(epa_ok & sepa_mon)
         srcs = [
             _source(
                 "census",
@@ -339,7 +368,7 @@ async def compute_national_coverage(session: AsyncSession) -> CoverageResponse:
             _source(
                 "epa",
                 grain="county",
-                done=len((epa_ok & sepa_mon) if sepa_mon else (epa_ok & scounty_set)),
+                done=sepa_done,
                 total=sepa_den,
             ),
             _source(
@@ -371,9 +400,9 @@ async def compute_national_coverage(session: AsyncSession) -> CoverageResponse:
             ),
             _source(
                 "cms_timely",
-                grain="state",
-                done=1 if abbr in timely_done else 0,
-                total=1,
+                grain="hospital",
+                done=timely_by_state.get(abbr, (0, 0))[0],
+                total=timely_by_state.get(abbr, (0, 0))[1],
             ),
             _source(
                 "scoring",

@@ -18,7 +18,7 @@ const JOB_LABELS: Record<string, string> = {
   acs: "ACS indicators",
   bls: "Unemployment (BLS)",
   fema: "Hazards (FEMA NRI)",
-  cms_timely: "Timely care (CMS)",
+  cms_timely: "Timely care (CMS hospitals)",
   scoring: "Neighborhood scores",
 };
 
@@ -27,8 +27,11 @@ function labelJob(name: string): string {
 }
 
 function meanPct(sources: SourceCoverage[]): number {
-  if (sources.length === 0) return 0;
-  return sources.reduce((a, s) => a + s.pct_complete, 0) / sources.length;
+  // Skip total=0 (e.g. EPA in a state with no AQS monitors) so By state
+  // Overall matches national denominator semantics.
+  const counted = sources.filter((s) => s.total_count > 0);
+  if (counted.length === 0) return 0;
+  return counted.reduce((a, s) => a + s.pct_complete, 0) / counted.length;
 }
 
 export default function CoverageViews({
