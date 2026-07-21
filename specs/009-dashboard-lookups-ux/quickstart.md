@@ -18,13 +18,17 @@
 
 1. Score the same address twice while signed in.
 2. Dashboard shows **one** saved identity (may appear in Favorites and Recent if favorited).
-3. Row shows overall score with the same color band as the report, or an unavailable state if unscored.
+3. Each row’s **leading** visual is the overall score (color band matches report), not a map pin; favorited rows also show a favorite indicator.
+4. Search bar width matches the two-column Favorites/Recent layout.
 
 ## Validate Favorites / Recent / menu
 
-1. Open ⋯ → Favorite → address appears under Favorites and still under Recent.
+1. Open ⋯ → Favorite → address appears under Favorites and still under Recent; favorite indicator visible.
 2. Open the report (or re-search) → entry rises to top of Recent (and Favorites if favorited).
-3. ⋯ → Delete → confirm cancel → still present; confirm OK → gone from both columns.
+3. While favorited, Delete is blocked / shows unfavorite-first guidance.
+4. Unfavorite → Delete → confirm cancel → **entire** menu closes; entry still present.
+5. Open ⋯ again → Delete → confirm OK → gone from both columns.
+6. Open ⋯ (or confirm) → click elsewhere on the page → menu closes completely.
 
 ## Validate merge of legacy duplicates
 

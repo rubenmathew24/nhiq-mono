@@ -23,13 +23,14 @@
 
 ## 3. Score preview on list
 
-**Decision**: Enrich `GET /api/v1/users/me/lookups` with `overall_score: number | null` by joining each entry’s `geoid` to `neighborhood_scores` for `SCORE_DATA_VINTAGE`. Web reuses `scoreTextClass` / `scoreGrade` from `apps/web/src/lib/utils.ts` (same bands as report).
+**Decision**: Enrich `GET /api/v1/users/me/lookups` with `overall_score: number | null` by joining each entry’s `geoid` to `neighborhood_scores` for `SCORE_DATA_VINTAGE`. Web reuses `scoreTextClass` / `scoreGrade` from `apps/web/src/lib/utils.ts` (same bands as report). **UI**: leading row glyph is the score (replaces map pin); favorited rows add a separate favorite indicator.
 
-**Rationale**: Precomputed path (Constitution III); one round-trip for dashboard. Null → unavailable UI, not a fake score.
+**Rationale**: Precomputed path (Constitution III); one round-trip for dashboard. Null → unavailable UI, not a fake score. Post-test clarify: score must be obvious/prominent.
 
 **Alternatives considered**:
 - N+1 client calls to `/score/{id}` — slow, chatty
 - Caching overall scores on `saved_lookups` — stale vs vintage updates
+- Score beside pin — rejected in favor of replacing the pin
 
 ## 4. Favorites + Recent (dual listing)
 
@@ -61,12 +62,22 @@
 - Leave old duplicates — rejected
 - UI hide only — rejected
 
-## 7. Delete confirmation
+## 7. Delete confirmation + unfavorite gate
 
-**Decision**: Client-side confirm dialog before `DELETE /api/v1/users/me/lookups/{address_id}`; server deletes only the user’s `saved_lookups` row (not shared `address_lookups` / scores).
+**Decision**: Client-side confirm before `DELETE /api/v1/users/me/lookups/{address_id}`; server deletes only the user’s `saved_lookups` row. **Favorited entries cannot be deleted** until unfavorited — UI blocks Delete; API returns **409** with a clear detail if still favorited. Cancel confirm or outside-click / Escape closes the **entire** overflow menu.
 
-**Rationale**: Clarify A; accidental menu clicks are common.
+**Rationale**: Clarify post-test; prevents accidental loss of starred addresses; dismiss behavior matches expected menu UX.
 
-## 8. Post-design constitution re-check
+**Alternatives considered**:
+- Allow delete while favorited — rejected
+- Soft delete with undo toast — deferred
+
+## 8. Dashboard layout width
+
+**Decision**: Search bar full width of the Favorites + Recent grid (same container as the two columns).
+
+**Rationale**: Post-test clarify for visual alignment.
+
+## 9. Post-design constitution re-check
 
 All gates remain satisfied: Places-only client external call; enrichment from `neighborhood_scores`; auth on mutate routes; tests planned.

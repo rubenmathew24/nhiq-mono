@@ -8,6 +8,14 @@
 
 Enhance the signed-in dashboard with Mapbox Places address lookahead (browser-allowed), overall score previews on saved rows (reuse `scoreTextClass` / report color bands), per-user dedupe of the same resolved place (reuse `address_lookups` by geoid + one-time merge of existing duplicates), Favorites/Recent dual listing with `is_favorite` + `last_activity_at`, and a three-dot menu for favorite/unfavorite and confirm-before-delete. Persistence and list enrichment stay in FastAPI; Next.js remains a thin client.
 
+### Post-test UX refinements (clarify session)
+
+- **Leading score**: Row leading visual is the color-scaled overall score (replaces map-pin). Favorited rows also show a distinct favorite indicator.
+- **Search width**: Dashboard `AddressSearch` spans the full width of the two-column Favorites/Recent layout (`apps/web/src/app/dashboard/page.tsx` — remove narrower `max-w-3xl` wrapper).
+- **Menu dismiss**: Cancel on delete confirmation closes the entire overflow menu; click-outside / Escape dismisses menu or confirm fully (`LookupList` row menu).
+- **Unfavorite before delete**: UI disables/blocks Delete while `is_favorite`; API `DELETE /users/me/lookups/{id}` returns **409** (or clear 400) with a stable message if still favorited.
+- **Known bug (tasks only, not a product FR)**: First click of confirm Remove can surface “The string did not match the expected pattern.” then succeed on retry — fix in `/speckit-tasks` / implement (likely `apiFetch` + `204` DELETE / body parsing). Do not encode as a user-facing requirement.
+
 ## Technical Context
 
 **Language/Version**: TypeScript (Next.js 14 App Router), Python 3.12 (FastAPI)

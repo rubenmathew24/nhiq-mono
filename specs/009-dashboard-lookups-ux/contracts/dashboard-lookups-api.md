@@ -46,8 +46,13 @@ Body:
 ## `DELETE /users/me/lookups/{address_id}`
 
 **Response** `204`  
-**Errors**: `404` if not owned / missing.  
+**Errors**:
+- `404` if not owned / missing
+- `409` if `is_favorite` is true — detail e.g. `"Unfavorite this address before deleting it."` with optional `code: "LOOKUP_FAVORITED"`
+
 Does not delete `address_lookups` or scores.
+
+**Client note**: Prefer handling empty/`204` bodies without JSON parse errors (implement task; not a product FR).
 
 ## `POST /users/me/lookups/{address_id}/touch`
 

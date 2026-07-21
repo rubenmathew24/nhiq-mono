@@ -2,33 +2,35 @@
 
 **Input**: Design documents from `/specs/009-dashboard-lookups-ux/`
 
-**Prerequisites**: plan.md, spec.md, research.md, data-model.md, contracts/
+**Prerequisites**: plan.md, spec.md, research.md, data-model.md, contracts/, quickstart.md
 
 **Tests**: Constitution VI — API tests in `apps/api/tests/`; web tests in `apps/web/src/__tests__/`.
 
-**Organization**: By user story (US1 suggestions → US2 dedupe/score → US3 favorites/menu).
+**Organization**: Setup → Foundation → US1 (suggestions) → US2 (dedupe/score) → US3 (favorites/menu) → Post-test polish → Final polish.
+
+**Note**: Core US1–US3 implementation landed earlier on this branch; checkboxes below reflect current repo state. Open tasks are the remaining gaps (tests + post-test clarify UX + Delete/`apiFetch` bug).
 
 ## Format: `[ID] [P?] [Story] Description`
 
 - **[P]**: Parallel-safe (different files)
 - **[Story]**: US1 / US2 / US3
 
+---
+
 ## Phase 1: Setup
 
-- [ ] T001 Confirm feature docs present under `specs/009-dashboard-lookups-ux/` (plan, research, data-model, contracts, quickstart)
-- [ ] T002 [P] Document `NEXT_PUBLIC_MAPBOX_TOKEN` requirement for Places autocomplete in `apps/web` env usage / `.env.example` if missing
+- [x] T001 Confirm feature docs present under `specs/009-dashboard-lookups-ux/` (plan, research, data-model, contracts, quickstart)
+- [x] T002 [P] Document `NEXT_PUBLIC_MAPBOX_TOKEN` for Places autocomplete in `.env.example`
 
 ---
 
 ## Phase 2: Foundational (blocking)
 
-**⚠️ Complete before user stories**
-
-- [ ] T003 Add `is_favorite`, `last_activity_at` to `SavedLookup` in `apps/api/app/models/__init__.py` and SQL migration / `init` delta under `apps/api` or `infra` as used by the repo
-- [ ] T004 [P] Add optional `users.lookups_deduped_at` (or equivalent merge flag) in `apps/api/app/models/__init__.py`
-- [ ] T005 Extend `SavedLookup` / `LookupListResponse` schemas in `apps/api/app/schemas/auth.py` with `last_activity_at`, `is_favorite`, `overall_score`
-- [ ] T006 [P] Mirror types in `apps/web/src/types/api.ts`
-- [ ] T007 Refactor `PostgresLookupStore` in `apps/api/app/services/lookup_store.py` to reuse `address_lookups` by geoid/normalized address and upsert saved rows with activity bumps
+- [x] T003 Add `is_favorite`, `last_activity_at` to `SavedLookup` in `apps/api/app/models/__init__.py` + `infra/sql/009_dashboard_lookups_ux.sql` / `infra/sql/init.sql`
+- [x] T004 [P] Add `users.lookups_deduped_at` in `apps/api/app/models/__init__.py` + SQL
+- [x] T005 Extend schemas in `apps/api/app/schemas/auth.py` with `last_activity_at`, `is_favorite`, `overall_score`
+- [x] T006 [P] Mirror types in `apps/web/src/types/api.ts`
+- [x] T007 Refactor `PostgresLookupStore` in `apps/api/app/services/lookup_store.py` for place reuse, upsert, merge, score enrich, favorite/delete/touch
 
 **Checkpoint**: Schema + store foundation ready
 
@@ -36,103 +38,116 @@
 
 ## Phase 3: User Story 1 — Address suggestions (P1) 🎯 MVP
 
-**Goal**: Lookahead suggestions while typing; select or free-type to score
+**Goal**: Lookahead suggestions; select or free-type to score; dashboard search full-width (post-test FR-013)
 
-**Independent Test**: Dashboard search shows suggestions; select → score works; token failure still allows free-type
-
-### Tests
-
-- [ ] T008 [P] [US1] Web test: suggestion select fills input / submit path in `apps/web/src/__tests__/address-search-suggest.test.tsx`
-
-### Implementation
-
-- [ ] T009 [US1] Add Mapbox Places suggestion fetch + debounce UI to `apps/web/src/components/search/AddressSearch.tsx` (min 3 chars, US addresses)
-- [ ] T010 [P] [US1] Keyboard/a11y for suggestion list (arrow keys, Escape, aria) in `AddressSearch.tsx`
-- [ ] T011 [US1] Graceful empty/error state when Places fails (search still submittable)
-
-**Checkpoint**: US1 demonstrable on dashboard (and shared landing search if same component)
-
----
-
-## Phase 4: User Story 2 — Dedupe + score preview (P1)
-
-**Goal**: One saved identity per place; overall score preview with report color scaling; merge legacy duplicates
-
-**Independent Test**: Score same address twice → one identity; score color matches report; seeded duplicates collapse on list
+**Independent Test**: Type 3+ chars → suggestions; select → report; free-type still works; search width matches two columns
 
 ### Tests
 
-- [ ] T012 [P] [US2] API tests: reuse address_lookup, no duplicate saved rows, merge duplicates in `apps/api/tests/test_user_lookups.py`
-- [ ] T013 [P] [US2] API test: list includes `overall_score` null vs number in `apps/api/tests/test_user_lookups.py`
+- [ ] T008 [P] [US1] Web test for suggestion select / submit in `apps/web/src/__tests__/address-search-suggest.test.tsx`
 
 ### Implementation
 
-- [ ] T014 [US2] Implement `merge_duplicate_saved_lookups` + gate via `lookups_deduped_at` in `apps/api/app/services/lookup_store.py`
-- [ ] T015 [US2] Enrich `GET /users/me/lookups` with scores from `neighborhood_scores` in `apps/api/app/api/v1/endpoints/users.py` / service helper
-- [ ] T016 [US2] Update `LookupList` / dashboard rows to show overall score using `scoreTextClass` in `apps/web/src/components/dashboard/` and `apps/web/src/lib/utils.ts`
-- [ ] T017 [P] [US2] Unavailable score preview UI (no fake number)
+- [x] T009 [US1] Mapbox Places debounce + suggestion UI in `apps/web/src/components/search/AddressSearch.tsx`
+- [x] T010 [P] [US1] Keyboard/a11y for suggestion list in `AddressSearch.tsx`
+- [x] T011 [US1] Graceful Places failure (search still submittable) in `AddressSearch.tsx`
+- [ ] T012 [US1] Make dashboard search span full Favorites+Recent width in `apps/web/src/app/dashboard/page.tsx` (remove narrower `max-w-3xl` wrapper around `AddressSearch`)
 
-**Checkpoint**: US2 list is de-duplicated with score chips
+**Checkpoint**: US1 suggestions + full-width search
 
 ---
 
-## Phase 5: User Story 3 — Favorites, Recent, menu (P2)
+## Phase 4: User Story 2 — Dedupe + leading score preview (P1)
 
-**Goal**: Dual columns; ⋯ menu favorite/unfavorite; confirm delete; activity on open/search
+**Goal**: One saved identity per place; leading color-scaled score (replaces pin); favorite indicator when favorited
 
-**Independent Test**: Favorite appears in both columns; delete confirm; open report bumps Recent
+**Independent Test**: Score twice → one identity; leading glyph is score not pin; favorited shows indicator + score
 
 ### Tests
 
-- [ ] T018 [P] [US3] API tests for PATCH favorite, DELETE, POST touch in `apps/api/tests/test_user_lookups.py`
-- [ ] T019 [P] [US3] Web tests for Favorites/Recent split + confirm delete in `apps/web/src/__tests__/dashboard-lookups.test.tsx`
+- [ ] T013 [P] [US2] API tests: reuse place, merge duplicates, list `overall_score` in `apps/api/tests/test_user_lookups.py`
+- [ ] T014 [P] [US2] Web test: leading score + favorite indicator rendering in `apps/web/src/__tests__/dashboard.test.tsx`
 
 ### Implementation
 
-- [ ] T020 [US3] Add `PATCH /users/me/lookups/{address_id}`, `DELETE ...`, `POST .../touch` in `apps/api/app/api/v1/endpoints/users.py` (thin) + store methods
-- [ ] T021 [US3] Dashboard two-column layout (Favorites + Recent) in `apps/web/src/app/dashboard/page.tsx` + components under `apps/web/src/components/dashboard/`
-- [ ] T022 [US3] Row overflow menu (favorite / unfavorite / delete) with confirm dialog
-- [ ] T023 [US3] Call touch on report open from `apps/web/src/app/report/[addressId]/page.tsx` (authenticated)
-- [ ] T024 [US3] Ensure re-search path bumps `last_activity_at` via lookup attach (T007)
+- [x] T015 [US2] `merge_duplicate_saved_lookups` + list enrichment in `apps/api/app/services/lookup_store.py` / `users.py`
+- [ ] T016 [US2] Replace map-pin leading glyph with prominent `scoreTextClass` score in `apps/web/src/components/dashboard/LookupList.tsx`
+- [ ] T017 [US2] Show distinct favorite indicator on favorited rows (keep leading score) in `LookupList.tsx`
+- [x] T018 [P] [US2] Unavailable score leading preview (no fake number) in `LookupList.tsx`
 
-**Checkpoint**: Full dashboard UX per spec
+**Checkpoint**: US2 leading score UX
 
 ---
 
-## Phase 6: Polish
+## Phase 5: User Story 3 — Favorites, Recent, menu gates (P2)
 
-- [ ] T025 [P] Empty states for Favorites and Recent in dashboard components
-- [ ] T026 Run API + web tests; fix regressions
-- [ ] T027 Manual pass against `specs/009-dashboard-lookups-ux/quickstart.md`
+**Goal**: Dual columns; ⋯ menu; confirm delete; unfavorite-before-delete; full menu dismiss; activity touch
+
+**Independent Test**: Favorite dual-lists; delete blocked while favorited; cancel/outside closes entire menu; delete after unfavorite works once
+
+### Tests
+
+- [ ] T019 [P] [US3] API tests: PATCH favorite, DELETE 204, DELETE 409 when favorited, POST touch in `apps/api/tests/test_user_lookups.py`
+- [ ] T020 [P] [US3] Web tests: unfavorite-before-delete, cancel closes menu, outside click closes menu in `apps/web/src/__tests__/dashboard-lookups.test.tsx`
+
+### Implementation
+
+- [x] T021 [US3] `PATCH` / `DELETE` / `POST .../touch` routes in `apps/api/app/api/v1/endpoints/users.py`
+- [ ] T022 [US3] Reject delete while favorited with **409** + clear detail in `apps/api/app/services/lookup_store.py` and `users.py` (per `contracts/dashboard-lookups-api.md`)
+- [x] T023 [US3] Favorites + Recent two-column layout in `apps/web/src/components/dashboard/LookupList.tsx` / `dashboard/page.tsx`
+- [ ] T024 [US3] Block or disable Delete in UI while `is_favorite` with unfavorite-first guidance in `LookupList.tsx`
+- [ ] T025 [US3] Cancel on delete confirm closes **entire** overflow menu (not back to Favorite/Delete) in `LookupList.tsx`
+- [ ] T026 [US3] Click-outside + Escape dismiss open menu or confirm completely in `LookupList.tsx`
+- [x] T027 [US3] Report open → touch via `apps/web/src/components/report/LookupActivityTouch.tsx` + report page
+- [x] T028 [US3] Re-search bumps `last_activity_at` via lookup attach in `lookup_store.py`
+
+**Checkpoint**: US3 menu + delete gate behavior
+
+---
+
+## Phase 6: Post-test bugfix (tasks-only)
+
+- [ ] T029 Fix `apiFetch` handling of empty/`204` responses so DELETE Remove succeeds on first click (no “string did not match the expected pattern”) in `apps/web/src/lib/api.ts`
+- [ ] T030 [P] Add/adjust unit coverage for `apiFetch` 204/empty body in `apps/web/src/__tests__/` (or existing api helper test file)
+
+---
+
+## Phase 7: Final polish
+
+- [x] T031 [P] Empty Favorites / Recent states in `LookupList.tsx`
+- [ ] T032 Run API tests `apps/api/tests/test_user_lookups.py` and web dashboard tests; fix regressions
+- [ ] T033 Manual pass against `specs/009-dashboard-lookups-ux/quickstart.md`
+- [ ] T034 Rebuild/restart Docker web+api so local testing picks up UI changes (`docker compose up -d --build api web`)
 
 ---
 
 ## Dependencies
 
 ```text
-Phase 1 → Phase 2 → US1 (Phase 3) ∥ US2 (Phase 4 after T007)
-                └→ US3 (Phase 5) after US2 list enrichment preferred
-Polish after US1–US3
+Phase 1–2 (done) → US1 (T012 open) → US2 (T016–T017 open)
+                 → US3 (T022, T024–T026 open)
+T029–T030 can run with US3 delete work
+T032–T034 after open implementation tasks
 ```
-
-- US1 can ship with existing list UI
-- US2 needs T003–T007
-- US3 needs US2 list fields + new mutate routes
 
 ## Parallel examples
 
 ```bash
-# After foundation:
-T008, T009  # web suggest
-T012, T014  # api dedupe
-# After routes:
-T018, T021, T022
+# UI polish in parallel:
+T012, T016, T017, T024, T025, T026
+# API gate + client bug:
+T022, T029
+# Tests in parallel once UI stable:
+T008, T013, T014, T019, T020, T030
 ```
 
 ## Implementation strategy
 
-1. Foundation schema + store reuse/dedupe
-2. US1 autocomplete (quick user-visible win)
-3. US2 merge + score preview
-4. US3 columns/menu/touch
-5. Polish + quickstart validation
+1. **MVP remaining**: T012 full-width search + T016/T017 leading score/favorite mark (highest visible polish)
+2. **Menu correctness**: T022/T024–T026 + T029 (delete gate + dismiss + first-click Remove)
+3. **Tests + quickstart**: T008/T013–T014/T019–T020/T030–T033
+4. **Ship**: T034 rebuild for verification
+
+## MVP scope (original)
+
+User Story 1 suggestions alone were MVP; remaining MVP for this iteration = **Phase 6 bugfix + leading score + menu dismiss/gate** so dashboard testing matches clarify.

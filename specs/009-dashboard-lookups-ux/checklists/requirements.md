@@ -32,5 +32,7 @@
 ## Notes
 
 - Validation pass 1 (2026-07-21): Spec uses product language (suggestions, columns, score preview).
-- Clarify session 2026-07-21: Dual listing Favorites+Recent; one-time duplicate merge; confirm before delete. Checklist still 16/16 passing.
-- Next: `/speckit-plan` (Commit #1 finalizes this spec).
+- Clarify session 2026-07-21 (initial): Dual listing; duplicate merge; confirm before delete.
+- Clarify session 2026-07-21 (post-test): Leading score replaces pin + favorite indicator; full-width search; menu dismiss; unfavorite-before-delete. Checklist 16/16 still passing.
+- For `/speckit-tasks`: include implement fix for Delete “string did not match the expected pattern” on first Remove click (not a product FR).
+- Ready for `/speckit-tasks` then `/speckit-implement` (spec already had Commit #1; fold these doc updates into the next commit rhythm as appropriate).
