@@ -2,10 +2,11 @@
 
 import os
 
-# Host-run pytest → Compose Postgres published on 5433 (see docker-compose.yml).
-# Service hostname `db:5432` only works on the Docker network.
-os.environ["DATABASE_URL"] = (
-    "postgresql://postgres:postgres@localhost:5433/neighborhoodiq"
+# Prefer Compose/service env when present (api container uses `@db:5432`).
+# Host-run pytest falls back to published Postgres on localhost:5433.
+os.environ.setdefault(
+    "DATABASE_URL",
+    "postgresql://postgres:postgres@localhost:5433/neighborhoodiq",
 )
 os.environ.setdefault("REDIS_URL", "redis://localhost:6379")
 os.environ.setdefault("SECRET_KEY", "test-secret-key-for-pytest-only")

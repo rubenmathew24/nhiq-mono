@@ -66,7 +66,8 @@ CREATE TABLE IF NOT EXISTS users (
     stripe_subscription_id VARCHAR(255),
     is_active BOOLEAN DEFAULT true,
     created_at TIMESTAMPTZ DEFAULT NOW(),
-    updated_at TIMESTAMPTZ DEFAULT NOW()
+    updated_at TIMESTAMPTZ DEFAULT NOW(),
+    lookups_deduped_at TIMESTAMPTZ
 );
 
 CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
@@ -79,11 +80,15 @@ CREATE TABLE IF NOT EXISTS saved_lookups (
     address_lookup_id UUID NOT NULL REFERENCES address_lookups(id),
     label VARCHAR(255),
     notes TEXT,
+    is_favorite BOOLEAN NOT NULL DEFAULT false,
+    last_activity_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     created_at TIMESTAMPTZ DEFAULT NOW(),
     UNIQUE(user_id, address_lookup_id)
 );
 
 CREATE INDEX IF NOT EXISTS idx_saved_lookups_user ON saved_lookups(user_id);
+CREATE INDEX IF NOT EXISTS idx_saved_lookups_user_activity
+  ON saved_lookups (user_id, last_activity_at DESC);
 
 -- ─────────────────────────────────────────────────────────────
 -- EPA Air Quality (from epa ingestion worker)

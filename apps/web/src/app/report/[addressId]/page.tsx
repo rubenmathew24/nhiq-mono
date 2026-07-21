@@ -7,6 +7,7 @@ import MapView from "@/components/report/MapView";
 import ReportAiSummary from "@/components/report/ReportAiSummary";
 import ScoreBreakdown from "@/components/report/ScoreBreakdown";
 import ScoreSummary from "@/components/report/ScoreSummary";
+import LookupActivityTouch from "@/components/report/LookupActivityTouch";
 import { ApiError, apiFetch } from "@/lib/api";
 import { auth } from "@/lib/auth";
 import type { NeighborhoodReport } from "@/types/api";
@@ -96,6 +97,7 @@ export default async function ReportPage({ params }: ReportPageProps) {
   return (
     <div className="min-h-screen bg-background text-foreground font-sans">
       <Header />
+      {isSignedIn ? <LookupActivityTouch addressId={addressId} /> : null}
       <main className="max-w-5xl mx-auto px-6 pt-28 pb-16 space-y-8">
         {isSignedIn && (
           <Link

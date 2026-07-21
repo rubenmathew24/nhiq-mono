@@ -1,5 +1,5 @@
 from pydantic import BaseModel, EmailStr
-from typing import Literal
+from typing import Literal, Optional
 
 
 UserTier = Literal["free", "buyer", "buyer_pro", "agent", "brokerage"]
@@ -39,7 +39,18 @@ class SavedLookup(BaseModel):
     address_id: str
     address_normalized: str
     looked_up_at: str
+    last_activity_at: str
+    is_favorite: bool = False
+    overall_score: Optional[float] = None
 
 
 class LookupListResponse(BaseModel):
     items: list[SavedLookup]
+
+
+class SavedLookupFavoriteUpdate(BaseModel):
+    is_favorite: bool
+
+
+class SavedLookupTouchResponse(BaseModel):
+    item: SavedLookup

@@ -18,6 +18,9 @@ export interface SavedLookup {
   address_id: string;
   address_normalized: string;
   looked_up_at: string;
+  last_activity_at: string;
+  is_favorite: boolean;
+  overall_score: number | null;
 }
 
 export interface LookupListResponse {

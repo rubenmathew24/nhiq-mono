@@ -32,7 +32,7 @@ export default async function DashboardPage() {
     <div className="min-h-screen bg-background text-foreground font-sans">
       <Header />
       <main className="pt-32 pb-24">
-        <div className="max-w-3xl mx-auto px-6">
+        <div className="max-w-5xl mx-auto px-6">
           <div className="mb-8">
             <h1 className="font-display text-3xl font-bold tracking-tight text-foreground">
               Your saved lookups
