@@ -369,7 +369,8 @@ def compute_job_statuses(cur, counties: frozenset[str], scope: str) -> list[JobS
         )
     )
 
-    # cms_timely — ≥80% of hospitals have timely measures (CMS does not cover 100%)
+    # cms_timely — hospital share (hospitals with ≥1 timely measure / all hospitals).
+    # Ingest checkpoint still uses ≥80% per state; coverage UI uses continuous share.
     cur.execute(
         """
         WITH hospitals_in AS (
@@ -388,24 +389,23 @@ def compute_job_statuses(cur, counties: frozenset[str], scope: str) -> list[JobS
              AND t.data_vintage = %s
             GROUP BY h.state
         )
-        SELECT hc.state
+        SELECT COALESCE(SUM(COALESCE(tc.n, 0)), 0)::int AS timely_n,
+               COALESCE(SUM(hc.n), 0)::int AS hospital_n
         FROM hospital_counts hc
         LEFT JOIN timely_counts tc ON tc.state = hc.state
-        WHERE hc.n = 0
-           OR COALESCE(tc.n, 0)::float / hc.n >= 0.80
         """,
         (state_abbrs, DATA_VINTAGE),
     )
-    timely_ok = {str(r[0]) for r in cur.fetchall() if r and r[0]}
-    no_hosp = set(state_abbrs) - cms_ok
-    timely_done_set = timely_ok | no_hosp
+    timely_row = cur.fetchone()
+    timely_done_n = int(timely_row[0] or 0) if timely_row else 0
+    timely_total_n = int(timely_row[1] or 0) if timely_row else 0
     statuses.append(
         JobStatus(
             "cms_timely",
-            _pct(len(timely_done_set), len(state_abbrs)),
-            len(timely_done_set),
-            len(state_abbrs),
-            {"missing_states": sorted(set(state_abbrs) - timely_done_set)},
+            _pct(timely_done_n, timely_total_n),
+            timely_done_n,
+            timely_total_n,
+            {"grain": "hospital"},
         )
     )
 

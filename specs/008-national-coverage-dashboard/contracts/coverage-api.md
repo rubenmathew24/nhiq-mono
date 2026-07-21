@@ -46,11 +46,23 @@ When `geo_counties` is empty for included FIPS: return a structured empty payloa
 
 Same order as national status: census, epa, cms, fbi, nces, urban, acs, bls, fema, cms_timely, scoring.
 
+### Grain notes
+
+| `job_name` | `grain` | Notes |
+|------------|---------|--------|
+| cms | `state` | 0/1 presence of hospitals in the state |
+| cms_timely | `hospital` | Continuous hospital share (not state pass/fail) |
+| epa | `county` | Denominator = AQS monitor counties; by-state `0/0` if none |
+| urban | `county` | Denominator = NCES-complete counties |
+| others (incl. scoring) | `county` | Full registry / scoring done-ness |
+
+Parity: for every job, sum over `states[].sources[job].done_count` (and `total_count`) MUST equal national `sources[job]`.
+
 ## UI mapping (non-contract)
 
 | Tab | Uses |
 |-----|------|
 | Overall | `overall_pct`, `sources[]` |
-| By state | `states[]` + filter Overall (mean of state sources) or one `job_name` from `sources[]` |
+| By state | `states[]` + filter Overall (mean of state sources with `total_count > 0`) or one `job_name` from `sources[]` |
 
 The API does not need an `overall` job entry; Overall is a UI filter over existing fields.

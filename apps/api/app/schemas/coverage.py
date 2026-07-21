@@ -10,7 +10,7 @@ from pydantic import BaseModel, Field
 
 class SourceCoverage(BaseModel):
     job_name: str
-    grain: Literal["county", "state"]
+    grain: Literal["county", "state", "hospital"]
     done_count: int
     total_count: int
     pct_complete: float
