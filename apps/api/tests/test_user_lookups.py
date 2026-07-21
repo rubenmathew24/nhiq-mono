@@ -60,9 +60,24 @@ async def test_seeded_lookups_filtered_and_sorted(db_session: AsyncSession):
     t1 = datetime.now(timezone.utc)
     db_session.add_all(
         [
-            SavedLookup(user_id=user.id, address_lookup_id=addr_old.id, created_at=t0),
-            SavedLookup(user_id=user.id, address_lookup_id=addr_new.id, created_at=t1),
-            SavedLookup(user_id=other.id, address_lookup_id=addr_other.id, created_at=t1),
+            SavedLookup(
+                user_id=user.id,
+                address_lookup_id=addr_old.id,
+                created_at=t0,
+                last_activity_at=t0,
+            ),
+            SavedLookup(
+                user_id=user.id,
+                address_lookup_id=addr_new.id,
+                created_at=t1,
+                last_activity_at=t1,
+            ),
+            SavedLookup(
+                user_id=other.id,
+                address_lookup_id=addr_other.id,
+                created_at=t1,
+                last_activity_at=t1,
+            ),
         ]
     )
     await db_session.commit()
@@ -80,4 +95,153 @@ async def test_seeded_lookups_filtered_and_sorted(db_session: AsyncSession):
         await db_session.execute(
             delete(AddressLookup).where(AddressLookup.id.in_([addr_old.id, addr_new.id, addr_other.id]))
         )
+        await db_session.commit()
+
+
+@pytest.mark.asyncio
+async def test_record_lookup_reuses_place_and_bumps_activity(db_session: AsyncSession):
+    user = User(
+        email=f"reuse-{uuid.uuid4().hex[:8]}@example.com",
+        full_name="R",
+        password_hash="x",
+        tier="free",
+    )
+    db_session.add(user)
+    await db_session.commit()
+
+    store = PostgresLookupStore(db_session)
+    try:
+        id1 = await store.record_lookup(
+            address_raw="1 Main",
+            address_normalized="1 Main St, Austin, Texas",
+            latitude=30.0,
+            longitude=-97.0,
+            geoid="48021950100",
+            user_id=str(user.id),
+        )
+        id2 = await store.record_lookup(
+            address_raw="1 Main St",
+            address_normalized="1 Main St, Austin, Texas",
+            latitude=30.0,
+            longitude=-97.0,
+            geoid="48021950100",
+            user_id=str(user.id),
+        )
+        assert id1 == id2
+        items = await store.list_for_user(str(user.id))
+        assert len(items) == 1
+        assert items[0].address_id == id1
+        fav = await store.set_favorite(str(user.id), id1, is_favorite=True)
+        assert fav is not None and fav.is_favorite is True
+        assert await store.delete_for_user(str(user.id), id1) == "favorited"
+        await store.set_favorite(str(user.id), id1, is_favorite=False)
+        assert await store.delete_for_user(str(user.id), id1) == "deleted"
+        assert await store.list_for_user(str(user.id)) == []
+    finally:
+        await db_session.execute(delete(SavedLookup).where(SavedLookup.user_id == user.id))
+        await db_session.execute(delete(User).where(User.id == user.id))
+        await db_session.execute(delete(AddressLookup).where(AddressLookup.geoid == "48021950100"))
+        await db_session.commit()
+
+
+@pytest.mark.asyncio
+async def test_merge_duplicate_saved_lookups(db_session: AsyncSession):
+    user = User(
+        email=f"merge-{uuid.uuid4().hex[:8]}@example.com",
+        full_name="M",
+        password_hash="x",
+        tier="free",
+    )
+    a1 = AddressLookup(
+        address_raw="A",
+        address_normalized="Same Place",
+        geoid="11001980000",
+    )
+    a2 = AddressLookup(
+        address_raw="B",
+        address_normalized="Same Place",
+        geoid="11001980000",
+    )
+    db_session.add_all([user, a1, a2])
+    await db_session.flush()
+    t0 = datetime.now(timezone.utc) - timedelta(days=1)
+    t1 = datetime.now(timezone.utc)
+    db_session.add_all(
+        [
+            SavedLookup(
+                user_id=user.id,
+                address_lookup_id=a1.id,
+                is_favorite=True,
+                created_at=t0,
+                last_activity_at=t0,
+            ),
+            SavedLookup(
+                user_id=user.id,
+                address_lookup_id=a2.id,
+                is_favorite=False,
+                created_at=t1,
+                last_activity_at=t1,
+            ),
+        ]
+    )
+    await db_session.commit()
+
+    store = PostgresLookupStore(db_session)
+    try:
+        items = await store.list_for_user(str(user.id))
+        assert len(items) == 1
+        assert items[0].is_favorite is True
+    finally:
+        await db_session.execute(delete(SavedLookup).where(SavedLookup.user_id == user.id))
+        await db_session.execute(delete(User).where(User.id == user.id))
+        await db_session.execute(delete(AddressLookup).where(AddressLookup.id.in_([a1.id, a2.id])))
+        await db_session.commit()
+
+
+@pytest.mark.asyncio
+async def test_favorite_touch_and_delete_gate(db_session: AsyncSession):
+    user = User(
+        email=f"fav-{uuid.uuid4().hex[:8]}@example.com",
+        full_name="F",
+        password_hash="x",
+        tier="free",
+    )
+    addr = AddressLookup(
+        address_raw="9 Elm",
+        address_normalized="9 Elm St",
+        geoid="36061000100",
+    )
+    db_session.add_all([user, addr])
+    await db_session.flush()
+    now = datetime.now(timezone.utc) - timedelta(hours=2)
+    db_session.add(
+        SavedLookup(
+            user_id=user.id,
+            address_lookup_id=addr.id,
+            is_favorite=False,
+            created_at=now,
+            last_activity_at=now,
+        )
+    )
+    await db_session.commit()
+
+    store = PostgresLookupStore(db_session)
+    try:
+        before = (await store.list_for_user(str(user.id)))[0]
+        touched = await store.touch(str(user.id), str(addr.id))
+        assert touched is not None
+        assert touched.last_activity_at >= before.last_activity_at
+
+        fav = await store.set_favorite(str(user.id), str(addr.id), is_favorite=True)
+        assert fav is not None and fav.is_favorite is True
+        assert await store.delete_for_user(str(user.id), str(addr.id)) == "favorited"
+
+        await store.set_favorite(str(user.id), str(addr.id), is_favorite=False)
+        assert await store.delete_for_user(str(user.id), str(addr.id)) == "deleted"
+        assert await store.list_for_user(str(user.id)) == []
+        assert await store.delete_for_user(str(user.id), str(addr.id)) == "not_found"
+    finally:
+        await db_session.execute(delete(SavedLookup).where(SavedLookup.user_id == user.id))
+        await db_session.execute(delete(User).where(User.id == user.id))
+        await db_session.execute(delete(AddressLookup).where(AddressLookup.id == addr.id))
         await db_session.commit()

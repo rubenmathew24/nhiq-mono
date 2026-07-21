@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional
 
 from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, Numeric, Text, UniqueConstraint, func
@@ -31,6 +31,7 @@ class User(Base):
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    lookups_deduped_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
 
     saved_lookups: Mapped[list["SavedLookup"]] = relationship(back_populates="user")
 
@@ -62,6 +63,10 @@ class SavedLookup(Base):
     )
     label: Mapped[Optional[str]] = mapped_column(Text)
     notes: Mapped[Optional[str]] = mapped_column(Text)
+    is_favorite: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
+    last_activity_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), default=lambda: datetime.now(timezone.utc)
+    )
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     user: Mapped["User"] = relationship(back_populates="saved_lookups")

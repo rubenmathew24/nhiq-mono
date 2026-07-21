@@ -44,14 +44,14 @@
 
 ### Tests
 
-- [ ] T008 [P] [US1] Web test for suggestion select / submit in `apps/web/src/__tests__/address-search-suggest.test.tsx`
+- [x] T008 [P] [US1] Web test for suggestion select / submit in `apps/web/src/__tests__/address-search-suggest.test.tsx`
 
 ### Implementation
 
 - [x] T009 [US1] Mapbox Places debounce + suggestion UI in `apps/web/src/components/search/AddressSearch.tsx`
 - [x] T010 [P] [US1] Keyboard/a11y for suggestion list in `AddressSearch.tsx`
 - [x] T011 [US1] Graceful Places failure (search still submittable) in `AddressSearch.tsx`
-- [ ] T012 [US1] Make dashboard search span full Favorites+Recent width in `apps/web/src/app/dashboard/page.tsx` (remove narrower `max-w-3xl` wrapper around `AddressSearch`)
+- [x] T012 [US1] Make dashboard search span full Favorites+Recent width in `apps/web/src/app/dashboard/page.tsx` (remove narrower `max-w-3xl` wrapper around `AddressSearch`)
 
 **Checkpoint**: US1 suggestions + full-width search
 
@@ -65,14 +65,14 @@
 
 ### Tests
 
-- [ ] T013 [P] [US2] API tests: reuse place, merge duplicates, list `overall_score` in `apps/api/tests/test_user_lookups.py`
-- [ ] T014 [P] [US2] Web test: leading score + favorite indicator rendering in `apps/web/src/__tests__/dashboard.test.tsx`
+- [x] T013 [P] [US2] API tests: reuse place, merge duplicates, list `overall_score` in `apps/api/tests/test_user_lookups.py`
+- [x] T014 [P] [US2] Web test: leading score + favorite indicator rendering in `apps/web/src/__tests__/dashboard.test.tsx`
 
 ### Implementation
 
 - [x] T015 [US2] `merge_duplicate_saved_lookups` + list enrichment in `apps/api/app/services/lookup_store.py` / `users.py`
-- [ ] T016 [US2] Replace map-pin leading glyph with prominent `scoreTextClass` score in `apps/web/src/components/dashboard/LookupList.tsx`
-- [ ] T017 [US2] Show distinct favorite indicator on favorited rows (keep leading score) in `LookupList.tsx`
+- [x] T016 [US2] Replace map-pin leading glyph with prominent `scoreTextClass` score in `apps/web/src/components/dashboard/LookupList.tsx`
+- [x] T017 [US2] Show distinct favorite indicator on favorited rows (keep leading score) in `LookupList.tsx`
 - [x] T018 [P] [US2] Unavailable score leading preview (no fake number) in `LookupList.tsx`
 
 **Checkpoint**: US2 leading score UX
@@ -87,17 +87,17 @@
 
 ### Tests
 
-- [ ] T019 [P] [US3] API tests: PATCH favorite, DELETE 204, DELETE 409 when favorited, POST touch in `apps/api/tests/test_user_lookups.py`
-- [ ] T020 [P] [US3] Web tests: unfavorite-before-delete, cancel closes menu, outside click closes menu in `apps/web/src/__tests__/dashboard-lookups.test.tsx`
+- [x] T019 [P] [US3] API tests: PATCH favorite, DELETE 204, DELETE 409 when favorited, POST touch in `apps/api/tests/test_user_lookups.py`
+- [x] T020 [P] [US3] Web tests: unfavorite-before-delete, cancel closes menu, outside click closes menu in `apps/web/src/__tests__/dashboard-lookups.test.tsx`
 
 ### Implementation
 
 - [x] T021 [US3] `PATCH` / `DELETE` / `POST .../touch` routes in `apps/api/app/api/v1/endpoints/users.py`
-- [ ] T022 [US3] Reject delete while favorited with **409** + clear detail in `apps/api/app/services/lookup_store.py` and `users.py` (per `contracts/dashboard-lookups-api.md`)
+- [x] T022 [US3] Reject delete while favorited with **409** + clear detail in `apps/api/app/services/lookup_store.py` and `users.py` (per `contracts/dashboard-lookups-api.md`)
 - [x] T023 [US3] Favorites + Recent two-column layout in `apps/web/src/components/dashboard/LookupList.tsx` / `dashboard/page.tsx`
-- [ ] T024 [US3] Block or disable Delete in UI while `is_favorite` with unfavorite-first guidance in `LookupList.tsx`
-- [ ] T025 [US3] Cancel on delete confirm closes **entire** overflow menu (not back to Favorite/Delete) in `LookupList.tsx`
-- [ ] T026 [US3] Click-outside + Escape dismiss open menu or confirm completely in `LookupList.tsx`
+- [x] T024 [US3] Block or disable Delete in UI while `is_favorite` with unfavorite-first guidance in `LookupList.tsx`
+- [x] T025 [US3] Cancel on delete confirm closes **entire** overflow menu (not back to Favorite/Delete) in `LookupList.tsx`
+- [x] T026 [US3] Click-outside + Escape dismiss open menu or confirm completely in `LookupList.tsx`
 - [x] T027 [US3] Report open → touch via `apps/web/src/components/report/LookupActivityTouch.tsx` + report page
 - [x] T028 [US3] Re-search bumps `last_activity_at` via lookup attach in `lookup_store.py`
 
@@ -107,17 +107,17 @@
 
 ## Phase 6: Post-test bugfix (tasks-only)
 
-- [ ] T029 Fix `apiFetch` handling of empty/`204` responses so DELETE Remove succeeds on first click (no “string did not match the expected pattern”) in `apps/web/src/lib/api.ts`
-- [ ] T030 [P] Add/adjust unit coverage for `apiFetch` 204/empty body in `apps/web/src/__tests__/` (or existing api helper test file)
+- [x] T029 Fix `apiFetch` handling of empty/`204` responses so DELETE Remove succeeds on first click (no “string did not match the expected pattern”) in `apps/web/src/lib/api.ts`
+- [x] T030 [P] Add/adjust unit coverage for `apiFetch` 204/empty body in `apps/web/src/__tests__/` (or existing api helper test file)
 
 ---
 
 ## Phase 7: Final polish
 
 - [x] T031 [P] Empty Favorites / Recent states in `LookupList.tsx`
-- [ ] T032 Run API tests `apps/api/tests/test_user_lookups.py` and web dashboard tests; fix regressions
-- [ ] T033 Manual pass against `specs/009-dashboard-lookups-ux/quickstart.md`
-- [ ] T034 Rebuild/restart Docker web+api so local testing picks up UI changes (`docker compose up -d --build api web`)
+- [x] T032 Run API tests `apps/api/tests/test_user_lookups.py` and web dashboard tests; fix regressions
+- [x] T033 Manual pass against `specs/009-dashboard-lookups-ux/quickstart.md`
+- [x] T034 Rebuild/restart Docker web+api so local testing picks up UI changes (`docker compose up -d --build api web`)
 
 ---
 
