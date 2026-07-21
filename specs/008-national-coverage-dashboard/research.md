@@ -2,11 +2,20 @@
 
 ## R1 — Denominators
 
-**Decision**: Reuse national ingest status semantics from 007 / `workers/ingest/status.py`: county jobs vs `|geo_counties|`; CMS/Timely vs included state count; scoring = counties fully scored with fbi_cde + non-empty `score_detail` vs `|geo_counties|`.
+**Decision**: Reuse national ingest status / coverage display semantics from 007 / `workers/ingest/status.py` and `coverage_service.py`:
 
-**Rationale**: Spec requires correct expected values; duplicating inventing math would drift from ops Workbook.
+- Ordinary county jobs vs `|geo_counties|`
+- EPA vs `|epa_aqs_monitor_counties|` (per state: monitor counties only, or `0/0` if none — never fall back to all counties)
+- Urban vs NCES-complete counties
+- CMS vs included state count (0/1)
+- CMS Timely vs **hospital share** (hospitals with timely ÷ hospitals) — not the ingest ≥80% state pass/fail checkpoint
+- Scoring = counties fully scored with fbi_cde + non-empty `score_detail` vs `|geo_counties|`
 
-**Alternatives**: Read only `ingest_status_snapshot` (no by-state); rejected — snapshot is national aggregates only.
+**Overall ↔ By state**: for every job, sum of per-state done/total MUST equal national done/total.
+
+**Rationale**: Spec requires correct expected values; Timely state pass/fail misread as “addresses without scores”; EPA all-county fallback in by-state broke parity with national monitor denominator.
+
+**Alternatives**: Read only `ingest_status_snapshot` (no by-state); rejected — snapshot is national aggregates only. Timely as state 0/1; rejected after product review.
 
 ## R2 — By-state derivation
 
@@ -22,7 +31,7 @@
 
 ## R3b — Two-tab UX (Overall + By state)
 
-**Decision**: Exactly two tabs. Overall = national source table. By state = former “by source” geographic drill-down (source dropdown + per-state rows), with an additional **Overall** filter option (mean-of-sources % per state). No third “by source” tab and no separate mean/scoring-only state summary table.
+**Decision**: Exactly two tabs. Overall = national source table. By state = former “by source” geographic drill-down (source dropdown + per-state rows), with an additional **Overall** filter option (mean-of-sources % per state, **excluding sources with `total_count = 0`**). No third “by source” tab and no separate mean/scoring-only state summary table.
 
 **Rationale**: By-source national detail already lives on Overall; by-source already broke down by state — collapsing to two tabs avoids duplicate navigation.
 

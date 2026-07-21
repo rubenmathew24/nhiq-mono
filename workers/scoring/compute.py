@@ -53,7 +53,7 @@ from scoring.economic import EconomicInputs, economic_from_sources
 from scoring.education import EducationInputs, education_from_sources
 from scoring.environment import EpaCountyAqi, resolve_environment
 from scoring.formulas import distance_score_miles, weighted_overall
-from scoring.open_meteo import fetch_mean_us_aqi
+from scoring.open_meteo import fetch_mean_us_aqi_many
 from scoring.safety import CountyCrime, safety_from_cde
 
 load_dotenv(_WORKERS_ROOT.parent / ".env")
@@ -162,6 +162,8 @@ _URBAN_JOIN = """
 
 # Nearest school per CCD level bucket (Urban school_level). Junior high only when
 # the school name indicates it; otherwise middle covers that age band.
+# IMPORTANT: KNN-limit candidates first — a full scan of schools_nces (~100k) per
+# tract made national scoring hang for hours even on 20-county chunks.
 _SCHOOLS_BY_LEVEL_JOIN = """
 LEFT JOIN LATERAL (
     SELECT COALESCE(
@@ -184,34 +186,47 @@ LEFT JOIN LATERAL (
         FROM (
             SELECT
                 CASE
-                    WHEN lower(s.name) LIKE '%%junior high%%' THEN 'junior_high'
-                    WHEN coalesce(u.school_level::text, '') IN ('0') THEN 'prek'
-                    WHEN coalesce(u.school_level::text, '') IN ('1') THEN 'elementary'
-                    WHEN coalesce(u.school_level::text, '') IN ('2') THEN 'middle'
-                    WHEN coalesce(u.school_level::text, '') IN ('3') THEN 'high'
+                    WHEN lower(cand.name) LIKE '%%junior high%%' THEN 'junior_high'
+                    WHEN coalesce(cand.school_level::text, '') IN ('0') THEN 'prek'
+                    WHEN coalesce(cand.school_level::text, '') IN ('1') THEN 'elementary'
+                    WHEN coalesce(cand.school_level::text, '') IN ('2') THEN 'middle'
+                    WHEN coalesce(cand.school_level::text, '') IN ('3') THEN 'high'
                     ELSE NULL
                 END AS lvl,
                 CASE
-                    WHEN lower(s.name) LIKE '%%junior high%%' THEN 4
-                    WHEN coalesce(u.school_level::text, '') IN ('0') THEN 1
-                    WHEN coalesce(u.school_level::text, '') IN ('1') THEN 2
-                    WHEN coalesce(u.school_level::text, '') IN ('2') THEN 3
-                    WHEN coalesce(u.school_level::text, '') IN ('3') THEN 5
+                    WHEN lower(cand.name) LIKE '%%junior high%%' THEN 4
+                    WHEN coalesce(cand.school_level::text, '') IN ('0') THEN 1
+                    WHEN coalesce(cand.school_level::text, '') IN ('1') THEN 2
+                    WHEN coalesce(cand.school_level::text, '') IN ('2') THEN 3
+                    WHEN coalesce(cand.school_level::text, '') IN ('3') THEN 5
                     ELSE 99
                 END AS ord,
-                s.name,
-                ST_Distance(
-                    s.geometry::geography,
-                    ST_Centroid(t.geometry)::geography
-                ) / 1609.34 AS miles
-            FROM schools_nces s
-            INNER JOIN schools_urban u ON u.ncessch = s.ncessch
-                AND u.year = (
-                    SELECT MAX(u2.year)
-                    FROM schools_urban u2
-                    WHERE u2.ncessch = s.ncessch
-                )
-            WHERE s.geometry IS NOT NULL
+                cand.name,
+                cand.miles
+            FROM (
+                -- KNN on schools_nces alone first so GiST can LIMIT; then join Urban.
+                -- Joining Urban before ORDER BY/LIMIT made the planner scan ~100k rows/tract.
+                SELECT
+                    nn.name,
+                    u.school_level,
+                    ST_Distance(
+                        nn.geometry::geography,
+                        ST_Centroid(t.geometry)::geography
+                    ) / 1609.34 AS miles
+                FROM (
+                    SELECT s.ncessch, s.name, s.geometry
+                    FROM schools_nces s
+                    WHERE s.geometry IS NOT NULL
+                    ORDER BY s.geometry <-> ST_Centroid(t.geometry)
+                    LIMIT 200
+                ) nn
+                INNER JOIN schools_urban u ON u.ncessch = nn.ncessch
+                    AND u.year = (
+                        SELECT MAX(u2.year)
+                        FROM schools_urban u2
+                        WHERE u2.ncessch = nn.ncessch
+                    )
+            ) cand
         ) raw
         WHERE lvl IS NOT NULL
         ORDER BY lvl, miles ASC
@@ -492,8 +507,12 @@ def build_open_meteo_by_county(
     *,
     need_fallback: set[str],
 ) -> dict[str, float]:
-    """Fetch Open-Meteo only for counties that fail the EPA worthiness gate."""
-    out: dict[str, float] = {}
+    """Fetch Open-Meteo only for counties that fail the EPA worthiness gate.
+
+    Uses batched multi-location Open-Meteo requests (parallel) instead of one
+    serial HTTP call per county — national scoring was spending hours here.
+    """
+    locations: list[tuple[str, float, float]] = []
     for county in counties:
         if county not in need_fallback:
             continue
@@ -502,12 +521,26 @@ def build_open_meteo_by_county(
             logger.warning("No centroid for county %s — skip Open-Meteo", county)
             continue
         lat, lng = coords
-        avg = fetch_mean_us_aqi(lat, lng)
-        if avg is not None:
-            out[county] = avg
-            logger.info("Open-Meteo county %s mean US AQI=%.1f", county, avg)
-        else:
-            logger.warning("Open-Meteo returned no AQI for county %s", county)
+        locations.append((county, lat, lng))
+
+    if not locations:
+        return {}
+
+    out = fetch_mean_us_aqi_many(locations)
+    missed = [c for c, _, _ in locations if c not in out]
+    logger.info(
+        "Open-Meteo county hits=%s misses=%s",
+        len(out),
+        len(missed),
+    )
+    if missed and len(missed) <= 20:
+        logger.warning("Open-Meteo no AQI for counties=%s", missed)
+    elif missed:
+        logger.warning(
+            "Open-Meteo no AQI for %s counties (e.g. %s…)",
+            len(missed),
+            missed[:10],
+        )
     return out
 
 
@@ -738,6 +771,15 @@ def _invalidate_report_cache() -> None:
         logger.warning("Redis report cache invalidation skipped: %s", exc)
 
 
+def _score_county_chunk_size() -> int:
+    """Max counties per tract-SQL pass — large batches hang on PostGIS laterals."""
+    raw = (os.getenv("SCORE_COUNTY_CHUNK") or "20").strip()
+    try:
+        return max(1, int(raw))
+    except ValueError:
+        return 20
+
+
 def run() -> int:
     database_url = os.getenv("DATABASE_URL")
     if not database_url:
@@ -776,24 +818,62 @@ def run() -> int:
         logger.info("All active counties already have fbi_cde safety scores; nothing to do")
         return 0
     start, end = aqi_window()
+    chunk_size = _score_county_chunk_size()
     logger.info(
-        "Scoring counties=%s vintage=%s AQI window=%s..%s",
-        counties,
+        "Scoring counties=%s vintage=%s AQI window=%s..%s chunk_size=%s",
+        len(counties),
         DATA_VINTAGE,
         start,
         end,
+        chunk_size,
     )
 
+    grand_total = 0
+    for offset in range(0, len(counties), chunk_size):
+        chunk = counties[offset : offset + chunk_size]
+        logger.info(
+            "Scoring chunk offset=%s size=%s first=%s last=%s",
+            offset,
+            len(chunk),
+            chunk[0],
+            chunk[-1],
+        )
+        n = _score_counties(database_url, chunk, start, end)
+        if n < 0:
+            return 1
+        grand_total += n
+
+    logger.info(
+        "All chunks done upserted=%s counties_requested=%s",
+        grand_total,
+        len(counties),
+    )
+    _invalidate_report_cache()
+    return 0
+
+
+def _score_counties(
+    database_url: str,
+    counties: list[str],
+    start: date,
+    end: date,
+) -> int:
+    """Score one county chunk. Returns rows upserted, or -1 on hard failure."""
     conn = psycopg2.connect(database_url)
+    total_upserted = 0
+    env_counts: dict[str, int] = {}
+    safety_counts: dict[str, int] = {}
+    education_counts: dict[str, int] = {}
+    economic_counts: dict[str, int] = {}
     try:
         with conn.cursor() as cur:
             epa_by_county = fetch_epa_county_stats(cur, start, end)
             worthy = {c for c, s in epa_by_county.items() if s.is_worthy}
             need_fallback = set(counties) - worthy
             logger.info(
-                "EPA worthy counties=%s; Open-Meteo fallback candidates=%s",
-                sorted(worthy),
-                sorted(need_fallback),
+                "EPA worthy in-scope=%s; Open-Meteo fallback candidates=%s",
+                len(worthy & set(counties)),
+                len(need_fallback),
             )
 
             centroids = fetch_county_centroids(cur, counties)
@@ -819,9 +899,10 @@ def run() -> int:
             tracts = cur.fetchall()
             if not tracts:
                 logger.error(
-                    "No census tracts found for fixture counties — run census worker first"
+                    "No census tracts found for counties=%s — run census worker first",
+                    counties[:5],
                 )
-                return 1
+                return -1
 
             geoids = [r[0] for r in tracts]
             agencies_by_county = fetch_agencies_by_county(cur, counties)
@@ -836,11 +917,24 @@ def run() -> int:
                         provider_ids.append(er.cms_provider_id)
             timely_by_provider = fetch_timely_by_provider(cur, sorted(set(provider_ids)))
 
-            rows: list[dict] = []
-            env_counts: dict[str, int] = {}
-            safety_counts: dict[str, int] = {}
-            education_counts: dict[str, int] = {}
-            economic_counts: dict[str, int] = {}
+            current_county: str | None = None
+            county_batch: list[dict] = []
+
+            def _flush_county_batch() -> None:
+                nonlocal total_upserted, county_batch
+                if not county_batch:
+                    return
+                execute_batch(cur, UPSERT_SCORE_SQL, county_batch, page_size=200)
+                conn.commit()
+                total_upserted += len(county_batch)
+                logger.info(
+                    "Committed %s score rows for county=%s (running_total=%s)",
+                    len(county_batch),
+                    current_county,
+                    total_upserted,
+                )
+                county_batch = []
+
             for idx, row in enumerate(tracts):
                 (
                     geoid,
@@ -864,6 +958,9 @@ def run() -> int:
                     laus_period,
                 ) = row
                 county = f"{state_fips}{county_fips}"
+                if current_county is not None and county != current_county:
+                    _flush_county_batch()
+                current_county = county
                 nearest_ers = parsed_ers_by_idx[idx]
                 schools_by_level = _parse_schools_by_level(schools_by_level_raw)
                 primary_provider = (
@@ -905,9 +1002,6 @@ def run() -> int:
                     air_s = environment_from_aqi(float(avg_aqi))
                 hazard_s = _hazard_score(fema)
                 environment_score = environment_category_score(air_s, hazard_s)
-                sid = str(env.provenance.get("source_id", SOURCE_DEFAULT))
-                if fema is not None:
-                    sid = f"{sid}+{SOURCE_FEMA_NRI}" if sid != SOURCE_DEFAULT else SOURCE_FEMA_NRI
                 env_counts[str(env.provenance.get("source_id", SOURCE_DEFAULT))] = (
                     env_counts.get(str(env.provenance.get("source_id", SOURCE_DEFAULT)), 0)
                     + 1
@@ -1039,7 +1133,7 @@ def run() -> int:
                     "education": education_prov,
                     "economic": economic_prov,
                 }
-                rows.append(
+                county_batch.append(
                     {
                         "geoid": geoid,
                         "healthcare": healthcare,
@@ -1054,22 +1148,19 @@ def run() -> int:
                     }
                 )
 
-            logger.info("Writing %s score rows…", len(rows))
-            execute_batch(cur, UPSERT_SCORE_SQL, rows, page_size=200)
-        conn.commit()
+            _flush_county_batch()
         logger.info(
-            "Upserted %s neighborhood_scores rows (vintage=%s)",
-            len(rows),
+            "Chunk upserted %s neighborhood_scores rows (vintage=%s)",
+            total_upserted,
             DATA_VINTAGE,
         )
         logger.info("Environment source mix: %s", env_counts)
         logger.info("Safety source mix: %s", safety_counts)
         logger.info("Education source mix: %s", education_counts)
         logger.info("Economic source mix: %s", economic_counts)
-        _invalidate_report_cache()
     finally:
         conn.close()
-    return 0
+    return total_upserted
 
 
 def main() -> int:

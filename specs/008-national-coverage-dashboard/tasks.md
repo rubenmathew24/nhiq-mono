@@ -23,9 +23,10 @@
 ## Phase 4: User Story 2 — By state (source filter) (P1)
 
 - [x] T008 [US2] Ensure response `sources[]` includes all 11 jobs with correct `grain` and national done/total/pct in `coverage_service.py`
-- [x] T009 [P] [US2] Extend tests asserting CMS/Timely use state grain and county jobs use county grain in `apps/api/tests/test_coverage_service.py`
+- [x] T009 [P] [US2] Extend tests for grains: CMS=`state`, cms_timely=`hospital`, county jobs=`county` in `apps/api/tests/test_coverage_service.py`
 - [x] T010 [US2] Add per-state breakdown (`states[]`) with per-source stats scoped to each state’s registry counties in `coverage_service.py`
 - [x] T011 [P] [US2] Add by-state assertion test in `apps/api/tests/test_coverage_service.py`
+- [x] T011b [US2] Overall ↔ By state parity: EPA by-state uses monitor counties only (`0/0` if none); sum(by-state)==national for every job; By state Overall mean skips `total_count=0`; update 008 spec/data-model/contract/research
 
 ## Phase 5: Web page
 
