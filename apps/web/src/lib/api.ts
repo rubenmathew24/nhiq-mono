@@ -1,12 +1,24 @@
-function getApiBase(): string {
+/**
+ * Resolve the FastAPI base URL.
+ *
+ * Empty-string env must not win over the fallback — otherwise
+ * `fetch("" + "/api/v1/...")` hits the Next.js origin and 404s.
+ */
+function trimEnv(value: string | undefined): string | undefined {
+  const trimmed = value?.trim();
+  return trimmed ? trimmed : undefined;
+}
+
+export function getApiBase(): string {
+  const publicUrl = trimEnv(process.env.NEXT_PUBLIC_API_URL);
   if (typeof window === "undefined") {
     return (
-      process.env.API_INTERNAL_URL ??
-      process.env.NEXT_PUBLIC_API_URL ??
+      trimEnv(process.env.API_INTERNAL_URL) ??
+      publicUrl ??
       "http://localhost:8000"
     );
   }
-  return process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
+  return publicUrl ?? "http://localhost:8000";
 }
 
 type ApiOptions = RequestInit & {
@@ -69,22 +81,26 @@ export function isValidEmailShape(email: string): boolean {
 /** apiFetchServer is an alias for server-side usage (same implementation, clearer call-site intent). */
 export const apiFetchServer = apiFetch;
 
-export async function apiFetch<T>(
+export async function apiFetch<T = void>(
   path: string,
   options: ApiOptions = {},
 ): Promise<T> {
-  const { token, ...fetchOptions } = options;
+  const { token, body, ...fetchOptions } = options;
 
-  const headers: HeadersInit = {
-    "Content-Type": "application/json",
+  const headers: Record<string, string> = {
     ...(token ? { Authorization: `Bearer ${token}` } : {}),
-    ...fetchOptions.headers,
+    ...(fetchOptions.headers as Record<string, string> | undefined),
   };
+  // Only set JSON content-type when sending a body (avoids odd DELETE quirks).
+  if (body !== undefined && body !== null && !headers["Content-Type"]) {
+    headers["Content-Type"] = "application/json";
+  }
 
   let res: Response;
   try {
     res = await fetch(`${getApiBase()}${path}`, {
       ...fetchOptions,
+      body,
       headers,
     });
   } catch {
@@ -104,5 +120,17 @@ export async function apiFetch<T>(
     throw new ApiError(message, res.status, code);
   }
 
-  return res.json() as Promise<T>;
+  // 204/205/304 or empty body — do not call res.json() (throws / odd DOMExceptions).
+  if (res.status === 204 || res.status === 205 || res.status === 304) {
+    return undefined as T;
+  }
+  const text = await res.text();
+  if (!text.trim()) {
+    return undefined as T;
+  }
+  try {
+    return JSON.parse(text) as T;
+  } catch {
+    throw new ApiError("Something went wrong. Please try again.", res.status);
+  }
 }

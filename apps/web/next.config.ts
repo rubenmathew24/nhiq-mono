@@ -31,6 +31,16 @@ function loadRootEnvFile() {
 
 loadRootEnvFile();
 
+// Only forward non-empty public env into the client bundle.
+const publicEnv: Record<string, string> = {};
+if (process.env.NEXT_PUBLIC_API_URL?.trim()) {
+  publicEnv.NEXT_PUBLIC_API_URL = process.env.NEXT_PUBLIC_API_URL.trim();
+}
+if (process.env.NEXT_PUBLIC_MAPBOX_TOKEN?.trim()) {
+  publicEnv.NEXT_PUBLIC_MAPBOX_TOKEN =
+    process.env.NEXT_PUBLIC_MAPBOX_TOKEN.trim();
+}
+
 const nextConfig: NextConfig = {
   output: "standalone",
   turbopack: {
@@ -38,10 +48,7 @@ const nextConfig: NextConfig = {
     // modules from repo root where next is not installed (apps/web/node_modules).
     root: webRoot,
   },
-  env: {
-    NEXT_PUBLIC_API_URL: process.env.NEXT_PUBLIC_API_URL,
-    NEXT_PUBLIC_MAPBOX_TOKEN: process.env.NEXT_PUBLIC_MAPBOX_TOKEN,
-  },
+  env: publicEnv,
 };
 
 export default nextConfig;
