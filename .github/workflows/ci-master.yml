@@ -53,14 +53,18 @@ jobs:
         shell: bash
         run: |
           python - <<'PY'
+          import importlib.util
           import os
           import sys
           from pathlib import Path
 
           import psycopg
 
-          sys.path.insert(0, "scripts")
-          import apply_sql_migrations as mig
+          path = Path("scripts/apply-sql-migrations.py")
+          spec = importlib.util.spec_from_file_location("apply_sql_migrations", path)
+          mig = importlib.util.module_from_spec(spec)
+          assert spec.loader is not None
+          spec.loader.exec_module(mig)
 
           url = os.environ["DATABASE_URL"]
           init = Path("infra/sql/init.sql").read_text(encoding="utf-8")
