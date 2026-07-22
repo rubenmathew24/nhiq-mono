@@ -4,14 +4,199 @@ on:
   push:
     branches: [master]
   workflow_dispatch:
+    inputs:
+      force_full:
+        description: "Treat all categories as changed (except workers)"
+        type: boolean
+        default: false
 
 jobs:
+  detect-changes:
+    name: Detect changes
+    runs-on: ubuntu-latest
+    outputs:
+      web: ${{ steps.flags.outputs.web }}
+      api: ${{ steps.flags.outputs.api }}
+      schema: ${{ steps.flags.outputs.schema }}
+      app_config: ${{ steps.flags.outputs.app_config }}
+      any_app: ${{ steps.flags.outputs.any_app }}
+      need_build: ${{ steps.flags.outputs.need_build }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Resolve diff range
+        id: range
+        shell: bash
+        run: |
+          FORCE="${{ github.event.inputs.force_full || 'false' }}"
+          echo "force_full=$FORCE" >> "$GITHUB_OUTPUT"
+          if [ "$FORCE" = "true" ]; then
+            echo "mode=force" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          if [ "${{ github.event_name }}" = "push" ]; then
+            BEFORE="${{ github.event.before }}"
+            if [ -z "$BEFORE" ] || [ "$BEFORE" = "0000000000000000000000000000000000000000" ]; then
+              BEFORE="$(git rev-parse HEAD~1)"
+            fi
+            echo "before=$BEFORE" >> "$GITHUB_OUTPUT"
+            echo "after=${{ github.sha }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "before=$(git rev-parse HEAD~1)" >> "$GITHUB_OUTPUT"
+            echo "after=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Set output flags
+        id: flags
+        shell: bash
+        run: |
+          path_hit() {
+            # $1 = regex for git diff --name-only
+            echo "$CHANGED" | grep -E "$1" >/dev/null
+          }
+
+          if [ "${{ steps.range.outputs.mode }}" = "force" ]; then
+            WEB=true; API=true; SQL=true; APP_CONFIG=true
+          else
+            BEFORE="${{ steps.range.outputs.before }}"
+            AFTER="${{ steps.range.outputs.after }}"
+            CHANGED="$(git diff --name-only "$BEFORE" "$AFTER" || true)"
+            echo "Changed files:"
+            echo "$CHANGED"
+            WEB=false; API=false; SQL=false; APP_CONFIG=false
+            if path_hit '^(apps/web/|docker/web\.Dockerfile)'; then WEB=true; fi
+            if path_hit '^(apps/api/|docker/api\.Dockerfile)'; then API=true; fi
+            if path_hit '^infra/sql/'; then SQL=true; fi
+            if path_hit '^infra/deploy/app-env\.manifest\.json$'; then APP_CONFIG=true; fi
+          fi
+          # schema when sql OR api (FR-004)
+          if [ "$SQL" = "true" ] || [ "$API" = "true" ]; then SCHEMA=true; else SCHEMA=false; fi
+          if [ "$WEB" = "true" ] || [ "$API" = "true" ]; then NEED_BUILD=true; else NEED_BUILD=false; fi
+          if [ "$WEB" = "true" ] || [ "$API" = "true" ] || [ "$SCHEMA" = "true" ] || [ "$APP_CONFIG" = "true" ]; then
+            ANY_APP=true
+          else
+            ANY_APP=false
+          fi
+          {
+            echo "web=$WEB"
+            echo "api=$API"
+            echo "schema=$SCHEMA"
+            echo "app_config=$APP_CONFIG"
+            echo "any_app=$ANY_APP"
+            echo "need_build=$NEED_BUILD"
+          } >> "$GITHUB_OUTPUT"
+          echo "Detect: web=$WEB api=$API schema=$SCHEMA app_config=$APP_CONFIG any_app=$ANY_APP need_build=$NEED_BUILD"
+          if [ "$ANY_APP" = "false" ]; then
+            echo "Nothing to deploy (docs/unrelated/workers-only). Succeeding with skips."
+          fi
+
+  migrate:
+    name: Apply SQL migrations
+    runs-on: ubuntu-latest
+    needs: detect-changes
+    if: needs.detect-changes.outputs.schema == 'true'
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install migrate deps
+        run: pip install -r scripts/requirements-migrate.txt
+
+      - name: Resolve DATABASE_URL
+        id: db
+        env:
+          DATABASE_URL_SECRET: ${{ secrets.DATABASE_URL }}
+          AZURE_CREDENTIALS: ${{ secrets.AZURE_CREDENTIALS }}
+        shell: bash
+        run: |
+          if [ -n "${DATABASE_URL_SECRET:-}" ]; then
+            echo "have_url=true" >> "$GITHUB_OUTPUT"
+            echo "DATABASE_URL<<EOF" >> "$GITHUB_ENV"
+            echo "$DATABASE_URL_SECRET" >> "$GITHUB_ENV"
+            echo "EOF" >> "$GITHUB_ENV"
+            exit 0
+          fi
+          if [ -z "${AZURE_CREDENTIALS:-}" ]; then
+            echo "::error::Set GitHub secret DATABASE_URL (prod Postgres URL with sslmode=require) or AZURE_CREDENTIALS to fetch DATABASE-URL from Key Vault."
+            exit 1
+          fi
+          echo "have_url=false" >> "$GITHUB_OUTPUT"
+
+      - name: Azure Login
+        if: steps.db.outputs.have_url != 'true'
+        uses: azure/login@v2
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: Fetch DATABASE-URL from Key Vault
+        if: steps.db.outputs.have_url != 'true'
+        env:
+          VAULT: ${{ secrets.AZURE_KEY_VAULT_NAME }}
+        shell: bash
+        run: |
+          VAULT_NAME="${VAULT:-niq-kv-21698}"
+          VAL=$(az keyvault secret show --vault-name "$VAULT_NAME" --name DATABASE-URL --query value -o tsv)
+          if [ -z "$VAL" ]; then
+            echo "::error::Key Vault DATABASE-URL empty"
+            exit 1
+          fi
+          echo "DATABASE_URL<<EOF" >> "$GITHUB_ENV"
+          echo "$VAL" >> "$GITHUB_ENV"
+          echo "EOF" >> "$GITHUB_ENV"
+
+      - name: Run migration runner
+        run: python scripts/apply-sql-migrations.py --database-url "$DATABASE_URL"
+
+  app-config:
+    name: Sync app env (manifest)
+    runs-on: ubuntu-latest
+    needs: detect-changes
+    if: needs.detect-changes.outputs.app_config == 'true'
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Azure Login
+        uses: azure/login@v2
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: Install jq
+        run: sudo apt-get update && sudo apt-get install -y jq
+
+      - name: Sync API env
+        run: |
+          chmod +x scripts/sync_aca_app_env.sh
+          scripts/sync_aca_app_env.sh \
+            infra/deploy/app-env.manifest.json \
+            "${{ secrets.AZURE_CONTAINER_APP_API }}" \
+            "${{ secrets.AZURE_RESOURCE_GROUP }}" \
+            api
+
+      - name: Sync Web env
+        run: |
+          scripts/sync_aca_app_env.sh \
+            infra/deploy/app-env.manifest.json \
+            "${{ secrets.AZURE_CONTAINER_APP_WEB }}" \
+            "${{ secrets.AZURE_RESOURCE_GROUP }}" \
+            web
+
   build-and-push:
     name: Build & Push to ACR
     runs-on: ubuntu-latest
+    needs: [detect-changes, migrate, app-config]
+    if: |
+      always() &&
+      needs.detect-changes.result == 'success' &&
+      needs.detect-changes.outputs.need_build == 'true' &&
+      (needs.migrate.result == 'success' || needs.migrate.result == 'skipped') &&
+      (needs.app-config.result == 'success' || needs.app-config.result == 'skipped')
     outputs:
       image_tag: ${{ github.sha }}
-
     steps:
       - uses: actions/checkout@v4
 
@@ -25,9 +210,8 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      # Fail fast if the public API URL secret was not updated for nh-iq.com.
-      # (NEXT_PUBLIC_* is baked into the web image at build time.)
       - name: Verify NEXT_PUBLIC_API_URL host
+        if: needs.detect-changes.outputs.web == 'true'
         env:
           NEXT_PUBLIC_API_URL: ${{ secrets.NEXT_PUBLIC_API_URL }}
         run: |
@@ -42,6 +226,7 @@ jobs:
           esac
 
       - name: Build & push API
+        if: needs.detect-changes.outputs.api == 'true'
         uses: docker/build-push-action@v5
         with:
           context: .
@@ -56,6 +241,7 @@ jobs:
           cache-to: type=gha,scope=api,mode=max
 
       - name: Build & push web
+        if: needs.detect-changes.outputs.web == 'true'
         uses: docker/build-push-action@v5
         with:
           context: .
@@ -75,8 +261,11 @@ jobs:
   deploy-api:
     name: Deploy API
     runs-on: ubuntu-latest
-    needs: build-and-push
-
+    needs: [detect-changes, build-and-push]
+    if: |
+      always() &&
+      needs.detect-changes.outputs.api == 'true' &&
+      needs.build-and-push.result == 'success'
     steps:
       - name: Azure Login
         uses: azure/login@v2
@@ -93,8 +282,12 @@ jobs:
   deploy-web:
     name: Deploy Web
     runs-on: ubuntu-latest
-    needs: [build-and-push, deploy-api]
-
+    needs: [detect-changes, build-and-push, deploy-api]
+    if: |
+      always() &&
+      needs.detect-changes.outputs.web == 'true' &&
+      needs.build-and-push.result == 'success' &&
+      (needs.deploy-api.result == 'success' || needs.deploy-api.result == 'skipped')
     steps:
       - name: Azure Login
         uses: azure/login@v2
@@ -107,3 +300,44 @@ jobs:
           containerAppName: ${{ secrets.AZURE_CONTAINER_APP_WEB }}
           resourceGroup: ${{ secrets.AZURE_RESOURCE_GROUP }}
           imageToDeploy: ${{ secrets.ACR_LOGIN_SERVER }}/neighborhoodiq-web:${{ needs.build-and-push.outputs.image_tag }}
+
+  smoke:
+    name: Post-deploy smoke
+    runs-on: ubuntu-latest
+    needs: [detect-changes, migrate, app-config, build-and-push, deploy-api, deploy-web]
+    if: |
+      always() &&
+      needs.detect-changes.outputs.any_app == 'true' &&
+      needs.detect-changes.result == 'success' &&
+      (needs.migrate.result == 'success' || needs.migrate.result == 'skipped') &&
+      (needs.app-config.result == 'success' || needs.app-config.result == 'skipped') &&
+      (needs.build-and-push.result == 'success' || needs.build-and-push.result == 'skipped') &&
+      (needs.deploy-api.result == 'success' || needs.deploy-api.result == 'skipped') &&
+      (needs.deploy-web.result == 'success' || needs.deploy-web.result == 'skipped')
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Run smoke
+        env:
+          API_BASE: ${{ vars.DEPLOY_SMOKE_API_BASE }}
+          WEB_BASE: ${{ vars.DEPLOY_SMOKE_WEB_BASE }}
+          SMOKE_ADDRESS: ${{ vars.DEPLOY_SMOKE_ADDRESS }}
+          WEB_CHANGED: ${{ needs.detect-changes.outputs.web }}
+        shell: bash
+        run: |
+          API_BASE="${API_BASE:-https://api.nh-iq.com}"
+          WEB_BASE="${WEB_BASE:-https://nh-iq.com}"
+          SMOKE_ADDRESS="${SMOKE_ADDRESS:-609 SE Jamaica Dr, Bentonville, AR}"
+          EXTRA=()
+          if [ "$WEB_CHANGED" != "true" ]; then
+            EXTRA+=(--skip-web)
+          fi
+          python scripts/deploy_smoke.py \
+            --api-base "$API_BASE" \
+            --web-base "$WEB_BASE" \
+            --address "$SMOKE_ADDRESS" \
+            "${EXTRA[@]}"

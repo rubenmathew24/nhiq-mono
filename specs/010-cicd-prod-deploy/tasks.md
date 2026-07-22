@@ -28,9 +28,9 @@
 
 **Purpose**: Scaffold directories and confirm design inputs
 
-- [ ] T001 Confirm feature docs under `specs/010-cicd-prod-deploy/` (plan.md, research.md, data-model.md, contracts/cicd-deploy.md, quickstart.md)
-- [ ] T002 [P] Create `infra/deploy/` directory for `app-env.manifest.json`
-- [ ] T003 [P] Ensure `scripts/` is the home for `apply-sql-migrations.py` (create dir if missing)
+- [x] T001 Confirm feature docs under `specs/010-cicd-prod-deploy/` (plan.md, research.md, data-model.md, contracts/cicd-deploy.md, quickstart.md)
+- [x] T002 [P] Create `infra/deploy/` directory for `app-env.manifest.json`
+- [x] T003 [P] Ensure `scripts/` is the home for `apply-sql-migrations.py` (create dir if missing)
 
 ---
 
@@ -40,9 +40,9 @@
 
 **⚠️ CRITICAL**: No user story Deploy/CI work until the runner works locally
 
-- [ ] T004 Implement `scripts/apply-sql-migrations.py` per `contracts/cicd-deploy.md` (create `schema_migrations`, apply pending `infra/sql/0*.sql` lexically, exclude `init.sql` / `seed_*.sql`, support `sslmode`/`ssl` URLs, non-zero exit on failure, no truncate)
-- [ ] T005 [P] Add runner unit/integration tests in `apps/api/tests/test_apply_sql_migrations.py` (apply twice → second no-op; records filenames; fails on bad SQL without wiping data) — skip cleanly if Postgres unavailable when run outside CI
-- [ ] T006 Document local runner invocation in `specs/010-cicd-prod-deploy/quickstart.md` if commands drift during implement (keep in sync)
+- [x] T004 Implement `scripts/apply-sql-migrations.py` per `contracts/cicd-deploy.md` (create `schema_migrations`, apply pending `infra/sql/0*.sql` lexically, exclude `init.sql` / `seed_*.sql`, support `sslmode`/`ssl` URLs, non-zero exit on failure, no truncate)
+- [x] T005 [P] Add runner unit/integration tests in `apps/api/tests/test_apply_sql_migrations.py` (apply twice → second no-op; records filenames; fails on bad SQL without wiping data) — skip cleanly if Postgres unavailable when run outside CI
+- [x] T006 Document local runner invocation in `specs/010-cicd-prod-deploy/quickstart.md` if commands drift during implement (keep in sync)
 
 **Checkpoint**: `python scripts/apply-sql-migrations.py --database-url …` succeeds twice against local Postgres
 
@@ -56,15 +56,15 @@
 
 ### Tests for User Story 1
 
-- [ ] T007 [P] [US1] Extend schema-contract assertions in `apps/api/tests/test_schema_migrations_contract.py` (after runner: required columns e.g. `saved_lookups.is_favorite`, `last_activity_at`, `users.lookups_deduped_at` exist)
-- [ ] T008 [P] [US1] Add workflow comment/checklist in `specs/010-cicd-prod-deploy/quickstart.md` §4–5 describing how to validate detect skips / migrate-before-images (manual Actions validation after merge)
+- [x] T007 [P] [US1] Extend schema-contract assertions in `apps/api/tests/test_schema_migrations_contract.py` (after runner: required columns e.g. `saved_lookups.is_favorite`, `last_activity_at`, `users.lookups_deduped_at` exist)
+- [x] T008 [P] [US1] Add workflow comment/checklist in `specs/010-cicd-prod-deploy/quickstart.md` §4–5 describing how to validate detect skips / migrate-before-images (manual Actions validation after merge)
 
 ### Implementation for User Story 1
 
-- [ ] T009 [US1] Add `detect-changes` job to `.github/workflows/deploy.yml` outputting `web`, `api`, `schema`, `app_config`, `any_app` per `contracts/cicd-deploy.md` / `research.md` (path filters; `force_full` on `workflow_dispatch`; never set workers)
-- [ ] T010 [US1] Add `migrate` job in `.github/workflows/deploy.yml` that runs only when `schema==true`, invokes `scripts/apply-sql-migrations.py` against prod DB URL from secrets/Key Vault pattern, fails closed
-- [ ] T011 [US1] Gate existing build/push + deploy-api/deploy-web jobs on detect outputs and `needs` migrate success (migrate before API image deploy; skip jobs when flags false; no worker image/job steps)
-- [ ] T012 [US1] Ensure docs-only / all-false path: workflow succeeds with clear “nothing to deploy” log and no ACR push / ACA revision / smoke
+- [x] T009 [US1] Add `detect-changes` job to `.github/workflows/deploy.yml` outputting `web`, `api`, `schema`, `app_config`, `any_app` per `contracts/cicd-deploy.md` / `research.md` (path filters; `force_full` on `workflow_dispatch`; never set workers)
+- [x] T010 [US1] Add `migrate` job in `.github/workflows/deploy.yml` that runs only when `schema==true`, invokes `scripts/apply-sql-migrations.py` against prod DB URL from secrets/Key Vault pattern, fails closed
+- [x] T011 [US1] Gate existing build/push + deploy-api/deploy-web jobs on detect outputs and `needs` migrate success (migrate before API image deploy; skip jobs when flags false; no worker image/job steps)
+- [x] T012 [US1] Ensure docs-only / all-false path: workflow succeeds with clear “nothing to deploy” log and no ACR push / ACA revision / smoke
 
 **Checkpoint**: Deploy MVP — selective images + migrate-before-rollout
 
@@ -78,15 +78,15 @@
 
 ### Tests for User Story 3
 
-- [ ] T013 [P] [US3] Add/extend API integration test covering lookup-store / me-lookups path that depends on migrated columns in `apps/api/tests/test_schema_drift_guard.py` (fails if columns missing)
-- [ ] T014 [P] [US3] Confirm existing web Vitest suite remains entrypoint `apps/web` `npm test` / `npm run lint` for CI job
+- [x] T013 [P] [US3] Add/extend API integration test covering lookup-store / me-lookups path that depends on migrated columns in `apps/api/tests/test_schema_drift_guard.py` (fails if columns missing)
+- [x] T014 [P] [US3] Confirm existing web Vitest suite remains entrypoint `apps/web` `npm test` / `npm run lint` for CI job
 
 ### Implementation for User Story 3
 
-- [ ] T015 [US3] Create `.github/workflows/ci-master.yml` triggered only on `pull_request` branches `[master]` with jobs `api` and `web` named for branch protection (`ci-master / api`, `ci-master / web`)
-- [ ] T016 [US3] Wire `api` job: Postgres 16 + Redis service containers, checkout, install API deps, run `scripts/apply-sql-migrations.py`, run `pytest` in `apps/api` (no Azure credentials)
-- [ ] T017 [US3] Wire `web` job: Node setup, `npm ci`, `npm run lint`, `npm test` in `apps/web`
-- [ ] T018 [US3] Ensure workflow does **not** trigger on PRs to `dev` (branches filter only `master`)
+- [x] T015 [US3] Create `.github/workflows/ci-master.yml` triggered only on `pull_request` branches `[master]` with jobs `api` and `web` named for branch protection (`ci-master / api`, `ci-master / web`)
+- [x] T016 [US3] Wire `api` job: Postgres 16 + Redis service containers, checkout, install API deps, run `scripts/apply-sql-migrations.py`, run `pytest` in `apps/api` (no Azure credentials)
+- [x] T017 [US3] Wire `web` job: Node setup, `npm ci`, `npm run lint`, `npm test` in `apps/web`
+- [x] T018 [US3] Ensure workflow does **not** trigger on PRs to `dev` (branches filter only `master`)
 
 **Checkpoint**: Master promote PRs blocked on red ci-master
 
@@ -100,13 +100,13 @@
 
 ### Tests for User Story 2
 
-- [ ] T019 [P] [US2] Add manifest schema validation test or script check in `apps/api/tests/test_app_env_manifest.py` (JSON has `api`/`web` string arrays; no secret values)
+- [x] T019 [P] [US2] Add manifest schema validation test or script check in `apps/api/tests/test_app_env_manifest.py` (JSON has `api`/`web` string arrays; no secret values)
 
 ### Implementation for User Story 2
 
-- [ ] T020 [US2] Author initial `infra/deploy/app-env.manifest.json` listing required prod env **names** for api/web (from `.env.example` / current ACA usage; names only)
-- [ ] T021 [US2] Add `app_config` job in `.github/workflows/deploy.yml` when `app_config==true`: map manifest names → existing GitHub secrets / Key Vault refs; `az containerapp` update; fail if mapping missing; never log secret values
-- [ ] T022 [US2] Confirm `.github/workflows/deploy.yml` contains no steps that change Redis/Postgres SKU, firewall, or networking
+- [x] T020 [US2] Author initial `infra/deploy/app-env.manifest.json` listing required prod env **names** for api/web (from `.env.example` / current ACA usage; names only)
+- [x] T021 [US2] Add `app_config` job in `.github/workflows/deploy.yml` when `app_config==true`: map manifest names → existing GitHub secrets / Key Vault refs; `az containerapp` update; fail if mapping missing; never log secret values
+- [x] T022 [US2] Confirm `.github/workflows/deploy.yml` contains no steps that change Redis/Postgres SKU, firewall, or networking
 
 **Checkpoint**: Config drift on manifest change only
 
@@ -120,12 +120,12 @@
 
 ### Tests for User Story 4
 
-- [ ] T023 [P] [US4] Add shell/Python smoke helper `scripts/deploy-smoke.sh` or `scripts/deploy_smoke.py` implementing `contracts/cicd-deploy.md` §4 (health, optional web GET, lookup, score) with clear non-zero exit
+- [x] T023 [P] [US4] Add shell/Python smoke helper `scripts/deploy-smoke.sh` or `scripts/deploy_smoke.py` implementing `contracts/cicd-deploy.md` §4 (health, optional web GET, lookup, score) with clear non-zero exit
 
 ### Implementation for User Story 4
 
-- [ ] T024 [US4] Add `smoke` job in `.github/workflows/deploy.yml` when `any_app==true` after deploy jobs; use public API/web bases + default address `609 SE Jamaica Dr, Bentonville, AR` (overridable via Actions var `DEPLOY_SMOKE_ADDRESS`)
-- [ ] T025 [US4] Skip smoke when all detect flags false; fail Deploy when smoke non-zero
+- [x] T024 [US4] Add `smoke` job in `.github/workflows/deploy.yml` when `any_app==true` after deploy jobs; use public API/web bases + default address `609 SE Jamaica Dr, Bentonville, AR` (overridable via Actions var `DEPLOY_SMOKE_ADDRESS`)
+- [x] T025 [US4] Skip smoke when all detect flags false; fail Deploy when smoke non-zero
 
 **Checkpoint**: Live prod path verified after real updates
 
@@ -135,10 +135,10 @@
 
 **Purpose**: Operator docs and design-doc honesty
 
-- [ ] T026 [P] Update `docs/azure-setup-and-cicd.md` Deploy section: change detection, migrate-before-images, ci-master, smoke, workers excluded, docs-only no-op
-- [ ] T027 [P] Note in `docs/azure-setup-and-cicd.md` (cheat sheet) that design-doc Alembic-after-API in `docs/nhiq-design-main/05-cicd.md` is **not** as-built for this feature
-- [ ] T028 Run through `specs/010-cicd-prod-deploy/quickstart.md` validation checklist and fix any drift in scripts/workflows/docs
-- [ ] T029 [P] Grep `.github/workflows/deploy.yml` to confirm no `neighborhoodiq-worker` / ACA job start / national-ingest triggers
+- [x] T026 [P] Update `docs/azure-setup-and-cicd.md` Deploy section: change detection, migrate-before-images, ci-master, smoke, workers excluded, docs-only no-op
+- [x] T027 [P] Note in `docs/azure-setup-and-cicd.md` (cheat sheet) that design-doc Alembic-after-API in `docs/nhiq-design-main/05-cicd.md` is **not** as-built for this feature
+- [x] T028 Run through `specs/010-cicd-prod-deploy/quickstart.md` validation checklist and fix any drift in scripts/workflows/docs
+- [x] T029 [P] Grep `.github/workflows/deploy.yml` to confirm no `neighborhoodiq-worker` / ACA job start / national-ingest triggers
 
 ---
 

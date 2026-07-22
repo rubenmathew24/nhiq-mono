@@ -4,8 +4,8 @@ Validation guide for operators and implementers. See [contracts/cicd-deploy.md](
 
 ## Prerequisites
 
-- Docker (local Postgres/Redis or Compose)
-- Python 3.12 + `apps/api` deps
+- Docker (local Postgres/Redis or Compose) — PostGIS preferred for full `init.sql`
+- Python 3.12 + `pip install -r scripts/requirements-migrate.txt` (+ `apps/api/requirements.txt` for pytest)
 - Node for `apps/web`
 - GitHub repo access to Actions (for workflow verification)
 - Azure credentials only for Deploy path (not for `ci-master`)
@@ -14,6 +14,7 @@ Validation guide for operators and implementers. See [contracts/cicd-deploy.md](
 
 ```powershell
 cd "C:\Users\ruben\Git Projects\nhiq-mono"
+pip install -r scripts/requirements-migrate.txt
 # Point at local Compose DB (example)
 $env:DATABASE_URL = "postgresql://postgres:postgres@localhost:5433/neighborhoodiq"
 python scripts/apply-sql-migrations.py --database-url $env:DATABASE_URL
@@ -25,13 +26,15 @@ python scripts/apply-sql-migrations.py --database-url $env:DATABASE_URL   # seco
 ## 2. Ephemeral integration (CI-shaped)
 
 ```powershell
-# Start Postgres 16 + Redis (Compose services or docker run)
-# Apply migrations, then:
+# Prefer PostGIS 16 (matches ci-master). Apply init.sql once, then migrations, then:
 cd apps/api
+$env:DATABASE_URL = "postgresql://postgres:postgres@localhost:5433/neighborhoodiq"
+$env:REDIS_URL = "redis://localhost:6379"
+$env:SECRET_KEY = "test"
 pytest -q
 ```
 
-**Expect**: suite green including tests that require `009` columns / lookup list behavior.
+**Expect**: suite green including `test_schema_migrations_contract.py` / `test_schema_drift_guard.py`.
 
 ## 3. Web unit/lint
 
@@ -44,20 +47,23 @@ npm test
 
 ## 4. Docs-only Deploy no-op (after implement)
 
-1. Open a PR **to `master`** that only changes a markdown file under `docs/` (or push to a test fork).
-2. Confirm `ci-master` still runs (gate is on PR target, not path).
-3. After merge/push to `master`, open the Deploy run: detect job shows all flags false; no ACR push; no ACA revision; smoke skipped; workflow success.
+1. Open a PR **to `master`** that only changes a markdown file under `docs/` (ci-master still runs).
+2. After merge/push to `master`, open the Deploy run: detect job shows `any_app=false`; no ACR push; no ACA revision; smoke skipped; workflow success.
 
 ## 5. Schema-before-images (after implement)
 
-1. Add a harmless idempotent SQL file + an API test that depends on it (or use a staging branch).
-2. On Deploy: migrate job runs and succeeds **before** API image deploy steps.
-3. Simulate migrate failure (bad SQL on a throwaway branch against non-prod DB only — **never** break prod on purpose without a rollback plan): confirm build/deploy jobs do not roll out new images.
+1. Change under `infra/sql/` or `apps/api/` on `master`.
+2. Deploy: **Apply SQL migrations** runs and succeeds **before** Build/Deploy API when those jobs run.
+3. If migrate fails, build/deploy must not roll out new images.
 
 ## 6. Smoke (prod Deploy)
 
-After a real API/web Deploy: Actions log shows `/health`, anonymous lookup for Bentonville smoke address, and score fetch succeeding within ~3 minutes.
+```powershell
+python scripts/deploy_smoke.py --api-base https://api.nh-iq.com --web-base https://nh-iq.com --address "609 SE Jamaica Dr, Bentonville, AR"
+```
+
+After a real API/web Deploy: Actions smoke job should pass within ~3 minutes.
 
 ## 7. Workers unchanged
 
-Change only `workers/**` on `master`: Deploy does not build `neighborhoodiq-worker` or start ACA Jobs.
+Change only `workers/**` on `master`: Deploy detect leaves `any_app=false` (unless other paths also changed); no worker image or ACA Job updates.
