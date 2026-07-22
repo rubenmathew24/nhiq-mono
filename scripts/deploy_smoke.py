@@ -5,7 +5,7 @@ Usage:
   python scripts/deploy_smoke.py \\
     --api-base https://api.nh-iq.com \\
     --web-base https://nh-iq.com \\
-    --address "609 SE Jamaica Dr, Bentonville, AR"
+    --address "1600 Pennsylvania Avenue NW, Washington, DC"
 
 Exit 0 on success; non-zero on failure. Never prints secrets.
 """
@@ -37,7 +37,7 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--web-base", default="", help="Optional public web origin")
     p.add_argument(
         "--address",
-        default="609 SE Jamaica Dr, Bentonville, AR",
+        default="1600 Pennsylvania Avenue NW, Washington, DC",
         help="Anonymous lookup smoke address",
     )
     p.add_argument("--skip-web", action="store_true", help="Skip web GET even if --web-base set")

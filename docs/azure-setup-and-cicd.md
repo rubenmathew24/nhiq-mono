@@ -417,7 +417,7 @@ Paste the **entire JSON** into GitHub secret `AZURE_CREDENTIALS` (never commit i
 3. **App config** (if manifest changed) — `scripts/sync_aca_app_env.sh` verifies/binds required env names; does **not** change Redis/Postgres SKU or firewall.
 4. **Build/push** only changed images (API and/or web).
 5. **Deploy** only changed Container Apps.
-6. **Smoke** (if anything app-facing ran) — `scripts/deploy_smoke.py`: `/health`, optional web GET, anonymous lookup + score for Bentonville smoke address.
+6. **Smoke** (if anything app-facing ran) — `scripts/deploy_smoke.py`: `/health`, optional web GET, anonymous lookup + score (default / `DEPLOY_SMOKE_ADDRESS` variable: White House address; not a personal address).
 7. **Docs-only / unrelated / workers-only** — detect reports `any_app=false`; workflow succeeds with skips (no ACR, no ACA, no smoke).
 
 Watch runs: https://github.com/rubenmathew24/nhiq-mono/actions

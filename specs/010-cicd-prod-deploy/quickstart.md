@@ -59,7 +59,7 @@ npm test
 ## 6. Smoke (prod Deploy)
 
 ```powershell
-python scripts/deploy_smoke.py --api-base https://api.nh-iq.com --web-base https://nh-iq.com --address "609 SE Jamaica Dr, Bentonville, AR"
+python scripts/deploy_smoke.py --api-base https://api.nh-iq.com --web-base https://nh-iq.com --address "1600 Pennsylvania Avenue NW, Washington, DC"
 ```
 
 After a real API/web Deploy: Actions smoke job should pass within ~3 minutes.

@@ -72,7 +72,7 @@ Docs-only / workers-only / unrelated → all false → Deploy exits successfully
 
 1. `GET {API_PUBLIC_BASE}/health` → expect `status=ok` (always if API deployed; also if only web deployed still hit API health as dependency).
 2. If web deployed: `GET {WEB_PUBLIC_BASE}/` → expect HTTP 200.
-3. Anonymous lookup: `GET {API}/api/v1/lookup?address={SMOKE_ADDRESS}` → expect 200 + `address_id`; then `GET {API}/api/v1/score/{address_id}` → expect 200 (or accepted “computing” shape if applicable). Default smoke address: `609 SE Jamaica Dr, Bentonville, AR` (documented Benton County smoke address). Configurable via Actions variable/secret `DEPLOY_SMOKE_ADDRESS` without committing alternatives.
+3. Anonymous lookup: `GET {API}/api/v1/lookup?address={SMOKE_ADDRESS}` → expect 200 + `address_id`; then `GET {API}/api/v1/score/{address_id}` → expect 200 (or accepted “computing” shape if applicable). Default smoke address: `1600 Pennsylvania Avenue NW, Washington, DC`. Override with Actions variable `DEPLOY_SMOKE_ADDRESS` (not a secret).
 
 Smoke runs only when at least one of web/api/schema/app_config actually applied an update; docs-only → skip smoke.
 

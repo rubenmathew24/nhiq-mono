@@ -124,7 +124,7 @@
 
 ### Implementation for User Story 4
 
-- [x] T024 [US4] Add `smoke` job in `.github/workflows/deploy.yml` when `any_app==true` after deploy jobs; use public API/web bases + default address `609 SE Jamaica Dr, Bentonville, AR` (overridable via Actions var `DEPLOY_SMOKE_ADDRESS`)
+- [x] T024 [US4] Add `smoke` job in `.github/workflows/deploy.yml` when `any_app==true` after deploy jobs; use public API/web bases + default address `1600 Pennsylvania Avenue NW, Washington, DC` (overridable via Actions var `DEPLOY_SMOKE_ADDRESS`)
 - [x] T025 [US4] Skip smoke when all detect flags false; fail Deploy when smoke non-zero
 
 **Checkpoint**: Live prod path verified after real updates

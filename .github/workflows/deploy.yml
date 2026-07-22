@@ -331,7 +331,7 @@ jobs:
         run: |
           API_BASE="${API_BASE:-https://api.nh-iq.com}"
           WEB_BASE="${WEB_BASE:-https://nh-iq.com}"
-          SMOKE_ADDRESS="${SMOKE_ADDRESS:-609 SE Jamaica Dr, Bentonville, AR}"
+          SMOKE_ADDRESS="${SMOKE_ADDRESS:-1600 Pennsylvania Avenue NW, Washington, DC}"
           EXTRA=()
           if [ "$WEB_CHANGED" != "true" ]; then
             EXTRA+=(--skip-web)

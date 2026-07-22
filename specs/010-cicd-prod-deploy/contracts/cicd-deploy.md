@@ -47,7 +47,7 @@ python scripts/apply-sql-migrations.py --database-url "$DATABASE_URL"
 | Lookup | `GET {API}/api/v1/lookup?address={SMOKE_ADDRESS}` | 200, body includes `address_id` |
 | Report | `GET {API}/api/v1/score/{address_id}` | 200 with report payload **or** documented computing status that still proves API+DB path |
 
-Default `SMOKE_ADDRESS`: `609 SE Jamaica Dr, Bentonville, AR`
+Default `SMOKE_ADDRESS`: `1600 Pennsylvania Avenue NW, Washington, DC` (override with Actions variable `DEPLOY_SMOKE_ADDRESS`)
 
 ## 5. App env manifest
 
