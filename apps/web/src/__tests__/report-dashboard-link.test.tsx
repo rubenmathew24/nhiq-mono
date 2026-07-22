@@ -8,6 +8,13 @@ vi.mock("@/lib/auth", () => ({
   auth: (...args: unknown[]) => authMock(...args),
 }));
 
+vi.mock("next-auth/react", () => ({
+  useSession: () => ({
+    data: { accessToken: "test-token" },
+    status: "authenticated",
+  }),
+}));
+
 vi.mock("@/components/layout/Header", () => ({
   default: () => <header data-testid="header">Header</header>,
 }));

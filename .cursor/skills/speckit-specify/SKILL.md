@@ -1,6 +1,6 @@
 ---
 name: "speckit-specify"
-description: "Create or update the feature specification from a natural language feature description."
+description: "Create or update the feature specification from a natural language feature description, always running a 3–20 question clarification loop until shared understanding."
 compatibility: "Requires spec-kit project structure with .specify/ directory"
 metadata:
   author: "github-spec-kit"
@@ -118,27 +118,33 @@ Given that feature description, do this:
        If empty: ERROR "No feature description provided"
     2. Extract key concepts from description
        Identify: actors, actions, data, constraints
-    3. For unclear aspects:
-       - Make informed guesses based on context and industry standards
-       - Only mark with [NEEDS CLARIFICATION: specific question] if:
-         - The choice significantly impacts feature scope or user experience
-         - Multiple reasonable interpretations exist with different implications
-         - No reasonable default exists
-       - **LIMIT: Maximum 3 [NEEDS CLARIFICATION] markers total**
-       - Prioritize clarifications by impact: scope > security/privacy > user experience > technical details
+    3. **NeighborhoodInsight Clarification Policy (required — before locking the draft)**
+
+       **Always** run an interactive clarification loop with the user. Do not finish specify by guessing through all unknowns or by capping at 3 markers.
+
+       - **Minimum:** Ask at least **3** clarification questions.
+       - **Maximum:** Ask at most **20** clarification questions.
+       - **Shared understanding:** Keep asking (within 3–20) until you are confident you and the user share the same understanding of scope, primary UX, edge cases, and success. Do not stop early just because a short list of “critical” items is done.
+       - Ask **EXACTLY ONE** question at a time (sequential). Never present the full queue at once.
+       - Prefer product/UX/behavior questions over implementation stack unless stack choice blocks correctness.
+       - Each question should be multiple-choice (2–5 options) **or** short-answer (<=5 words), with a **Recommended** / **Suggested** answer and brief why (same pattern as `/speckit-clarify`).
+       - After each answer: record it, fold it into the working draft (and into `## Clarifications` / `### Session YYYY-MM-DD` once the file exists), then ask the next question.
+       - You may draft a rough in-memory outline first to discover gaps, but **do not** treat the feature as ready for checklist/completion until the clarification loop has finished (min 3, shared understanding or user ends after min, or hit 20).
+       - Use `[NEEDS CLARIFICATION: …]` markers only as temporary placeholders while waiting on answers; resolve them from the Q&A. Do **not** leave a finished specify run with unresolved markers when the user answered.
+       - If the user tries to skip before 3 answers, ask them to finish the minimum or explicitly waive clarify-style Q&A (warn about rework). If they waive entirely, document assumptions prominently and continue.
     4. Fill User Scenarios & Testing section
        If no clear user flow: ERROR "Cannot determine user scenarios"
     5. Generate Functional Requirements
        Each requirement must be testable
-       Use reasonable defaults for unspecified details (document assumptions in Assumptions section)
+       Document remaining non-blocking defaults in Assumptions (only after Q&A)
     6. Define Success Criteria
        Create measurable, technology-agnostic outcomes
        Include both quantitative metrics (time, performance, volume) and qualitative measures (user satisfaction, task completion)
        Each criterion must be verifiable without implementation details
     7. Identify Key Entities (if data involved)
-    8. Return: SUCCESS (spec ready for planning)
+    8. Return: SUCCESS (spec ready for optional further `/speckit-clarify` or `/speckit-plan`)
 
-6. Write the specification to SPEC_FILE using the template structure, replacing placeholders with concrete details derived from the feature description (arguments) while preserving section order and headings.
+6b. Write the specification to SPEC_FILE using the template structure, replacing placeholders with concrete details derived from the feature description **and clarification answers** while preserving section order and headings. Include a `## Clarifications` section with a `### Session YYYY-MM-DD` list of `Q → A` bullets for this specify session.
 
 7. **Specification Quality Validation**: After writing the initial spec, validate it against quality criteria:
 
@@ -196,41 +202,16 @@ Given that feature description, do this:
         4. If still failing after 3 iterations, document remaining issues in checklist notes and warn user
 
       - **If [NEEDS CLARIFICATION] markers remain**:
-        1. Extract all [NEEDS CLARIFICATION: ...] markers from the spec
-        2. **LIMIT CHECK**: If more than 3 markers exist, keep only the 3 most critical (by scope/security/UX impact) and make informed guesses for the rest
-        3. For each clarification needed (max 3), present options to user in this format:
-
-           ```markdown
-           ## Question [N]: [Topic]
-           
-           **Context**: [Quote relevant spec section]
-           
-           **What we need to know**: [Specific question from NEEDS CLARIFICATION marker]
-           
-           **Suggested Answers**:
-           
-           | Option | Answer | Implications |
-           |--------|--------|--------------|
-           | A      | [First suggested answer] | [What this means for the feature] |
-           | B      | [Second suggested answer] | [What this means for the feature] |
-           | C      | [Third suggested answer] | [What this means for the feature] |
-           | Custom | Provide your own answer | [Explain how to provide custom input] |
-           
-           **Your choice**: _[Wait for user response]_
-           ```
-
-        4. **CRITICAL - Table Formatting**: Ensure markdown tables are properly formatted:
-           - Use consistent spacing with pipes aligned
-           - Each cell should have spaces around content: `| Content |` not `|Content|`
-           - Header separator must have at least 3 dashes: `|--------|`
-           - Test that the table renders correctly in markdown preview
-        5. Number questions sequentially (Q1, Q2, Q3 - max 3 total)
-        6. Present all questions together before waiting for responses
-        7. Wait for user to respond with their choices for all questions (e.g., "Q1: A, Q2: Custom - [details], Q3: B")
-        8. Update the spec by replacing each [NEEDS CLARIFICATION] marker with the user's selected or provided answer
-        9. Re-run validation after all clarifications are resolved
+        1. Treat remaining markers as unfinished clarification work — continue the **sequential** Q&A loop (one question at a time) until markers are resolved, within the overall **3–20** session budget (count questions already asked in this specify run).
+        2. Do **not** batch-present all remaining questions at once.
+        3. For each question, use the Recommended/Suggested + options table pattern from the Clarification Policy above.
+        4. **CRITICAL - Table Formatting**: Ensure markdown tables are properly formatted (`| Content |`, header `|--------|`).
+        5. After each answer, replace the related marker and update Functional Requirements / Scenarios / Edge Cases / Clarifications as appropriate; save the file.
+        6. Re-run validation after the clarification loop completes (or after the 20-question cap — then list Deferred items in checklist notes).
 
    d. **Update Checklist**: After each validation iteration, update the checklist file with current pass/fail status
+
+**Note on timing:** Prefer running the Clarification Policy **before** declaring checklist success. Writing an early draft to disk is fine so answers can be integrated incrementally; do not jump to “all checklist items pass / ready for plan” until the min-3 Q&A (and shared understanding) is done unless the user waived it.
 
 ## Mandatory Post-Execution Hooks
 
@@ -278,7 +259,7 @@ Follow `.cursor/skills/speckit-git-workflow.md`.
 3. **Do not commit** the draft spec here — Commit #1 (finalized spec) happens at the start of `/speckit-plan` after any `/speckit-clarify` edits.
 4. If push fails, report the error and the exact retry command; still report local paths so clarify/plan can continue.
 
-Tell the user: branch is published; next is optional `/speckit-clarify`, then `/speckit-plan` (which commits the finalized spec).
+Tell the user: branch is published; next is `/speckit-clarify` if more decisions remain, then `/speckit-plan` (which commits the finalized spec). Specify already ran a 3–20 Q&A pass — clarify is for another round when needed, not a substitute for skipping specify questions.
 
 ## Completion Report
 
@@ -286,6 +267,7 @@ Report completion to the user with:
 - `SPECIFY_FEATURE_DIRECTORY` — the feature directory path
 - `SPEC_FILE` — the spec file path
 - Checklist results summary
+- Clarification loop summary (questions asked / answered; whether shared understanding was reached or Deferred items remain)
 - Branch name + whether `git push -u origin HEAD` succeeded
 - Readiness for the next phase (`/speckit-clarify` or `/speckit-plan`)
 - Reminder: draft spec is uncommitted until `/speckit-plan` starts (Commit #1)
@@ -309,20 +291,19 @@ Report completion to the user with:
 
 When creating this spec from a user prompt:
 
-1. **Make informed guesses**: Use context, industry standards, and common patterns to fill gaps
-2. **Document assumptions**: Record reasonable defaults in the Assumptions section
-3. **Limit clarifications**: Maximum 3 [NEEDS CLARIFICATION] markers - use only for critical decisions that:
-   - Significantly impact feature scope or user experience
-   - Have multiple reasonable interpretations with different implications
-   - Lack any reasonable default
+1. **Ask first, guess second**: Run the NeighborhoodInsight Clarification Policy (3–20 sequential questions) until shared understanding. Do not ship a “done” specify on guesses alone.
+2. **Document assumptions**: After Q&A, record any remaining non-blocking defaults in Assumptions.
+3. **Clarification budget**: Ask **3–20** questions (one at a time). Prefer confirming easy-to-misread product choices over leaving `[NEEDS CLARIFICATION]` markers in the finished draft.
 4. **Prioritize clarifications**: scope > security/privacy > user experience > technical details
 5. **Think like a tester**: Every vague requirement should fail the "testable and unambiguous" checklist item
-6. **Common areas needing clarification** (only if no reasonable default exists):
+6. **Common areas to always probe** (use as question fodder even when defaults seem obvious):
    - Feature scope and boundaries (include/exclude specific use cases)
-   - User types and permissions (if multiple conflicting interpretations possible)
-   - Security/compliance requirements (when legally/financially significant)
+   - Primary empty / error / cancel behaviors
+   - User roles and permissions when more than one actor exists
+   - Identity / uniqueness rules for saved or listed entities
+   - Security/compliance when legally/financially significant
 
-**Examples of reasonable defaults** (don't ask about these):
+**Examples of defaults you may assume *after* confirming scope via Q&A** (still ask if ambiguity would change acceptance):
 
 - Data retention: Industry-standard practices for the domain
 - Performance targets: Standard web/mobile app expectations unless specified
@@ -355,8 +336,9 @@ Success criteria must be:
 
 ## Done When
 
+- [ ] Clarification loop completed (3–20 questions, or user waived with warning) and answers reflected in `spec.md`
 - [ ] Specification written to `SPEC_FILE` and validated against quality checklist
 - [ ] Feature branch published with `git push -u origin HEAD` (or failure reported with retry)
 - [ ] Draft spec left **uncommitted** for clarify / Commit #1 at `/speckit-plan`
 - [ ] Extension hooks dispatched or skipped according to the rules in Mandatory Post-Execution Hooks above
-- [ ] Completion reported to user with feature directory, spec file path, checklist results, and push status
+- [ ] Completion reported to user with feature directory, spec file path, checklist results, clarification summary, and push status

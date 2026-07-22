@@ -287,10 +287,11 @@ export default function LookupList({
   const router = useRouter();
   const { data: session } = useSession();
   const [lookups, setLookups] = useState(initial);
-
-  useEffect(() => {
+  const [prevInitial, setPrevInitial] = useState(initial);
+  if (initial !== prevInitial) {
+    setPrevInitial(initial);
     setLookups(initial);
-  }, [initial]);
+  }
 
   const refresh = useCallback(async () => {
     if (!session?.accessToken) {
@@ -306,7 +307,7 @@ export default function LookupList({
     } catch {
       router.refresh();
     }
-  }, [router, session?.accessToken]);
+  }, [router, session]);
 
   const favorites = useMemo(
     () =>
