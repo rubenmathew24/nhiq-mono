@@ -13,10 +13,9 @@ SQL_DIR = REPO_ROOT / "infra" / "sql"
 
 
 def _load_mig():
-    sys.path.insert(0, str(REPO_ROOT / "scripts"))
-    import apply_sql_migrations as mig  # noqa: E402
+    from tests.migrate_loader import load_migrate_module
 
-    return mig
+    return load_migrate_module()
 
 
 @pytest.fixture(scope="module")
