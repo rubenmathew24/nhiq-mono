@@ -6,8 +6,7 @@
     "ENVIRONMENT",
     "CORS_ORIGINS",
     "SCORE_DATA_VINTAGE",
-    "MAPBOX_TOKEN",
-    "ANTHROPIC_API_KEY"
+    "MAPBOX_TOKEN"
   ],
   "web": [
     "NEXT_PUBLIC_API_URL",
