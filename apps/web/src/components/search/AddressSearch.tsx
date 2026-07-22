@@ -177,7 +177,7 @@ export default function AddressSearch() {
             <ul
               id="address-suggestions"
               role="listbox"
-              className="absolute left-0 right-0 top-full z-20 mt-2 max-h-60 overflow-auto rounded-xl border border-border bg-card shadow-lg"
+              className="absolute left-0 right-0 top-full z-40 mt-2 overflow-hidden rounded-xl border border-border bg-card shadow-lg"
             >
               {suggestions.map((s, idx) => (
                 <li key={s.id} role="option" aria-selected={idx === activeIndex}>
