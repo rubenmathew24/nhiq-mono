@@ -1,6 +1,6 @@
 ---
 name: "speckit-clarify"
-description: "Identify underspecified areas in the current feature spec by asking up to 5 highly targeted clarification questions and encoding answers back into the spec."
+description: "Identify underspecified areas in the current feature spec by asking 3–20 sequential clarification questions until shared understanding, then encoding answers back into the spec."
 compatibility: "Requires spec-kit project structure with .specify/ directory"
 metadata:
   author: "github-spec-kit"
@@ -55,6 +55,17 @@ You **MUST** consider the user input before proceeding (if not empty).
 ## Outline
 
 Goal: Detect and reduce ambiguity or missing decision points in the active feature specification and record the clarifications directly in the spec file.
+
+## NeighborhoodInsight Clarification Policy (required — overrides upstream caps)
+
+**Always** run an interactive clarification loop. Do **not** report “no critical ambiguities” and exit without questioning.
+
+- **Minimum:** Ask at least **3** clarification questions every `/speckit-clarify` run (unless the user explicitly skips clarify for a spike — then warn about rework risk and stop).
+- **Maximum:** Ask at most **20** questions in the session.
+- **Shared understanding:** Keep asking (within the 3–20 band) until you are confident you and the user share the same understanding of scope, behavior, edge cases, and acceptance. Hitting “top 5 impact items” is **not** enough if material ambiguity remains — continue until sure, or until the 20-question cap.
+- Prefer **product / UX / behavior** questions over implementation stack unless stack choice blocks correctness.
+- Ask **EXACTLY ONE** question at a time (sequential). Never dump the full queue upfront.
+- After each answer, briefly reflect what it implies for the feature (1 sentence) before the next question when helpful.
 
 Note: This clarification workflow is expected to run (and be completed) BEFORE invoking `/speckit-plan`. If the user explicitly states they are skipping clarification (e.g., exploratory spike), you may proceed, but must warn that downstream rework risk increases.
 
@@ -125,16 +136,16 @@ Execution steps:
    - Clarification would not materially change implementation or validation strategy
    - Information is better deferred to planning phase (note internally)
 
-4. Generate (internally) a prioritized queue of candidate clarification questions (maximum 5). Do NOT output them all at once. Apply these constraints:
-    - Maximum of 5 total questions across the whole session.
+4. Generate (internally) a prioritized queue of candidate clarification questions (**at least 3, at most 20**). Do NOT output them all at once. Apply these constraints:
+    - Session floor/ceiling: **3 ≤ asked questions ≤ 20** (NeighborhoodInsight Clarification Policy).
     - Each question must be answerable with EITHER:
        - A short multiple‑choice selection (2–5 distinct, mutually exclusive options), OR
        - A one-word / short‑phrase answer (explicitly constrain: "Answer in <=5 words").
-    - Only include questions whose answers materially impact architecture, data modeling, task decomposition, test design, UX behavior, operational readiness, or compliance validation.
-    - Ensure category coverage balance: attempt to cover the highest impact unresolved categories first; avoid asking two low-impact questions when a single high-impact area (e.g., security posture) is unresolved.
-    - Exclude questions already answered, trivial stylistic preferences, or plan-level execution details (unless blocking correctness).
+    - Prefer questions whose answers materially impact scope, UX behavior, data identity, acceptance tests, edge cases, or compliance — but if the taxonomy looks “Clear” and you still have fewer than 3 queued, **invent high-value confirmation questions** (e.g., dual-listing vs exclusive columns, delete confirmations, empty states, sort order) so the minimum is met and shared understanding is verified, not assumed.
+    - Ensure category coverage balance: highest impact unresolved categories first; then fill remaining slots to reach shared understanding across UX, edge cases, and success criteria.
+    - Exclude questions already answered, pure stylistic fluff, or plan-level execution details (unless blocking correctness).
     - Favor clarifications that reduce downstream rework risk or prevent misaligned acceptance tests.
-    - If more than 5 categories remain unresolved, select the top 5 by (Impact * Uncertainty) heuristic.
+    - Grow/shrink the queue dynamically as answers reveal new unknowns (still never exceed 20 asked).
 
 5. Sequential questioning loop (interactive):
     - Present EXACTLY ONE question at a time.
@@ -164,13 +175,14 @@ Execution steps:
        - If the user replies with "yes", "recommended", or "suggested", use your previously stated recommendation/suggestion as the answer.
        - Otherwise, validate the answer maps to one option or fits the <=5 word constraint.
        - If ambiguous, ask for a quick disambiguation (count still belongs to same question; do not advance).
-       - Once satisfactory, record it in working memory (do not yet write to disk) and move to the next queued question.
-    - Stop asking further questions when:
-       - All critical ambiguities resolved early (remaining queued items become unnecessary), OR
-       - User signals completion ("done", "good", "no more"), OR
-       - You reach 5 asked questions.
+       - Once satisfactory, record it in working memory, integrate into the spec (step 6), and move to the next queued question.
+    - Stop asking further questions only when **all** of the following hold, or a hard stop applies:
+       - At least **3** questions have been asked and answered, AND
+       - You are confident of **shared understanding** (no material Partial/Missing taxonomy gaps that would change acceptance), OR the user signals completion ("done", "good", "no more", "that's enough") **after** the minimum of 3, OR
+       - You reach **20** asked questions (then list any remaining high-impact gaps under Deferred).
+    - Do **not** stop after the first few “critical” items solely because the old 5-question quota mindset is satisfied — continue until shared understanding or the user ends the loop (post-minimum) or you hit 20.
     - Never reveal future queued questions in advance.
-    - If no valid questions exist at start, immediately report no critical ambiguities.
+    - If the taxonomy looks fully Clear at start: still ask **at least 3** confirmation questions that lock in easy-to-misread defaults (scope boundary, primary empty/error behavior, and one success criterion).
 
 6. Integration after EACH accepted answer (incremental update approach):
     - Maintain in-memory representation of the spec (loaded once at start) plus the raw file contents.
@@ -192,7 +204,7 @@ Execution steps:
 
 7. Validation (performed after EACH write plus final pass):
    - Clarifications session contains exactly one bullet per accepted answer (no duplicates).
-   - Total asked (accepted) questions ≤ 5.
+   - Total asked (accepted) questions is between **3 and 20** inclusive (unless user explicitly skipped clarify).
    - Updated sections contain no lingering vague placeholders the new answer was meant to resolve.
    - No contradictory earlier statement remains (scan for now-invalid alternative choices removed).
    - Markdown structure valid; only allowed new headings: `## Clarifications`, `### Session YYYY-MM-DD`.
@@ -221,13 +233,12 @@ Execution steps:
 
 Behavior rules:
 
-- If no meaningful ambiguities found (or all potential questions would be low-impact), respond: "No critical ambiguities detected worth formal clarification." and suggest proceeding.
+- Never skip the clarification loop with “no critical ambiguities” — ask at least 3 confirmation questions when coverage looks Clear.
 - If spec file missing, instruct user to run `/speckit-specify` first (do not create a new spec here).
-- Never exceed 5 total asked questions (clarification retries for a single question do not count as new questions).
+- Never exceed **20** total asked questions (clarification retries for a single question do not count as new questions). Always meet the **3**-question minimum unless the user explicitly skips clarify.
 - Avoid speculative tech stack questions unless the absence blocks functional clarity.
-- Respect user early termination signals ("stop", "done", "proceed").
-- If no questions asked due to full coverage, output a compact coverage summary (all categories Clear) then suggest advancing.
-- If quota reached with unresolved high-impact categories remaining, explicitly flag them under Deferred with rationale.
+- Respect user early termination signals ("stop", "done", "proceed") **only after** at least 3 questions, or if they explicitly waive clarify entirely (spike); if they try to end early before 3, ask them to answer the remaining minimum or confirm they want to waive (with rework warning).
+- If the 20-question cap is hit with unresolved high-impact categories remaining, explicitly flag them under Deferred with rationale and recommend another `/speckit-clarify` pass or careful review before `/speckit-plan`.
 
 Context for prioritization: $ARGUMENTS
 
@@ -287,6 +298,7 @@ Report completion (after questioning loop ends or early termination):
 
 ## Done When
 
+- [ ] Clarification loop met the 3–20 policy and reached shared understanding (or Deferred at cap / user ended after minimum)
 - [ ] Spec ambiguities identified and clarifications integrated into spec file
 - [ ] Spec quality checklist re-validated against updated spec (if `FEATURE_DIR/checklists/requirements.md` exists)
 - [ ] No git commit/push performed (Commit #1 deferred to `/speckit-plan`)
