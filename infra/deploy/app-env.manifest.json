@@ -1,0 +1,18 @@
+{
+  "api": [
+    "DATABASE_URL",
+    "REDIS_URL",
+    "SECRET_KEY",
+    "ENVIRONMENT",
+    "CORS_ORIGINS",
+    "SCORE_DATA_VINTAGE",
+    "MAPBOX_TOKEN",
+    "ANTHROPIC_API_KEY"
+  ],
+  "web": [
+    "NEXT_PUBLIC_API_URL",
+    "NEXT_PUBLIC_MAPBOX_TOKEN",
+    "AUTH_SECRET",
+    "NEXTAUTH_URL"
+  ]
+}

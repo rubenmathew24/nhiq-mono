@@ -400,21 +400,31 @@ Paste the **entire JSON** into GitHub secret `AZURE_CREDENTIALS` (never commit i
 | `AZURE_CONTAINER_APP_WEB` | `niq-web` |
 | `NEXT_PUBLIC_API_URL` | Public API HTTPS URL (web build arg) |
 | `NEXT_PUBLIC_MAPBOX_TOKEN` | Web build arg |
+| `DATABASE_URL` | **Recommended for Deploy migrate job** — prod Postgres URL (`sslmode=require`). If unset, Deploy fetches Key Vault `DATABASE-URL` via `AZURE_CREDENTIALS` (vault name from `AZURE_KEY_VAULT_NAME` or default `niq-kv-21698`) |
+| `AZURE_KEY_VAULT_NAME` | Optional; Key Vault name for migrate fallback |
 
-### Workflow
+### Workflows
 
-File: [`.github/workflows/deploy.yml`](../.github/workflows/deploy.yml).
+| File | Trigger | Behavior |
+|------|---------|----------|
+| [`.github/workflows/deploy.yml`](../.github/workflows/deploy.yml) | `push` to `master`, `workflow_dispatch` | **Change-aware Deploy** (see below) |
+| [`.github/workflows/ci-master.yml`](../.github/workflows/ci-master.yml) | `pull_request` → **`master` only** | Web lint+vitest; API pytest on ephemeral PostGIS+Redis after `init.sql` + numbered migrations |
 
-| Trigger | Behavior |
-|---------|----------|
-| `push` to `master` | Build+push API & web images, deploy both apps |
-| `workflow_dispatch` | Manual run from Actions UI |
+#### Deploy behavior (as-built, feature 010)
 
-Jobs: **Build & Push to ACR** → **Deploy API** → **Deploy Web**. First successful run was on the order of ~9 minutes. Ignore Node.js 16 deprecation *warnings* unless a job actually fails.
+1. **Detect** path changes vs previous commit (`force_full` on dispatch treats all app categories as changed). Categories: `web`, `api`, `schema` (SQL **or** API), `app_config` (`infra/deploy/app-env.manifest.json`). **Workers are never deployed.**
+2. **Migrate** (if `schema`) — `scripts/apply-sql-migrations.py` + `schema_migrations` table — **before** any new API/web image rollout. Failure stops the workflow (no new images).
+3. **App config** (if manifest changed) — `scripts/sync_aca_app_env.sh` verifies/binds required env names; does **not** change Redis/Postgres SKU or firewall.
+4. **Build/push** only changed images (API and/or web).
+5. **Deploy** only changed Container Apps.
+6. **Smoke** (if anything app-facing ran) — `scripts/deploy_smoke.py`: `/health`, optional web GET, anonymous lookup + score (default / `DEPLOY_SMOKE_ADDRESS` variable: White House address; not a personal address).
+7. **Docs-only / unrelated / workers-only** — detect reports `any_app=false`; workflow succeeds with skips (no ACR, no ACA, no smoke).
 
 Watch runs: https://github.com/rubenmathew24/nhiq-mono/actions
 
-After a green Deploy Web, hard-refresh the live site (`Ctrl+Shift+R`) — CDN/browser cache can show old UI briefly.
+After a green Deploy that updated web, hard-refresh the live site (`Ctrl+Shift+R`) — CDN/browser cache can show old UI briefly.
+
+**Note:** Design doc `docs/nhiq-design-main/05-cicd.md` shows Alembic *after* API deploy. **As-built Deploy migrates before images** using numbered `infra/sql/*.sql` files — do not follow the old Alembic-after-API order.
 
 ---
 
@@ -449,8 +459,8 @@ Values can change if resources are recreated; confirm in Portal or CLI when unsu
 |-------|-------------|----------------|
 | Regions | Largely East US | Env/apps/Redis/ACR East US; **Postgres Central US** |
 | IaC | Bicep under `infra/bicep/` | Mostly Azure CLI / Portal |
-| CI | Separate `ci.yml` + `deploy.yml` + workers | **Deploy only** on `master` |
-| Migrations | Alembic job in CI | Manual `init.sql` against Azure |
+| CI | Separate `ci.yml` + `deploy.yml` + workers | **`ci-master.yml` on PRs to `master`**; Deploy on `master` push |
+| Migrations | Alembic job **after** API deploy | **Numbered `infra/sql` + `apply-sql-migrations.py` before images** (not Alembic-after-API) |
 | Workers / Front Door / Key Vault→ACA identity | Specified | **Workers: manual ACA Jobs wired (see §16)**; Front Door / KV→ACA identity still not wired |
 | Image promotion | Tag by git SHA + `latest` | API/web via Deploy on `master`; **worker image pushed by hand** to ACR tag `neighborhoodiq-worker:dev` |
 | Ingest schema | Design raw tables | Azure has `init.sql` + manual `002` / `003` / `004` applied |

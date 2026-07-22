@@ -1,0 +1,95 @@
+name: CI (master)
+
+on:
+  pull_request:
+    branches: [master]
+
+jobs:
+  api:
+    name: api
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgis/postgis:16-3.4
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: neighborhoodiq
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 15
+      redis:
+        image: redis:7
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/neighborhoodiq
+      REDIS_URL: redis://localhost:6379
+      SECRET_KEY: test-secret-key-for-ci-only
+      ENVIRONMENT: test
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install API + migrate deps
+        run: |
+          pip install -r apps/api/requirements.txt
+          pip install -r scripts/requirements-migrate.txt
+          pip install pytest pytest-asyncio httpx
+
+      - name: Apply init.sql then numbered migrations
+        shell: bash
+        run: |
+          python - <<'PY'
+          import os
+          import sys
+          from pathlib import Path
+
+          import psycopg
+
+          sys.path.insert(0, "scripts")
+          import apply_sql_migrations as mig
+
+          url = os.environ["DATABASE_URL"]
+          init = Path("infra/sql/init.sql").read_text(encoding="utf-8")
+          with psycopg.connect(url, autocommit=True) as conn:
+              for stmt in mig.iter_statements(init):
+                  conn.execute(stmt)
+          print("init.sql applied")
+          raise SystemExit(mig.apply_migrations(url, mig.DEFAULT_SQL_DIR))
+          PY
+
+      - name: Pytest
+        working-directory: apps/api
+        run: pytest -q
+
+  web:
+    name: web
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/web
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: apps/web/package-lock.json
+
+      - run: npm ci
+      - run: npm run lint
+      - run: npm test
