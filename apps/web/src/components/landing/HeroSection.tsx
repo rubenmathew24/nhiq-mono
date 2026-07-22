@@ -6,9 +6,12 @@ import ScorePreviewCard from "@/components/ui/ScorePreviewCard";
 
 export default function HeroSection() {
   return (
-    <section id="hero" className="relative pt-32 pb-20 lg:pt-40 lg:pb-28 overflow-hidden">
-      <div className="absolute -top-32 -right-32 w-[600px] h-[600px] rounded-full bg-accent/15 blur-3xl pointer-events-none" />
-      <div className="absolute -bottom-40 -left-40 w-[500px] h-[500px] rounded-full bg-mint/10 blur-3xl pointer-events-none" />
+    <section id="hero" className="relative z-10 pt-32 pb-20 lg:pt-40 lg:pb-28">
+      {/* Clip blur orbs only — overflow on the section would force overflow-y:auto and scroll the hero */}
+      <div className="absolute inset-0 overflow-hidden pointer-events-none" aria-hidden="true">
+        <div className="absolute -top-32 -right-32 w-[600px] h-[600px] rounded-full bg-accent/15 blur-3xl" />
+        <div className="absolute -bottom-40 -left-40 w-[500px] h-[500px] rounded-full bg-mint/10 blur-3xl" />
+      </div>
 
       <div className="relative max-w-7xl mx-auto px-6 grid lg:grid-cols-2 gap-12 lg:gap-16 items-center">
         <div className="max-w-xl">

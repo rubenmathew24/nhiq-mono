@@ -2,7 +2,7 @@ import { problemContent } from "@/content/landing";
 
 export default function ProblemSection() {
   return (
-    <section className="py-24 lg:py-32 lg:pt-44 bg-primary text-primary-foreground">
+    <section className="relative z-0 py-24 lg:py-32 lg:pt-44 bg-primary text-primary-foreground">
       <div className="max-w-5xl mx-auto px-6">
         <p className="text-xs uppercase tracking-widest font-semibold text-accent mb-4">
           {problemContent.eyebrow}
