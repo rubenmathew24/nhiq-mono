@@ -1,23 +1,82 @@
 # Quickstart: National ingest (ops)
 
+**Feature**: `003-national-ingest`
+
+Full narrative: [`docs/azure-setup-and-cicd.md`](../../docs/azure-setup-and-cicd.md) §16.
+
 ## Prerequisites
 
-- Worker image with this feature; SQL `006_geo_counties.sql` applied
-- Keys as for metro ingest (EPA, FBI, Census, etc.)
-- County registry bootstrapped (`niq-worker-geo` with `INGEST_GEO_LOAD_ALL=1`)
+- [ ] SQL `006_geo_counties.sql` applied; county registry bootstrapped (`niq-worker-geo` with `INGEST_GEO_LOAD_ALL=1`)
+- [ ] `infra/sql/007_report_detail.sql` applied when expand/report-detail is needed; confirm `acs_indicators.total_population`
+- [ ] Worker image current; ACA jobs include `niq-worker-fema`, `niq-worker-cms-timely`, `niq-worker-orchestrate`
+- [ ] ACA timeouts: orchestrator `21600`s; workers `10800`s
+- [ ] Keys as for metro ingest; Azure SP / `AZURE_CREDENTIALS`; GHA `actions: write` for continuous chaining
 
-## Preferred: GitHub Actions orchestrator
+---
 
-1. GitHub → Actions → **National ingest** → **Run workflow**
-2. Inputs: `max_states` (default 5), optional `state_filter` (e.g. `44`), optional `force_states` (e.g. `25`). **Either list is exclusive** — the run does not pad with other gap states to fill `max_states`. Leave both empty for unscoped national gap-fill.
-3. Watch the Actions log; Workbook refreshes after each worker and every ~15 counties mid-job (`INGEST_SCOPE=national`). Re-import [`infra/workbook-ingest-status.json`](../../infra/workbook-ingest-status.json) if the gallery is stale (slim log lines).
-4. Re-run the workflow to continue — inventory skips workers/states that are already complete (unless forced)
+## 1. Azure smoke gate (required before trusting national expand)
 
-### Force re-ingest
+Local Compose alone does **not** clear this gate.
 
-Use `force_states` when you need upserts for states inventory already marks done (bad prior data, scoring formula change). Workers get `INGEST_FORCE=1` for that run only. Example: `force_states=25` with `max_states=5` processes **only** Massachusetts.
+1. Merge/promote path: feature work → `dev` → `master`; wait for Deploy (API/web) + rebuild/push worker image.
+2. Schema check:
 
-## Manual one state batch (fallback)
+```sql
+SELECT column_name FROM information_schema.columns
+WHERE table_name = 'neighborhood_scores' AND column_name = 'score_detail';
+SELECT to_regclass('public.fema_nri_tracts'), to_regclass('public.hospital_timely_measures');
+SELECT column_name FROM information_schema.columns
+WHERE table_name = 'acs_indicators' AND column_name = 'total_population';
+```
+
+3. Set `INGEST_SCOPE=smoke` (and/or allowlist `05007`) on relevant jobs; run:
+
+```powershell
+az containerapp job start --name niq-worker-acs --resource-group neighborhoodiq-rg
+az containerapp job start --name niq-worker-fema --resource-group neighborhoodiq-rg
+az containerapp job start --name niq-worker-cms-timely --resource-group neighborhoodiq-rg
+az containerapp job start --name niq-worker-scoring --resource-group neighborhoodiq-rg
+```
+
+4. Open production web → `609 SE Jamaica Dr, Bentonville, AR` → expand report matches known-good local/dev (004).
+
+**Fail → do not start National Ingest.**
+
+---
+
+## 2. Continuous national (preferred)
+
+### A. GitHub Actions
+
+1. Actions → **National ingest** → Run workflow.
+2. Inputs: `continuous=true` (default); leave `state_filter` / `force_states` empty for unscoped gap-fill; set `state_exclude` only if needed.
+3. Watch for `Will process states`, `orch_start`, `orch_cycle_result=...`, `national_progress`.
+4. Expect auto re-start / self-redispatch until `orch_cycle_result=complete`.
+
+### B. PowerShell
+
+```powershell
+.\scripts\national-ingest.ps1 -AllowMyIp   # optional firewall for inventory DB
+.\scripts\national-ingest.ps1              # loops until exit 0 / hard fail
+```
+
+Requires `.env` with `DATABASE_URL` (Azure) and `AZURE_*` for job control.
+
+### Expectation (report-detail)
+
+States that finished base ingest but lack FEMA / CMS Timely / ACS population / `score_detail` remain inventory gaps — **do not** use `force_states` only to unlock report-detail. Orchestrator prefers those (class A) over virgin states.
+
+---
+
+## 3. Bounded diagnostic run
+
+GHA: `continuous=false`, `max_states=2` (or similar), optional `state_filter=44`.
+
+**Force re-ingest**: `force_states` (exclusive — no gap padding). Workers get `INGEST_FORCE=1` for that run only.
+
+---
+
+## 4. Manual one state batch (fallback)
 
 Example Rhode Island (`44`):
 
@@ -27,12 +86,55 @@ Example Rhode Island (`44`):
 az containerapp job start --name niq-worker-census --resource-group neighborhoodiq-rg
 ```
 
-States that already finished base ingest but lack FEMA / CMS Timely / ACS population / `score_detail` are still inventory gaps — **do not** use `force_states` only to unlock report-detail. Prefer empty force and let the orchestrator pick them (it prefers those states over virgin ones). See [`specs/005-national-report-detail/quickstart.md`](../005-national-report-detail/quickstart.md).
+---
 
-## Restart safety
+## 5. Verify accurate progress
 
-Re-start the same worker with the same `INGEST_STATE_BATCH`. Logs should show `skip_checkpoint` for finished counties. Orchestrator re-runs use the same DB inventory.
+```sql
+SELECT job_name, pct_complete, done_count, total_count, captured_at
+FROM ingest_status_snapshot
+WHERE scope = 'national'
+ORDER BY job_name;
+```
 
-## Local / metro regression
+`scoring.total_count` should equal national county count (~3143), not “tracts loaded so far”. Workbook refreshes after each worker and every ~15 counties mid-job. Re-import [`infra/workbook-ingest-status.json`](../../infra/workbook-ingest-status.json) if the gallery is stale.
 
-Unset national batch; use `INGEST_SCOPE=metro_10` or empty (fixture defaults) as today.
+---
+
+## 6. Restart safety / metro regression
+
+Re-start the same worker with the same `INGEST_STATE_BATCH`. Logs should show `skip_checkpoint` for finished counties.
+
+Unset national batch; use `INGEST_SCOPE=metro_10` or `smoke` for fast regression — continuous nationwide not required.
+
+---
+
+## 7. Automated checks (dev machine)
+
+```bash
+cd workers
+$env:PYTHONPATH="."
+python -m pytest tests/test_acs_population_checkpoint.py tests/test_inventory_report_detail.py tests/test_report_detail_checkpoints.py tests/test_scope_national_fema_timely.py tests/test_inventory.py tests/test_status_scoring_denominator.py tests/test_orchestrate_continuous.py -q
+```
+
+---
+
+## Contracts
+
+- [worker-env.md](./contracts/worker-env.md)
+- [continuous-orchestrator.md](./contracts/continuous-orchestrator.md)
+- [azure-ops.md](./contracts/azure-ops.md)
+- [national-orchestrator.md](./contracts/national-orchestrator.md)
+- Data: [data-model.md](./data-model.md)
+
+## Failure signals
+
+| Symptom | Likely cause |
+|---------|--------------|
+| Orchestrator never picks report-detail-only states | Inventory missing fema/timely/score_detail/acs-pop gaps |
+| ACS skipped but pop null | Checkpoint not requiring `total_population` |
+| `INGEST_SCOPE=national` refuse on fema/timely | Old worker image still calling `assert_dev_scope` |
+| Scoring % inflated | Loaded-tract denominator (should be geo_counties county grain) |
+| Empty registry treated as complete | Fail-closed bug |
+| Must use force_states for detail | Bug — force must not be required |
+| Smoke UI stale | master Deploy / web image not updated |

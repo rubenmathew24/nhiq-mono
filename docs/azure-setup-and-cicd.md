@@ -410,7 +410,7 @@ Paste the **entire JSON** into GitHub secret `AZURE_CREDENTIALS` (never commit i
 | [`.github/workflows/deploy.yml`](../.github/workflows/deploy.yml) | `push` to `master`, `workflow_dispatch` | **Change-aware Deploy** (see below) |
 | [`.github/workflows/ci-master.yml`](../.github/workflows/ci-master.yml) | `pull_request` → **`master` only** | Web lint+vitest; API pytest on ephemeral PostGIS+Redis after `init.sql` + numbered migrations |
 
-#### Deploy behavior (as-built, feature 010)
+#### Deploy behavior (as-built, feature 007 / `007-cicd-prod-deploy`)
 
 1. **Detect** path changes vs previous commit (`force_full` on dispatch treats all app categories as changed). Categories: `web`, `api`, `schema` (SQL **or** API), `app_config` (`infra/deploy/app-env.manifest.json`). **Workers are never deployed.**
 2. **Migrate** (if `schema`) — `scripts/apply-sql-migrations.py` + `schema_migrations` table — **before** any new API/web image rollout. Failure stops the workflow (no new images).
@@ -519,17 +519,17 @@ az containerapp job start --name niq-worker-scoring --resource-group neighborhoo
 5. Open production web → `609 SE Jamaica Dr, Bentonville, AR` → expand report must match the known-good local/dev expand UI (sub-scores, plain-English stats, hazard/wait when sources provided).
 6. **If smoke fails, do not start National Ingest.** Local Compose alone does not clear this gate.
 
-See also [`specs/005-national-report-detail/quickstart.md`](../specs/005-national-report-detail/quickstart.md).
+See also [`specs/003-national-ingest/quickstart.md`](../specs/003-national-ingest/quickstart.md) (Azure smoke gate + continuous national).
 
 ### National ingest (50 states + DC, continuous)
 
-See also [`specs/003-national-ingest/quickstart.md`](../specs/003-national-ingest/quickstart.md) and [`specs/007-national-ingest-redesign/quickstart.md`](../specs/007-national-ingest-redesign/quickstart.md).
+See also [`specs/003-national-ingest/quickstart.md`](../specs/003-national-ingest/quickstart.md).
 
 1. Apply [`infra/sql/006_geo_counties.sql`](../infra/sql/006_geo_counties.sql) (and **`007_report_detail.sql`** if not already applied for expand reports).
 2. Bootstrap registry (all included jurisdictions): `INGEST_GEO_LOAD_ALL=1` on `niq-worker-geo`, then start it.
 3. **Preferred:** GitHub → Actions → **National ingest** → Run workflow with **`continuous=true`** (default). Optional: `batch_states` (default 10), `state_filter`, `force_states`, `state_exclude`. Set `continuous=false` + `max_states` for a bounded diagnostic nibble. The Action sets `ORCH_CONTINUOUS=1`, starts `niq-worker-orchestrate`, and **chains** orchestrator executions (then self-redispatches the workflow with `chain_depth`, max 50) until logs show `orch_cycle_result=complete`. Progress echoes include `orch_start`, `orch_cycle_result`, `national_progress`.
 4. **Local one-command path:** `.\scripts\national-ingest.ps1` (optional `-AllowMyIp` for Postgres firewall). Same exit-code loop: `0` complete, `2` more work → restart, `1` hard fail.
-5. **Bulk / wide fetch (007):** FEMA downloads the national NRI tracts CSV zip once per national run; ACS uses `in=state:SS county:*`; Urban pages `?fips=` per state with skip-done; FBI caches per-state agency lists and uses bounded county concurrency (`FBI_MAX_CONCURRENCY`); EPA/BLS prefer AirData / LAUS flat files (`EPA_USE_BULK_FILES` / `BLS_USE_BULK_FILES`, default on, API fallback). CMS Timely skips when the batch’s states already have measures for the active vintage.
+5. **Bulk / wide fetch (003 national ingest):** FEMA downloads the national NRI tracts CSV zip once per national run; ACS uses `in=state:SS county:*`; Urban pages `?fips=` per state with skip-done; FBI caches per-state agency lists and uses bounded county concurrency (`FBI_MAX_CONCURRENCY`); EPA/BLS prefer AirData / LAUS flat files (`EPA_USE_BULK_FILES` / `BLS_USE_BULK_FILES`, default on, API fallback). CMS Timely skips when the batch’s states already have measures for the active vintage.
 6. **Progress %:** every job — including **scoring** — uses the full `geo_counties` national county universe as denominator (scoring done = counties where every tract has `fbi_cde` + non-empty `score_detail`). Exclusion only affects scheduling, not the meaning of 100%. Status with `INGEST_SCOPE=national` for Workbook %; orchestrator emits slim `INGEST_STATUS_SNAPSHOT` after workers. Re-import [`infra/workbook-ingest-status.json`](../infra/workbook-ingest-status.json) if the gallery is stale.
 7. **ACA timeouts:** orchestrator `--replica-timeout 21600` (6h); per-source / scoring jobs `10800` (3h). Apply with:
 
