@@ -19,6 +19,7 @@ from app.services.discover_service import (
     DiscoverBBoxError,
     build_city_summary,
     friendly_tract_label,
+    is_discover_display_tract,
     shrink_bbox,
     validate_bbox,
 )
@@ -84,6 +85,12 @@ def test_friendly_tract_label_uses_city_prefix():
         friendly_tract_label("Bentonville, Arkansas, United States", "05007020102")
         == "Bentonville · Tract 020102"
     )
+
+
+def test_is_discover_display_tract_excludes_water_only():
+    assert is_discover_display_tract(0) is False
+    assert is_discover_display_tract(1) is True
+    assert is_discover_display_tract(None) is True  # pre-backfill = land
 
 
 def test_build_city_summary_ignores_non_city_fringe():

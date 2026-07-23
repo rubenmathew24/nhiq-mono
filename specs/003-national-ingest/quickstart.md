@@ -8,6 +8,7 @@ Full narrative: [`docs/azure-setup-and-cicd.md`](../../docs/azure-setup-and-cicd
 
 - [ ] SQL `006_geo_counties.sql` applied; county registry bootstrapped (`niq-worker-geo` with `INGEST_GEO_LOAD_ALL=1`)
 - [ ] `infra/sql/007_report_detail.sql` applied when expand/report-detail is needed; confirm `acs_indicators.total_population`
+- [ ] `infra/sql/010_census_tract_land_water.sql` applied when Discover water-only filtering is needed; confirm `census_tracts.aland` / `awater` (re-run census with force for already-done counties)
 - [ ] Worker image current; ACA jobs include `niq-worker-fema`, `niq-worker-cms-timely`, `niq-worker-orchestrate`
 - [ ] ACA timeouts: orchestrator `21600`s; workers `10800`s
 - [ ] Keys as for metro ingest; Azure SP / `AZURE_CREDENTIALS`; GHA `actions: write` for continuous chaining

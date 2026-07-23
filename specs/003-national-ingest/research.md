@@ -12,6 +12,14 @@
 
 **Alternatives rejected**: Static checked-in 3k-row CSV (stale); derive only from `census_tracts` (no centroids, chicken-and-egg with census worker).
 
+### R1a — Tract land/water area (2026-07-23)
+
+**Decision**: National census path keeps TIGER `ALAND`/`AWATER` on `census_tracts` (same as 002 FR-004a). Water-only tracts stay in the warehouse; Discover filters presentation (`aland = 0`). Status/scoring denominators unchanged.
+
+**Rationale**: One schema for smoke / metro_10 / national; Lake Michigan–style tracts otherwise pollute city maps/summaries without being “gaps” in national ingest.
+
+**Alternatives rejected**: Separate “display tracts” table; deleting water-only rows (breaks FEMA/score grain); ACS population as national census requirement for this amend.
+
 ### R2 — Jurisdiction extensibility
 
 **Decision**: `INCLUDED_STATE_FIPS` = 50 states + `11` (DC). Separate `TERRITORY_STATE_FIPS` (empty in v1: PR `72`, GU `66`, VI `78`, AS `60`, MP `69` documented). National universe = counties whose state FIPS ∈ `INCLUDED_STATE_FIPS`.

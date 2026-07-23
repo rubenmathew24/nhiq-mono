@@ -2,7 +2,7 @@
 
 **Input**: Design documents from `/specs/003-national-ingest/`
 
-**Note**: Historical task lists from the original 003 workstream and absorbed features `005-national-report-detail` and `007-national-ingest-redesign`. All items remain checked; no new unchecked work. Path citations below may still mention former feature directories for provenance.
+**Note**: Historical task lists from the original 003 workstream and absorbed features `005-national-report-detail` and `007-national-ingest-redesign`. Completed items remain checked. **Phase 9** (census land/water consistency, 2026-07-23) is implemented in shared `workers/ingest/census/` + `010_census_tract_land_water.sql`; apply migration + force census on existing DBs before Discover filtering works.
 
 ---
 
@@ -498,3 +498,13 @@ T016 EPA bulk  | T017 BLS bulk  | T018 CMS Timely skip
 - [x] T031 Fail closed (or refuse national continuous/status success) when `geo_counties` is incomplete for included 50+DC jurisdictions (e.g. distinct included `state_fips` ≠ 51) in `workers/ingest/geo/scope.py` and callers per Edge Cases / FR-001 / SC-001 (`partial`)
 - [x] T032 Distinguish “nothing left to schedule” vs “nation inventory clear” in `workers/ingest/orchestrate/run.py`: when remaining gaps exist only on `exclude_states`, do not emit `orch_cycle_result=complete` (use non-complete stop + clear log) per Edge Cases / FR-014 (`contradicts`)
 - [x] T033 [P] Add regression tests in `workers/tests/` for empty registry fail-closed, incomplete registry fail-closed, and exclude-only remaining gaps ≠ complete per Constitution VI / T030–T032 (`missing`)
+
+---
+
+## Phase 9: Census land/water consistency (amend 2026-07-23)
+
+**Purpose**: Keep national census path aligned with 002 FR-004a / FR-006a. Implementation shared with 002 census worker + schema.
+
+- [x] T034 Confirm national census uses the same `workers/ingest/census/` upsert that writes `aland`/`awater` (no national fork that drops land/water) per FR-006a
+- [x] T035 Document production apply of `010_census_tract_land_water.sql` + forced census backfill for counties with NULL `aland` in `specs/003-national-ingest/quickstart.md` (FR-030)
+- [ ] T036 [P] Operator smoke: Cook County (or Chicago metro_10) tracts over Lake Michigan have `aland = 0` after migration + force census; national status % unchanged

@@ -113,6 +113,15 @@ def friendly_tract_label(place_name: str | None, geoid: str) -> str:
     return f"Tract {suffix}"
 
 
+def is_discover_display_tract(aland: int | None) -> bool:
+    """True for land tracts Discover may color/summarize.
+
+    Water-only = ``aland == 0`` (TIGER ALAND). NULL means migration/backfill
+    pending — treat as land until census re-ingest fills the column.
+    """
+    return aland is None or aland > 0
+
+
 def build_city_summary(
     features: list[DiscoverFeature],
     *,
@@ -223,6 +232,7 @@ async def fetch_tracts_in_bbox(
               ON ns.geoid = t.geoid
              AND ns.data_vintage = :vintage
             WHERE t.geometry IS NOT NULL
+              AND (t.aland IS NULL OR t.aland > 0)
               AND ST_Intersects(
                     t.geometry,
                     ST_MakeEnvelope(

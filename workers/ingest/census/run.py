@@ -78,6 +78,8 @@ class CensusTractWorker(BaseIngestionWorker):
                         "STATEFP": row.get("STATEFP"),
                         "COUNTYFP": row.get("COUNTYFP"),
                         "TRACTCE": row.get("TRACTCE"),
+                        "ALAND": row.get("ALAND"),
+                        "AWATER": row.get("AWATER"),
                         "geometry": row.geometry,
                     }
                 )
@@ -109,6 +111,8 @@ class CensusTractWorker(BaseIngestionWorker):
                             r["state_fips"],
                             r["county_fips"],
                             r["tract_fips"],
+                            r.get("aland"),
+                            r.get("awater"),
                             wkt.dumps(mp),
                         )
                     )
@@ -116,16 +120,20 @@ class CensusTractWorker(BaseIngestionWorker):
                     cur,
                     """
                     INSERT INTO census_tracts
-                        (geoid, state_fips, county_fips, tract_fips, geometry)
+                        (geoid, state_fips, county_fips, tract_fips, aland, awater, geometry)
                     VALUES %s
                     ON CONFLICT (geoid) DO UPDATE SET
                         state_fips = EXCLUDED.state_fips,
                         county_fips = EXCLUDED.county_fips,
                         tract_fips = EXCLUDED.tract_fips,
+                        aland = EXCLUDED.aland,
+                        awater = EXCLUDED.awater,
                         geometry = EXCLUDED.geometry
                     """,
                     rows,
-                    template="(%s, %s, %s, %s, ST_SetSRID(ST_GeomFromText(%s), 4326))",
+                    template=(
+                        "(%s, %s, %s, %s, %s, %s, ST_SetSRID(ST_GeomFromText(%s), 4326))"
+                    ),
                     page_size=500,
                 )
             conn.commit()

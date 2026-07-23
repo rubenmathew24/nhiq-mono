@@ -200,10 +200,10 @@
 
 **Independent Test**: Click Highest → map focuses; hover alone does nothing; click Lowest → switches; click Lowest again → clears + city framing; active row shows hint.
 
-- [ ] T054 [P] Update web tests: hover MUST NOT call `onFocusGeoid`; click toggles/switches; focused row shows clear-affordance hint in `apps/web/src/__tests__/discover-city-summary.test.tsx`
-- [ ] T055 [US4] Remove hover/`onMouseLeave` focus handlers; click-only toggle/switch; selected styling + “Focused · click to clear” (or equivalent) on active row in `apps/web/src/components/discover/DiscoverCitySummary.tsx` per FR-016 / FR-020 / research §13
-- [ ] T056 [P] Confirm `DiscoverMapClient` / map focus path still restores city framing on `focusedGeoid === null` (no hover-driven clears) in `apps/web/src/components/discover/`
-- [ ] T057 Run `cd apps/web && npx vitest run src/__tests__/discover-city-summary.test.tsx` (and related discover tests) — ensure green; smoke quickstart click scenarios
+- [x] T054 [P] Update web tests: hover MUST NOT call `onFocusGeoid`; click toggles/switches; focused row shows clear-affordance hint in `apps/web/src/__tests__/discover-city-summary.test.tsx`
+- [x] T055 [US4] Remove hover/`onMouseLeave` focus handlers; click-only toggle/switch; selected styling + “Focused · click to clear” (or equivalent) on active row in `apps/web/src/components/discover/DiscoverCitySummary.tsx` per FR-016 / FR-020 / research §13
+- [x] T056 [P] Confirm `DiscoverMapClient` / map focus path still restores city framing on `focusedGeoid === null` (no hover-driven clears) in `apps/web/src/components/discover/`
+- [x] T057 Run `cd apps/web && npx vitest run src/__tests__/discover-city-summary.test.tsx` (and related discover tests) — ensure green; smoke quickstart click scenarios
 
 ---
 

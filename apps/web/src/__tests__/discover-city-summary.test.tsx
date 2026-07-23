@@ -68,7 +68,7 @@ describe("DiscoverCitySummary", () => {
 });
 
 describe("DiscoverCitySummary focus handlers", () => {
-  it("hover sets focused geoid and leave clears", async () => {
+  it("hover does not change map focus", async () => {
     const user = userEvent.setup();
     const onFocus = vi.fn();
     render(
@@ -79,13 +79,13 @@ describe("DiscoverCitySummary focus handlers", () => {
       />,
     );
     const highest = screen.getByRole("button", { name: /highest/i });
+    const lowest = screen.getByRole("button", { name: /lowest/i });
     await user.hover(highest);
-    expect(onFocus).toHaveBeenCalledWith("05007020102");
-    await user.unhover(highest);
-    expect(onFocus).toHaveBeenCalledWith(null);
+    await user.hover(lowest);
+    expect(onFocus).not.toHaveBeenCalled();
   });
 
-  it("tap toggles focus without report links", async () => {
+  it("click toggles focus and shows clear hint; switch rows without null gap", async () => {
     const user = userEvent.setup();
     const onFocus = vi.fn();
     const { rerender } = render(
@@ -107,7 +107,22 @@ describe("DiscoverCitySummary focus handlers", () => {
         onFocusGeoid={onFocus}
       />,
     );
-    await user.click(screen.getByRole("button", { name: /highest/i }));
+    expect(screen.getByText(/Focused · click to clear/i)).toBeInTheDocument();
+
+    onFocus.mockClear();
+    await user.click(screen.getByRole("button", { name: /lowest/i }));
+    expect(onFocus).toHaveBeenCalledWith("05007020101");
+    expect(onFocus).not.toHaveBeenCalledWith(null);
+
+    rerender(
+      <DiscoverCitySummary
+        summary={fullSummary}
+        focusedGeoid="05007020101"
+        onFocusGeoid={onFocus}
+      />,
+    );
+    onFocus.mockClear();
+    await user.click(screen.getByRole("button", { name: /lowest/i }));
     expect(onFocus).toHaveBeenCalledWith(null);
   });
 });

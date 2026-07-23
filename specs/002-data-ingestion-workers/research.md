@@ -103,9 +103,13 @@ Probe `source_id` values grouped by product pillar. **002 status** = role in *th
 
 **Decision**: Download TIGER/Line tract zip **per fixture state**, GeoPandas → EPSG:4326, filter to fixture `STATEFP`+`COUNTYFP`, upsert `census_tracts` on `geoid`.
 
+**Land/water (2026-07-23)**: Keep TIGER `ALAND` / `AWATER` through transform → load. Do **not** drop them when shaping records (current gap: `run.py` / `filter_tract_records` only keep GEOID + geometry). Persist as `aland` / `awater` (BIGINT m²). Downstream (Discover) treats **`aland = 0`** as water-only — exclude from choropleth fills and city snapshot high/low. Building footprints rejected; ACS population filter deferred.
+
 **Probe alignment**: `census_tiger_line` (FCC block) is **QA/redundancy** only; production polygons still require hosted TIGER (this worker). Bootstrap geocoder is infrastructure for address workflows, not a substitute for PostGIS polygons.
 
-**Rationale**: Matches FR-004 / FR-018.
+**Rationale**: Matches FR-004 / FR-004a / FR-018; enables water-only exclusion without new geospatial sources.
+
+**Alternatives considered**: Tract-code 9900–9998 only (heuristic, incomplete); ACS `total_population = 0` as primary filter (needs ACS join; deferred); omit water tracts from ingest entirely (breaks county completeness / FEMA join grain).
 
 ---
 

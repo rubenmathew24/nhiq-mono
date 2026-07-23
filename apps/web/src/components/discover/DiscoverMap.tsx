@@ -20,6 +20,51 @@ type Props = {
 const SOURCE_ID = "discover-tracts";
 const FILL_ID = "discover-tracts-fill";
 const LINE_ID = "discover-tracts-line";
+/** Padding for city framing — minZoom is locked to this fit so scroll/UI match un-focus. */
+const CITY_FIT_PADDING = 40;
+
+function cityBounds(bbox: DiscoverBBox): mapboxgl.LngLatBoundsLike {
+  return [
+    [bbox.min_lng, bbox.min_lat],
+    [bbox.max_lng, bbox.max_lat],
+  ];
+}
+
+/**
+ * Fit place bbox (with padding), then lock minZoom + maxBounds to that framing.
+ * Place-only maxBounds is tighter than a padded fitBounds view, which blocked
+ * scroll-zoom from reaching the same floor as un-focus / nav −.
+ */
+function fitCityAndLockMinZoom(
+  map: mapboxgl.Map,
+  bbox: DiscoverBBox,
+  options?: { duration?: number; onDone?: () => void },
+) {
+  const duration = options?.duration ?? 0;
+  const applyLock = () => {
+    const z = map.getZoom();
+    map.setMinZoom(z);
+    const b = map.getBounds();
+    const padX = Math.max((b.getEast() - b.getWest()) * 0.02, 0.001);
+    const padY = Math.max((b.getNorth() - b.getSouth()) * 0.02, 0.001);
+    map.setMaxBounds([
+      [b.getWest() - padX, b.getSouth() - padY],
+      [b.getEast() + padX, b.getNorth() + padY],
+    ]);
+    options?.onDone?.();
+  };
+  if (duration > 0) {
+    map.once("moveend", applyLock);
+  }
+  map.fitBounds(cityBounds(bbox), {
+    padding: CITY_FIT_PADDING,
+    duration,
+    maxZoom: 14,
+  });
+  if (duration === 0) {
+    applyLock();
+  }
+}
 
 function popupHtml(geoid: string, score: number | null): string {
   const summary = popupCopy(geoid, score);
@@ -90,22 +135,16 @@ export default function DiscoverMap({
       [bbox.max_lng, bbox.max_lat],
     );
 
-    // Slight padding so maxBounds doesn't feel stuck on the edges.
-    const pad = 0.02;
-    const spanLng = Math.max(bbox.max_lng - bbox.min_lng, 0.01);
-    const spanLat = Math.max(bbox.max_lat - bbox.min_lat, 0.01);
-    const maxBounds: mapboxgl.LngLatBoundsLike = [
-      [bbox.min_lng - spanLng * pad, bbox.min_lat - spanLat * pad],
-      [bbox.max_lng + spanLng * pad, bbox.max_lat + spanLat * pad],
-    ];
+    // maxBounds is applied after city fit (see fitCityAndLockMinZoom) so it matches
+    // the padded framing; a tight place maxBounds blocked scroll short of minZoom.
     const map = new mapboxgl.Map({
       container: containerRef.current,
       style: "mapbox://styles/mapbox/light-v11",
       bounds,
-      fitBoundsOptions: { padding: 40 },
-      maxBounds,
-      minZoom: 8,
+      fitBoundsOptions: { padding: CITY_FIT_PADDING },
     });
+
+    map.scrollZoom.enable({ around: "center" });
 
     map.addControl(new mapboxgl.NavigationControl({ showCompass: false }), "top-right");
     mapRef.current = map;
@@ -145,6 +184,7 @@ export default function DiscoverMap({
     };
 
     map.on("load", () => {
+      fitCityAndLockMinZoom(map, bbox, { duration: 0 });
       map.addSource(SOURCE_ID, {
         type: "geojson",
         data: { type: "FeatureCollection", features: [] },
@@ -235,19 +275,17 @@ export default function DiscoverMap({
   useEffect(() => {
     const map = mapRef.current;
     if (!map) return;
+    let cancelled = false;
 
     const applyFocus = () => {
-      if (!map.getLayer(FILL_ID)) return;
+      if (cancelled || !map.getLayer(FILL_ID)) return;
+
+      // Kill any in-flight camera animation so leave→enter races don't land mid-city.
+      map.stop();
 
       if (!focusedGeoid) {
         map.setPaintProperty(FILL_ID, "fill-opacity", 0.55);
-        map.fitBounds(
-          [
-            [bbox.min_lng, bbox.min_lat],
-            [bbox.max_lng, bbox.max_lat],
-          ],
-          { padding: 40, duration: 600, maxZoom: 14 },
-        );
+        fitCityAndLockMinZoom(map, bbox, { duration: 600 });
         return;
       }
 
@@ -278,6 +316,10 @@ export default function DiscoverMap({
     } else {
       map.once("load", applyFocus);
     }
+
+    return () => {
+      cancelled = true;
+    };
   }, [focusedGeoid, tracts, bbox]);
 
   if (!mapboxToken?.trim()) {

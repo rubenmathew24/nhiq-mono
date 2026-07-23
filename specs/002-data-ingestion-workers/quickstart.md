@@ -53,6 +53,31 @@ When EPA monitors are missing/sparse for a fixture county, `worker-scoring` call
    docker compose --profile workers run --rm worker-scoring
    ```
 
+### V10 — Census land/water (ALAND / AWATER)
+
+For existing Compose volumes (not a fresh `init.sql`):
+
+```bash
+# From repo root — or use scripts/apply-sql-migrations.py against DATABASE_URL
+docker compose exec -T db psql -U postgres -d neighborhoodiq < infra/sql/010_census_tract_land_water.sql
+```
+
+Then re-ingest tracts so `aland`/`awater` fill (checkpoint skip otherwise leaves NULL):
+
+```bash
+INGEST_FORCE=1 docker compose --profile workers run --rm -e INGEST_FORCE=1 worker-census
+```
+
+Confirm water-only Cook County tracts:
+
+```bash
+docker compose exec db psql -U postgres -d neighborhoodiq -c \
+  "SELECT geoid, aland, awater FROM census_tracts
+   WHERE county_fips='031' AND state_fips='17' AND aland = 0 LIMIT 5;"
+```
+
+Discover (008) excludes `aland = 0` from fills/summary; NULL `aland` still displays as land until this backfill.
+
 ## Validation scenarios
 
 ### V1–V6 — MVP (healthcare + environment)
@@ -103,5 +128,6 @@ docker compose exec db psql -U postgres -d neighborhoodiq -c \
 - [x] V7 safety phase passes (FBI CDE + non-placeholder safety) — Bentonville (`05007%`) tracts show `score_sources.safety.source_id=fbi_cde`; worker fail-fast verified without key. **Note:** upstream CDE 503s may leave non-Benton fixture counties on `default` until a clean `worker-fbi` re-run
 - [x] V8 education phase passes (NCES + Urban) — fixture schools loaded; Bentonville `education` source `nces_urban`
 - [x] V9 economic phase fully dual-source — ACS tract indicators + BLS LAUS loaded; Bentonville `economic` source `acs_bls_laus` (`CENSUS_API_KEY` required for ACS)
+- [ ] V10 TIGER land/water — apply `010_census_tract_land_water.sql`, force `worker-census`, confirm Cook County `aland = 0` rows (see V10 section above)
 - [x] No Azure / master steps required
 - [x] Operators understand EPA sparsity + CMS ZIP + dual-source complementarity notes

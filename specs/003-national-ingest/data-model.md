@@ -23,6 +23,17 @@ Indexes: `(state_fips)`.
 
 Empty or incomplete registry for included 50+DC → fail closed for national continuous/status success.
 
+## Table: `census_tracts` (shared with 002; land/water amend)
+
+National census worker writes the same table as local fixture ingest. Additive columns (see [`002` data-model](../002-data-ingestion-workers/data-model.md)):
+
+| Column | Type | Notes |
+|--------|------|-------|
+| aland | BIGINT NULL | TIGER land area m²; `0` = water-only |
+| awater | BIGINT NULL | TIGER water area m² |
+
+**Completeness**: Census checkpoint still “≥1 tract for county.” After migration, force or backfill census for counties whose rows have NULL `aland`/`awater` if Discover needs water-only filtering. Do **not** drop water-only tracts from the warehouse.
+
 ## Report-detail entities (reuse; schema `007_report_detail.sql`)
 
 | Entity | Storage | Role |

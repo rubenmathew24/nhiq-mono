@@ -103,8 +103,6 @@ function HighlightRow({
           ? "border-mint bg-mint/10"
           : "border-border hover:border-mint/50 hover:bg-muted/40"
       }`}
-      onMouseEnter={() => onFocusGeoid(geoid)}
-      onMouseLeave={() => onFocusGeoid(null)}
       onClick={() => onFocusGeoid(focused ? null : geoid)}
       aria-pressed={focused}
     >
@@ -115,6 +113,9 @@ function HighlightRow({
           </p>
           <p className="font-medium truncate">{label}</p>
           <p className="text-xs text-muted-foreground mt-0.5">GEOID {geoid}</p>
+          {focused ? (
+            <p className="text-xs text-mint mt-1">Focused · click to clear</p>
+          ) : null}
         </div>
         <p className="text-2xl font-bold tabular-nums shrink-0">
           {formatScore(score)}

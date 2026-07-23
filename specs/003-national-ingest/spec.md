@@ -24,6 +24,12 @@
 - Original 003 assumption “a single multi-day unattended run without re-dispatch is OUT OF SCOPE” is **superseded** by continuous mode (GHA self-chain / PowerShell loop). Bounded max_states / filter / force runs remain available for diagnostics.
 - Status denominators that used only loaded tracts for scoring are **superseded**: scoring done is county-grain against full `geo_counties` (fbi_cde + non-empty `score_detail`).
 
+### Session 2026-07-23 (census land/water consistency)
+
+- Q: Does national census ingest need the same TIGER land/water fields as local 002? → A: **Yes** — national `worker-census` uses the same `census_tracts` schema and upsert path. Persist `aland`/`awater` for every loaded tract under smoke, metro_10, and national scopes. Do not invent a parallel national-only geometry table.
+- Q: Does water-only exclusion change national completeness / scoring grain? → A: **No** — tracts with `aland = 0` remain in `census_tracts` (county coverage, FEMA join, scoring still apply). Discover (008) excludes them from **map fill and city snapshot**; national status % is unchanged.
+- Q: Force / re-ingest? → A: After schema migration, counties already marked census-done still lack `aland`/`awater` until force or a one-time backfill re-run; document that for ops (Azure/Compose).
+
 ## User Scenarios & Testing *(mandatory)*
 
 ### User Story 1 - Scopes and county registry (Priority: P1)
@@ -194,6 +200,7 @@ Operators use inventory-driven orchestration (gap-only ACA starts), exclusive `f
 - **FR-004**: System MUST require an explicit state batch for national worker runs; empty batch under national scope MUST be rejected with a clear operator-facing message.
 - **FR-005**: System MUST limit each national worker run to counties in the supplied state batch (orchestrator may set multi-state batches).
 - **FR-006**: Every national-capable ingest and scoring worker MUST checkpoint progress such that a restart with the same batch skips units already successfully stored, using durable database contents as the source of truth.
+- **FR-006a**: National census ingest MUST persist TIGER land area and water area (`aland` / `awater`, m²) on `census_tracts` consistently with [`002-data-ingestion-workers`](../002-data-ingestion-workers/) FR-004a. Checkpoint “census done” remains ≥1 tract row per county; land/water fields MUST be present after a fresh or forced census run for that county. Water-only tracts (`aland = 0`) MUST still be stored (not deleted) so county and report-detail coverage stay complete.
 - **FR-007**: Checkpoint grain MUST be at least county for county-scoped work; state-scoped source pulls MAY checkpoint at state when that matches the source’s natural unit.
 - **FR-008**: Safety ingest under national scope MUST select agencies using a per-county geographic point derived from authoritative geography (e.g. county centroid), not the metro fixture street-address list.
 - **FR-009**: Safety ingest MUST continue to upsert/checkpoint per county and MUST report honest incomplete coverage when some counties fail.
@@ -225,8 +232,8 @@ Operators use inventory-driven orchestration (gap-only ACA starts), exclusive `f
 
 #### Report-detail
 
-- **FR-029**: Production database MUST support additive storage for tract hazard data, hospital timely-care measures, ACS total population for safety rate normalization, and per-tract report expand detail, without destroying existing ingest or score rows.
-- **FR-030**: Operators MUST be able to apply those production schema updates using documented, idempotent steps (`infra/sql/007_report_detail.sql` and related).
+- **FR-029**: Production database MUST support additive storage for tract hazard data, hospital timely-care measures, ACS total population for safety rate normalization, per-tract report expand detail, and census tract land/water area (`aland`/`awater`), without destroying existing ingest or score rows.
+- **FR-030**: Operators MUST be able to apply those production schema updates using documented, idempotent steps (`infra/sql/007_report_detail.sql`, `infra/sql/010_census_tract_land_water.sql` when present, and related).
 - **FR-031**: Hazard and timely-care collection MUST run for active national (and smoke/metro) geography scopes and persist with safe skip/upsert.
 - **FR-032**: Inventory MUST treat a state/county as still having work when base ingest is complete but any report-detail stage is incomplete (hazard, timely-care, ACS total population, or empty expand detail). Force MUST NOT be required solely to unlock report-detail for previously gathered states.
 - **FR-033**: When selecting states for a normal max_states / continuous gap-fill run (no force, no exclusive state filter), the orchestrator MUST prefer class A (base-complete, report-detail gaps) over class B (virgin/other), then fill remaining budget from other gap states.

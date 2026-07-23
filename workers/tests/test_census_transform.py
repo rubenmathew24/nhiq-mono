@@ -28,6 +28,8 @@ def test_filter_tract_records_keeps_fixture_only():
             "STATEFP": "05",
             "COUNTYFP": "007",
             "TRACTCE": "020100",
+            "ALAND": 1_234_567,
+            "AWATER": 100,
             "geometry": "geom-a",
         },
         {
@@ -50,3 +52,35 @@ def test_filter_tract_records_keeps_fixture_only():
     assert out[0]["geoid"] == "05007020100"
     assert out[0]["state_fips"] == "05"
     assert out[0]["county_fips"] == "007"
+    assert out[0]["aland"] == 1_234_567
+    assert out[0]["awater"] == 100
+
+
+def test_filter_tract_records_persists_water_only_aland_zero():
+    """Water-only tracts stay in the warehouse (aland=0); Discover filters later."""
+    records = [
+        {
+            "GEOID": "17031990000",
+            "STATEFP": "17",
+            "COUNTYFP": "031",
+            "TRACTCE": "990000",
+            "ALAND": 0,
+            "AWATER": 50_000_000,
+            "geometry": "lake",
+        },
+    ]
+    # Cook County is in metro_10 fixtures
+    out = filter_tract_records(records)
+    assert len(out) == 1
+    assert out[0]["aland"] == 0
+    assert out[0]["awater"] == 50_000_000
+
+
+def test_coerce_area_m2():
+    from ingest.census.transform import coerce_area_m2
+
+    assert coerce_area_m2(0) == 0
+    assert coerce_area_m2("42") == 42
+    assert coerce_area_m2(None) is None
+    assert coerce_area_m2(-1) is None
+    assert coerce_area_m2("x") is None

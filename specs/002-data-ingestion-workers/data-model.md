@@ -20,11 +20,15 @@ Reopen adds CDE crime staging, NCES + Urban school tables, ACS indicators, and L
 | county_fips | VARCHAR(3) | NOT NULL (county portion; full county key = state+county) |
 | tract_fips | VARCHAR(6) | NOT NULL |
 | geometry | MULTIPOLYGON 4326 | REQUIRED for scoring / point-in-polygon |
+| aland | BIGINT | nullable — TIGER land area m² (`ALAND`); `0` = water-only / no land |
+| awater | BIGINT | nullable — TIGER water area m² (`AWATER`) |
 | created_at | timestamptz | default now |
 
-**Indexes**: unique geoid; GIST(geometry); `(state_fips, county_fips)`.
+**Indexes**: unique geoid; GIST(geometry); `(state_fips, county_fips)`. Optional partial index on `aland = 0` for Discover water-only exclusion.
 
-**Scope**: Fixture counties only after TIGER load + filter.
+**Scope**: Fixture counties only after TIGER load + filter (national scope expands the same schema via 003).
+
+**Migration**: Additive columns on existing DBs (e.g. `infra/sql/010_census_tract_land_water.sql` + mirror in `init.sql`); census worker upsert MUST refresh `aland`/`awater` on re-run.
 
 ---
 
