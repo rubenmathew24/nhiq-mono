@@ -89,3 +89,63 @@
 
 **Alternatives considered**:
 - Playwright e2e in this POC — deferred unless CI already has it ready
+
+## 10. City scope for snapshot stats (vs map bbox)
+
+**Decision**: Map overlay continues to use bbox intersection. Snapshot stats use a **city scope** subset:
+1. **Preferred (when available later)**: tracts whose centroids lie inside a place polygon (Census incorporated place / Mapbox Boundaries) — deferred as optional ingest.
+2. **v1 default**: **tighter core** — tracts whose centroids fall inside an axis-aligned box shrunk toward the center of the geocoder bbox (e.g. keep central 70% of width/height, configurable `CITY_CORE_SHRINK=0.7`). Tag each feature with `in_city_scope: bool`. Compute summary only from city-scoped tracts (`overall_score` required for average/high/low; totals include unscored in-scope).
+
+**Rationale**: Clarify B (polygon when available, else tighter core); avoids suburb pollution from raw bbox without blocking on new national place ingest.
+
+**Alternatives considered**:
+- Stats = all rendered tracts — rejected (clarify)
+- Mandatory Census place ingest now — accurate but expands scope beyond this increment
+- County FIPS filter — wrong for multi-county cities / partial counties
+
+## 11. Snapshot payload shape
+
+**Decision**: Extend `GET /api/v1/discover/tracts` with a `summary` object:
+
+- `scope_mode`: `"inner_bbox"` | `"place_polygon"`
+- `average_overall`, `score_min`, `score_max` (city-scoped scored only)
+- `scored_count`, `total_count` (city-scoped)
+- `highest` / `lowest`: `{ geoid, overall_score, label }` or null if fewer than 2 scored city tracts
+- `insufficient_data`: true when highs/lows cannot be formed
+
+Map `meta` remains overlay-oriented (full FeatureCollection). Client does not recompute city averages from all features.
+
+**Rationale**: One round-trip; server owns scope filter; matches FR-014–017.
+
+**Alternatives considered**:
+- Separate `/discover/summary` — extra request; easy to drift from map
+- Client-only filter — risks inconsistent shrink logic
+
+## 12. Friendly labels for high/low
+
+**Decision**: `label` = short place context from `place_name` + `Tract {geoid suffix}`. Optional later: Mapbox reverse geocode of tract centroid — not required for acceptance.
+
+**Rationale**: Clarify B without new tables.
+
+**Alternatives considered**:
+- GEOID-only — rejected
+- Always reverse-geocode every tract — latency/cost for POC
+
+## 13. Summary ↔ map focus UX
+
+**Decision**: `DiscoverCitySummary` places average/coverage headline, then **highest**, then **lowest**, then remaining stats (FR-019). Hover/tap sets `focusedGeoid`; map dims non-focused fills and `fitBounds` to that feature within `maxBounds`. Clear restores city framing.
+
+**Rationale**: Clarify hover/tap + gentle fit + layout visibility.
+
+**Alternatives considered**:
+- Highlight only without fit — rejected
+- Always pin both high and low — rejected
+
+## 14. Local CORS / host alignment
+
+**Decision**: Allow `http://127.0.0.1:3000` and `http://localhost:3000` in API `CORS_ORIGINS`. Browser `getApiBase()` rewrites loopback hostnames to match the page host.
+
+**Rationale**: Runtime: `127.0.0.1` page → `localhost:8000` caused `Load failed` despite API 200.
+
+**Alternatives considered**:
+- Document “only use localhost” — brittle for Next bound to `127.0.0.1`

@@ -6,12 +6,14 @@
 
 **Tests**: Constitution VI — API tests in `apps/api/tests/`; web tests in `apps/web/src/__tests__/`.
 
-**Organization**: Setup → Foundation → US1 (header + place search → map) → US2 (tracts API + choropleth) → US3 (tract popup) → Polish
+**Organization**: Setup → Foundation → US1 (search → map) → US2 (choropleth) → US3 (popup) → Polish (base) → **US4 foundation** → **US4 city summary** → Polish (expansion)
+
+**Note**: T001–T033 delivered the base Discover POC and remain `[x]`. Open tasks start at **T034** for the city-summary expansion (US4).
 
 ## Format: `[ID] [P?] [Story] Description`
 
 - **[P]**: Can run in parallel (different files, no dependencies on incomplete work)
-- **[Story]**: US1 / US2 / US3
+- **[Story]**: US1 / US2 / US3 / US4
 - Include exact file paths in descriptions
 
 ## Path Conventions
@@ -116,14 +118,66 @@
 
 ---
 
-## Phase 6: Polish & Cross-Cutting Concerns
+## Phase 6: Polish & Cross-Cutting Concerns (base POC)
 
-**Purpose**: Hardening and validation across stories
+**Purpose**: Hardening and validation across US1–US3
 
 - [x] T030 [P] Confirm Discover never calls lookup/save/touch user APIs (code review + grep) across `apps/web/src/components/discover/` and `apps/web/src/app/discover/`
 - [x] T031 [P] Verify `/discover` and `/discover/map` are public (not gated in `apps/web/src/middleware.ts`)
 - [x] T032 Run quickstart scenarios in `specs/008-discover-mode/quickstart.md` and fix gaps found
 - [x] T033 [P] Run `cd apps/api && pytest tests/test_discover.py -q` and `cd apps/web && npm test -- --run src/__tests__/discover*.test.*` — ensure green
+
+**Checkpoint**: Base Discover POC complete
+
+---
+
+## Phase 7: Foundational — City summary contracts (blocks US4)
+
+**Purpose**: Extend API/web contracts and map shell so US4 can render summary + focus without reworking Header/Footer
+
+**⚠️ CRITICAL**: Complete before US4 implementation tasks (tests may be written first and fail)
+
+- [ ] T034 Extend Pydantic models with `in_city_scope`, `summary` (`scope_mode`, averages, high/low, `insufficient_data`) in `apps/api/app/schemas/discover.py` per `specs/008-discover-mode/contracts/discover-api.md`
+- [ ] T035 [P] Extend Zod/TS types for `summary` + `in_city_scope` in `apps/web/src/types/discover.ts`
+- [ ] T036 Ensure `/discover/map` is a Server Component shell (Header/Footer) with client island `apps/web/src/components/discover/DiscoverMapClient.tsx` and thin `apps/web/src/app/discover/map/page.tsx` (fixes async Header-in-client bug)
+- [ ] T037 [P] Allow `http://127.0.0.1:3000` (and localhost) in `CORS_ORIGINS` in `apps/api/app/core/config.py`; align loopback host in `getApiBase()` in `apps/web/src/lib/api.ts`
+
+**Checkpoint**: Summary contracts + map shell ready for US4
+
+---
+
+## Phase 8: User Story 4 — City summary under the map (Priority: P2)
+
+**Goal**: Below-map city snapshot (average, highest/lowest, scored/total, min–max) using **city scope** (inner-bbox core v1), not full map-bbox overlay; high/low near top; hover/tap focuses tract (dim + gentle fit within lock)
+
+**Independent Test**: Open a city whose map bbox includes fringe tracts; summary high/low/average match city-scoped tracts only; hover/tap highest/lowest → dim + gentle fit; high/low rows visible without scrolling the map away on a typical laptop viewport; &lt;2 scored city tracts → honest insufficient/empty summary (no fake high/low)
+
+### Tests for User Story 4
+
+- [ ] T038 [P] [US4] API tests: `summary` aggregates city-scoped only; `in_city_scope` flags; `insufficient_data` when &lt;2 scored city tracts; high/low null vs populated in `apps/api/tests/test_discover.py` (or `apps/api/tests/test_discover_summary.py`)
+- [ ] T039 [P] [US4] Web test: summary layout order (headline → highest → lowest → rest) and empty/insufficient state in `apps/web/src/__tests__/discover-city-summary.test.tsx`
+- [ ] T040 [P] [US4] Web test: hover/tap handlers set/clear `focusedGeoid` (no report navigation) in `apps/web/src/__tests__/discover-summary-focus.test.tsx`
+
+### Implementation for User Story 4
+
+- [ ] T041 [US4] Implement inner-bbox city-core membership (`CITY_CORE_SHRINK`) + tag `in_city_scope` on features in `apps/api/app/services/discover_service.py`
+- [ ] T042 [US4] Compute `summary` (average, min/max, counts, highest/lowest labels, `scope_mode=inner_bbox`, `insufficient_data`) over city-scoped tracts only in `apps/api/app/services/discover_service.py`
+- [ ] T043 [US4] Return extended response from thin handler in `apps/api/app/api/v1/endpoints/discover.py` (no summary logic in the route); log `scope_mode`
+- [ ] T044 [P] [US4] Build `DiscoverCitySummary` (headline, highest/lowest near top, friendly label + score, GEOID secondary, empty state) in `apps/web/src/components/discover/DiscoverCitySummary.tsx`
+- [ ] T045 [US4] Add `focusedGeoid` prop: dim non-focused fills + gentle `fitBounds` within `maxBounds`; clear restores city framing in `apps/web/src/components/discover/DiscoverMap.tsx`
+- [ ] T046 [US4] Wire fetch → parse `summary` → render `DiscoverCitySummary` under map; hover/tap focus + clear in `apps/web/src/components/discover/DiscoverMapClient.tsx`
+
+**Checkpoint**: US4 — city snapshot + focus UX complete
+
+---
+
+## Phase 9: Polish & Cross-Cutting Concerns (city summary expansion)
+
+**Purpose**: Validation and hardening for US4
+
+- [ ] T047 [P] Re-confirm Discover still never calls lookup/save/touch user APIs across `apps/web/src/components/discover/` and `apps/web/src/app/discover/`
+- [ ] T048 Run city-summary scenarios in `specs/008-discover-mode/quickstart.md` (summary section) and fix gaps
+- [ ] T049 [P] Run `cd apps/api && pytest tests/test_discover.py tests/test_discover_summary.py -q` (adjust paths to files that exist) and `cd apps/web && npm test -- --run src/__tests__/discover` — ensure green
 
 ---
 
@@ -131,82 +185,74 @@
 
 ### Phase Dependencies
 
-- **Setup (Phase 1)**: None
-- **Foundational (Phase 2)**: Depends on Setup — **blocks** all user stories
-- **US1 (Phase 3)**: After Foundation — MVP (search + locked basemap)
-- **US2 (Phase 4)**: After Foundation; practically after US1 map shell exists for integration, but API work (T019–T020) can start in parallel with US1 UI
-- **US3 (Phase 5)**: After US2 map layers exist (needs GeoJSON source for hit-testing)
-- **Polish (Phase 6)**: After desired stories complete
+- **Setup (Phase 1)**: None — **done**
+- **Foundational (Phase 2)**: Done — blocks US1–US3
+- **US1–US3 + base Polish (Phases 3–6)**: **done**
+- **US4 Foundation (Phase 7)**: Blocks US4 implementation (T041+)
+- **US4 (Phase 8)**: After Phase 7; depends on existing map/choropleth (US2)
+- **Expansion Polish (Phase 9)**: After US4
 
 ### User Story Dependencies
 
-- **US1 (P1)**: No dependency on US2/US3
-- **US2 (P1)**: Uses US1 map page/route; API can be built in parallel
-- **US3 (P2)**: Depends on US2 overlay layers
+- **US1 (P1)**: Done
+- **US2 (P1)**: Done
+- **US3 (P2)**: Done
+- **US4 (P2)**: After Phase 7; needs US2 FeatureCollection/map layers for focus/dim; summary is independently testable via API + summary component tests
+
+### Within US4
+
+- Tests T038–T040 written first (fail until service/UI land)
+- T041 → T042 → T043 (service then thin route)
+- T044 can parallel T041–T043 (different files)
+- T045 after map exists; T046 after T044 + T045 + types/fetch path
 
 ### Parallel Opportunities
 
-- T002 || T001 (setup)
-- T003 || T004 || T007 (foundation files)
-- T008 || T009 (US1 tests)
-- T010 || T011 (US1 nav + page shell)
-- T016 || T017 || T018 (US2 tests)
-- T023 || T024 (US2 legend + banners)
-- T030 || T031 || T033 (polish)
+- T034 || T035 || T037 (Phase 7 files)
+- T038 || T039 || T040 (US4 tests)
+- T044 || T041 (summary UI vs service, different files)
+- T047 || T049 (polish)
 
 ---
 
-## Parallel Example: User Story 1
+## Parallel Example: User Story 4
 
 ```bash
 # Tests in parallel:
-Task: "Web test place→map URL in apps/web/src/__tests__/discover-place-search.test.tsx"
-Task: "Web test Discover nav in apps/web/src/__tests__/discover-nav.test.tsx"
+Task: "API summary/city-scope tests in apps/api/tests/test_discover.py"
+Task: "Summary layout tests in apps/web/src/__tests__/discover-city-summary.test.tsx"
+Task: "Focus handler tests in apps/web/src/__tests__/discover-summary-focus.test.tsx"
 
-# Early UI in parallel:
-Task: "Add Discover to navLinks in apps/web/src/content/landing.ts"
-Task: "Create apps/web/src/app/discover/page.tsx"
-```
-
-## Parallel Example: User Story 2
-
-```bash
-# After foundation:
-Task: "API tests in apps/api/tests/test_discover.py"
-Task: "Color helper tests in apps/web/src/__tests__/discover-colors.test.ts"
-Task: "Coverage banner tests in apps/web/src/__tests__/discover-coverage.test.tsx"
+# After Phase 7 contracts:
+Task: "DiscoverCitySummary.tsx"
+Task: "discover_service.py city-core + summary"  # sequential with route wire
 ```
 
 ---
 
 ## Implementation Strategy
 
-### MVP First (User Story 1 Only)
+### Already delivered (MVP + choropleth)
 
-1. Phase 1 Setup
-2. Phase 2 Foundation
-3. Phase 3 US1 — header → search → locked basemap
-4. **STOP and VALIDATE** US1 independent test
-5. Demo if useful, then continue to US2 (core choropleth value)
+Phases 1–6 complete: Discover search → locked map → relative choropleth → tract popup.
 
-### Incremental Delivery
+### Next increment (this task list)
 
-1. Setup + Foundation
-2. US1 → demo navigation POC
-3. US2 → full Discover value (choropleth)
-4. US3 → score inspection popups
-5. Polish + quickstart
+1. Phase 7 — extend contracts + Server/client map shell + CORS/host alignment
+2. Phase 8 US4 — city-scoped summary + focus UX
+3. Phase 9 — quickstart + tests green
+4. **STOP and VALIDATE** US4 independent test before `/speckit-close`
 
-### Suggested MVP scope
+### Suggested MVP scope (historical)
 
-**US1 only** for a clickable shell; **US1+US2** for a meaningful product demo (recommended stop before polish if time-boxed).
+**US1+US2** was the base demo. **US4** is the next shippable increment on this branch.
 
 ---
 
 ## Notes
 
-- No new SQL migrations/tables for this POC
+- No new SQL migrations/tables for v1 city-core (`inner_bbox`); place polygons deferred
 - Overall score only — no dimension toggles
 - Do not persist Discover searches
-- Keep business logic in `discover_service.py`; Next.js stays thin
+- Keep city-scope + summary aggregates in `discover_service.py`; Next.js stays thin
 - Commit rhythm: plan+tasks = Commit #2 at start of `/speckit-implement` (this file stays uncommitted until then)
