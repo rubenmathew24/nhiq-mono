@@ -32,5 +32,6 @@
 ## Notes
 
 - Clarification loop completed (8 Q→A) on 2026-07-23; shared understanding reached for POC scope.
+- Clarify expansion 2026-07-23 (city summary): 6 Q→A — snapshot pack + hover/tap focus, city-scope polygon/core, friendly labels, touch tap, gentle fit, high/low rows near top for map visibility.
 - Feasibility / “what’s needed” detail is reported in the specify completion message for planning; kept out of `spec.md` to preserve stakeholder-facing, technology-agnostic wording.
-- Validation iteration 1: all items pass.
+- Validation after city-summary clarify: all checklist items still pass (16/16).

@@ -59,6 +59,24 @@ The visitor can hover or click a tract to see a simple popup with the overall sc
 
 ---
 
+### User Story 4 - City summary under the map (Priority: P2)
+
+Below the map, the visitor sees a compact **city snapshot** for the place they searched: average overall score, highest and lowest scored tracts (with scores), scored vs total tract count, and the min–max overall score range. Snapshot stats MUST reflect tracts that belong to the **searched city**, not merely every tract drawn because it intersects the map lock box (which may include nearby non-city areas). Interacting with the highest or lowest tract row in the summary focuses that tract on the map (dim other tracts + gentle fit within lock bounds) so the visitor can find it quickly. Highest/lowest rows MUST be placed near the top of the summary so the map stays visible while interacting with them.
+
+**Why this priority**: Turns the map into a readable city story and makes extremes discoverable without hunting.
+
+**Independent Test**: Open a city whose map bbox includes extra surrounding tracts; confirm summary high/low/average match city-scoped tracts (not the full rendered overlay set); hover/tap highest/lowest rows and confirm map focus + dimming + gentle fit; confirm high/low rows are visible without scrolling the map out of view.
+
+**Acceptance Scenarios**:
+
+1. **Given** a searched place with at least two scored city tracts, **When** the map page loads, **Then** a summary below the map shows city average overall, highest tract, lowest tract, scored/total counts, and min–max range for that city scope.
+2. **Given** the summary shows a highest (or lowest) tract, **When** the visitor hovers (desktop) or taps (touch) that summary row, **Then** the map gently fits/pans to that tract within lock bounds, brings it into focus, and dims other tracts; when hover ends or focus is cleared on touch, the map returns to the normal choropleth presentation (city framing restored as appropriate).
+3. **Given** the summary lists a highest or lowest tract, **When** the visitor reads the row, **Then** they see the overall score and a friendly label (with GEOID secondary), not GEOID alone as the only identifier.
+4. **Given** the map page with a summary, **When** the visitor interacts with the highest or lowest row, **Then** those rows are positioned such that the map remains visible on a typical desktop viewport without scrolling it away.
+5. **Given** zero scored city tracts, **When** the summary would render, **Then** it shows a clear empty/unavailable summary state (not fabricated highs/lows).
+
+---
+
 ### Edge Cases
 
 - Place search returns no usable U.S. place: show a clear, user-facing error and do not open an empty locked map pretending success.
@@ -66,6 +84,9 @@ The visitor can hover or click a tract to see a simple popup with the overall sc
 - Very large number of tracts in the bounding area: map must remain usable (load and interact without appearing frozen for typical large U.S. cities); if limits are needed later, they are out of scope for inventing new geography types in this POC.
 - User is signed in: Discover behaves the same as signed-out; **do not** save Discover searches to the user account or lookup history.
 - Non-city place types selected from autocomplete (e.g. neighborhood or region): treat like any selected place using its search bounding area; do not special-case in this POC beyond clear labeling of what was selected.
+- Map bbox includes suburbs outside the city: map may still show those tracts; city snapshot stats MUST use city scope (polygon or tighter core), not the full overlay set.
+- Place polygon unavailable: fall back to tighter-core membership without failing the page.
+- Focused tract outside current zoom: gentle fit must stay within map lock bounds and not unlock free exploration.
 - Dimension toggles (healthcare, schools, etc.): **out of scope** for this POC; only overall score is shown. Future work may add dimensions without changing the public entry pattern.
 
 ## Requirements *(mandatory)*
@@ -85,13 +106,20 @@ The visitor can hover or click a tract to see a simple popup with the overall sc
 - **FR-011**: Discover MUST NOT persist searches to user accounts, favorites, recent lookups, or similar history — including for signed-in users.
 - **FR-012**: This POC MUST color **overall** score only (no dimension switcher). Future dimension filtering is expected later and MUST NOT be required for acceptance of this feature.
 - **FR-013**: Errors (failed place resolution, temporary data failures) MUST show clear user-facing messages consistent with product error standards.
+- **FR-014**: Below the map, the page MUST show a city snapshot summary: average overall score, highest scored tract, lowest scored tract, scored vs total tract counts, and min–max overall score range.
+- **FR-015**: Snapshot statistics MUST be computed for tracts in the **searched city scope**: prefer an official/place boundary polygon when available; otherwise use a tighter core filter (e.g. tract centroids inside an inner shrink of the geocoder bounding box). Stats MUST NOT simply equal “all tracts intersecting the map lock box” when that would include non-city fringe.
+- **FR-016**: Interacting with the highest or lowest tract entry in the summary MUST focus that tract on the map and dim other tracts, and MUST gently fit/pan the map to that tract within the place lock bounds. On pointer devices interaction is hover (clears on hover end). On touch devices interaction is tap-to-focus; tap again or tap elsewhere clears focus and restores the normal map presentation (including restoring the city-framed view as appropriate).
+- **FR-017**: When fewer than two scored city-scoped tracts exist, the summary MUST NOT invent a meaningful highest/lowest pair; it MUST show an honest empty or insufficient-data state for those fields.
+- **FR-018**: Highest and lowest summary rows MUST show the overall score and a friendly place/area label when available, with the census tract GEOID secondary (not the sole primary label).
+- **FR-019**: The summary layout MUST place highest and lowest tract rows near the top of the report (immediately under any one-line city average / coverage headline) so that on a typical desktop viewport the map remains visible while the visitor interacts with those rows.
 
 ### Key Entities
 
 - **Discover place selection**: The city/place the user chose (display name + geographic bounding area used to lock the map).
 - **Census tract region**: A geographic neighborhood unit with a stable public identifier and border shape.
 - **Neighborhood overall score**: A single 0–100-style overall score for a tract when available; may be missing for some tracts.
-- **Map presentation state**: Locked view, relative color legend for currently visible scored tracts, partial-coverage or empty-coverage messaging, and active tract popup.
+- **Map presentation state**: Locked view, relative color legend for currently visible scored tracts, partial-coverage or empty-coverage messaging, active tract popup, and optional highlight focus for a summary-selected tract.
+- **City snapshot summary**: Aggregated overall-score stats for the searched city scope (average, high/low tracts, counts, min–max), shown below the map.
 
 ## Success Criteria *(mandatory)*
 
@@ -103,11 +131,14 @@ The visitor can hover or click a tract to see a simple popup with the overall sc
 - **SC-004**: For a place with no scored tracts, testers understand within 10 seconds that scored data is not available, without assuming the product is broken.
 - **SC-005**: Map interaction (pan/zoom within lock, open tract popup) remains responsive for a typical large U.S. city demo place (no multi-second freezes on common laptop/browser setups used by the team).
 - **SC-006**: Signed-in and signed-out sessions show the same Discover behavior; no Discover search appears in account lookup/history after use.
+- **SC-007**: For a demo city with scored data, testers can name the highest and lowest overall scores from the below-map summary within 15 seconds without opening tract popups first.
+- **SC-008**: When focusing the summary’s highest or lowest row (hover or tap), at least 90% of testers correctly point to the matching focused tract on the map within 5 seconds.
+- **SC-009**: On a standard laptop viewport (~1440×900), interacting with highest/lowest summary rows does not require scrolling the map out of view.
 
 ## Assumptions
 
 - National tract shapes and overall scores already exist for a meaningful set of U.S. areas from prior ingest/scoring work; Discover surfaces what is already available rather than computing new scores on demand.
-- “City” for this POC means whatever place the autocomplete returns, locked by that place’s search bounding area — not a separately curated city-boundary dataset.
+- “City” for map lock still means the autocomplete place’s search bounding area. City **snapshot** membership is stricter: place polygon when available, else tighter core (centroid-in-inner-box), so summary highs/lows stay city-relevant.
 - Relative coloring is computed among scored tracts in the current view; gray tracts are excluded from the relative scale.
 - Header Discover link is visible on the same public chrome as other marketing/product nav items (exact label: “Discover”).
 - Mobile browsers are in scope for basic usability (search + map + popup), but desktop is the primary demo surface for the POC.
@@ -125,3 +156,12 @@ The visitor can hover or click a tract to see a simple popup with the overall sc
 - Q: Search UX? → A: Place autocomplete for U.S. cities/places.
 - Q: Zero scored tracts? → A: Still show locked basemap + clear empty message (no overlay).
 - Q: Overall vs dimensions? → A: Overall only for POC; dimensions likely later.
+
+### Session 2026-07-23 (city summary expansion)
+
+- Q: Which stats should the below-map summary include? → A: Snapshot pack (city average overall; highest tract; lowest tract; scored vs total tract count; min–max range) **plus** hover on highest/lowest report rows focuses that tract on the map and dims other tracts so it is easy to identify.
+- Q: How are “in the searched city” tracts chosen for snapshot stats? → A: Place polygon when available; otherwise a tighter core (e.g. centroids inside an inner shrink of the geocoder box) so stats stay city-relevant, not full map-bbox fringe.
+- Q: How are highest/lowest tracts labeled in the summary? → A: Score + friendly label + GEOID secondary (name/area when available; otherwise abbreviated location + GEOID).
+- Q: Touch devices without hover? → A: Tap summary row to focus/dim; tap elsewhere or tap again to clear.
+- Q: Does focusing a high/low tract pan/zoom the map? → A: Gentle fit/pan to the focused tract (within lock bounds), plus highlight/dim.
+- Q: Summary layout vs map visibility on hover? → A: Highest/lowest rows MUST sit high enough in the report that the map remains visible while hovering those rows (no scrolling the map off-screen to reach them).
