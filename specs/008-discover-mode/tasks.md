@@ -25,8 +25,8 @@
 
 **Purpose**: Confirm docs and scaffolding touch-points for Discover
 
-- [ ] T001 Confirm feature docs present under `specs/008-discover-mode/` (plan, research, data-model, contracts/discover-api.md, quickstart)
-- [ ] T002 [P] Add Discover env notes (Places + Mapbox GL via `NEXT_PUBLIC_MAPBOX_TOKEN`) to `.env.example` if missing
+- [x] T001 Confirm feature docs present under `specs/008-discover-mode/` (plan, research, data-model, contracts/discover-api.md, quickstart)
+- [x] T002 [P] Add Discover env notes (Places + Mapbox GL via `NEXT_PUBLIC_MAPBOX_TOKEN`) to `.env.example` if missing
 
 ---
 
@@ -36,11 +36,11 @@
 
 **⚠️ CRITICAL**: No user story implementation until this phase completes
 
-- [ ] T003 Add Pydantic request/response models for discover tracts in `apps/api/app/schemas/discover.py` per `specs/008-discover-mode/contracts/discover-api.md`
-- [ ] T004 [P] Add Zod/TS types for discover tracts response in `apps/web/src/types/discover.ts` (or `apps/web/src/types/api.ts`)
-- [ ] T005 Create `discover_service` skeleton with bbox validation helpers (inverted/empty/too-large) in `apps/api/app/services/discover_service.py`
-- [ ] T006 Add thin `GET /discover/tracts` route stub in `apps/api/app/api/v1/endpoints/discover.py` and register in `apps/api/app/api/v1/router.py`
-- [ ] T007 [P] Add relative-score color helper stub in `apps/web/src/lib/discoverColors.ts` (min/max → ramp; gray for null)
+- [x] T003 Add Pydantic request/response models for discover tracts in `apps/api/app/schemas/discover.py` per `specs/008-discover-mode/contracts/discover-api.md`
+- [x] T004 [P] Add Zod/TS types for discover tracts response in `apps/web/src/types/discover.ts` (or `apps/web/src/types/api.ts`)
+- [x] T005 Create `discover_service` skeleton with bbox validation helpers (inverted/empty/too-large) in `apps/api/app/services/discover_service.py`
+- [x] T006 Add thin `GET /discover/tracts` route stub in `apps/api/app/api/v1/endpoints/discover.py` and register in `apps/api/app/api/v1/router.py`
+- [x] T007 [P] Add relative-score color helper stub in `apps/web/src/lib/discoverColors.ts` (min/max → ramp; gray for null)
 
 **Checkpoint**: Foundation ready — user stories can proceed
 
@@ -54,17 +54,17 @@
 
 ### Tests for User Story 1
 
-- [ ] T008 [P] [US1] Web test: place suggestion select builds map URL/query params in `apps/web/src/__tests__/discover-place-search.test.tsx`
-- [ ] T009 [P] [US1] Web test: Discover appears in nav links / header config in `apps/web/src/__tests__/discover-nav.test.tsx` (or extend an existing nav test)
+- [x] T008 [P] [US1] Web test: place suggestion select builds map URL/query params in `apps/web/src/__tests__/discover-place-search.test.tsx`
+- [x] T009 [P] [US1] Web test: Discover appears in nav links / header config in `apps/web/src/__tests__/discover-nav.test.tsx` (or extend an existing nav test)
 
 ### Implementation for User Story 1
 
-- [ ] T010 [P] [US1] Add `{ href: "/discover", label: "Discover" }` to `navLinks` in `apps/web/src/content/landing.ts`
-- [ ] T011 [P] [US1] Create Discover entry page with place search shell in `apps/web/src/app/discover/page.tsx`
-- [ ] T012 [US1] Implement place autocomplete (Mapbox Places, US, `types` place/locality, debounce) in `apps/web/src/components/discover/DiscoverPlaceSearch.tsx` — extract bbox (or padded center fallback) and navigate to map; do **not** call `/lookup` or save user history
-- [ ] T013 [US1] Create map route reading `place` + bbox query params in `apps/web/src/app/discover/map/page.tsx` with clear errors for missing/invalid params
-- [ ] T014 [US1] Implement locked basemap (`maxBounds` from bbox) in `apps/web/src/components/discover/DiscoverMap.tsx` reusing Mapbox GL patterns from `apps/web/src/components/report/MapView.tsx`
-- [ ] T015 [US1] Show selected place title/label on map page and user-facing empty-suggestion / no-token messaging in Discover components under `apps/web/src/components/discover/`
+- [x] T010 [P] [US1] Add `{ href: "/discover", label: "Discover" }` to `navLinks` in `apps/web/src/content/landing.ts`
+- [x] T011 [P] [US1] Create Discover entry page with place search shell in `apps/web/src/app/discover/page.tsx`
+- [x] T012 [US1] Implement place autocomplete (Mapbox Places, US, `types` place/locality, debounce) in `apps/web/src/components/discover/DiscoverPlaceSearch.tsx` — extract bbox (or padded center fallback) and navigate to map; do **not** call `/lookup` or save user history
+- [x] T013 [US1] Create map route reading `place` + bbox query params in `apps/web/src/app/discover/map/page.tsx` with clear errors for missing/invalid params
+- [x] T014 [US1] Implement locked basemap (`maxBounds` from bbox) in `apps/web/src/components/discover/DiscoverMap.tsx` reusing Mapbox GL patterns from `apps/web/src/components/report/MapView.tsx`
+- [x] T015 [US1] Show selected place title/label on map page and user-facing empty-suggestion / no-token messaging in Discover components under `apps/web/src/components/discover/`
 
 **Checkpoint**: US1 — search → locked basemap works without tracts API
 
@@ -78,19 +78,19 @@
 
 ### Tests for User Story 2
 
-- [ ] T016 [P] [US2] API contract tests: valid bbox hit/miss, partial scores, invalid/too-large bbox, no writes to lookups in `apps/api/tests/test_discover.py`
-- [ ] T017 [P] [US2] Unit tests for relative color helper (min/max/single/null) in `apps/web/src/__tests__/discover-colors.test.ts`
-- [ ] T018 [P] [US2] Web tests for partial vs empty coverage banner branches in `apps/web/src/__tests__/discover-coverage.test.tsx`
+- [x] T016 [P] [US2] API contract tests: valid bbox hit/miss, partial scores, invalid/too-large bbox, no writes to lookups in `apps/api/tests/test_discover.py`
+- [x] T017 [P] [US2] Unit tests for relative color helper (min/max/single/null) in `apps/web/src/__tests__/discover-colors.test.ts`
+- [x] T018 [P] [US2] Web tests for partial vs empty coverage banner branches in `apps/web/src/__tests__/discover-coverage.test.tsx`
 
 ### Implementation for User Story 2
 
-- [ ] T019 [US2] Implement PostGIS intersect + score join + simplify + feature cap + meta counts in `apps/api/app/services/discover_service.py` (active `SCORE_DATA_VINTAGE`; left join `overall_score`)
-- [ ] T020 [US2] Wire full response + `400`/`INVALID_BBOX`/`BBOX_TOO_LARGE` + structured logging in `apps/api/app/api/v1/endpoints/discover.py` (thin handler calling service only)
-- [ ] T021 [US2] Fetch tracts via `apiFetch` on map page/load in `apps/web/src/app/discover/map/page.tsx` (or loader component) with zod parse from `apps/web/src/types/discover.ts`
-- [ ] T022 [US2] Add GeoJSON fill/line layers + relative fill colors + gray null scores in `apps/web/src/components/discover/DiscoverMap.tsx`
-- [ ] T023 [P] [US2] Add relative legend component in `apps/web/src/components/discover/DiscoverLegend.tsx`
-- [ ] T024 [P] [US2] Add partial-coverage and empty-coverage banners in `apps/web/src/components/discover/DiscoverCoverageBanner.tsx`
-- [ ] T025 [US2] Handle `meta.truncated` and API/user-correctable errors with clear copy (Constitution VIII) in Discover map UI under `apps/web/src/components/discover/`
+- [x] T019 [US2] Implement PostGIS intersect + score join + simplify + feature cap + meta counts in `apps/api/app/services/discover_service.py` (active `SCORE_DATA_VINTAGE`; left join `overall_score`)
+- [x] T020 [US2] Wire full response + `400`/`INVALID_BBOX`/`BBOX_TOO_LARGE` + structured logging in `apps/api/app/api/v1/endpoints/discover.py` (thin handler calling service only)
+- [x] T021 [US2] Fetch tracts via `apiFetch` on map page/load in `apps/web/src/app/discover/map/page.tsx` (or loader component) with zod parse from `apps/web/src/types/discover.ts`
+- [x] T022 [US2] Add GeoJSON fill/line layers + relative fill colors + gray null scores in `apps/web/src/components/discover/DiscoverMap.tsx`
+- [x] T023 [P] [US2] Add relative legend component in `apps/web/src/components/discover/DiscoverLegend.tsx`
+- [x] T024 [P] [US2] Add partial-coverage and empty-coverage banners in `apps/web/src/components/discover/DiscoverCoverageBanner.tsx`
+- [x] T025 [US2] Handle `meta.truncated` and API/user-correctable errors with clear copy (Constitution VIII) in Discover map UI under `apps/web/src/components/discover/`
 
 **Checkpoint**: US2 — choropleth + coverage messaging complete
 
@@ -104,13 +104,13 @@
 
 ### Tests for User Story 3
 
-- [ ] T026 [P] [US3] Web test: popup copy for scored vs unscored (and no report href) in `apps/web/src/__tests__/discover-popup.test.tsx`
+- [x] T026 [P] [US3] Web test: popup copy for scored vs unscored (and no report href) in `apps/web/src/__tests__/discover-popup.test.tsx`
 
 ### Implementation for User Story 3
 
-- [ ] T027 [US3] Add click/hover `queryRenderedFeatures` + Mapbox Popup for score/unavailable in `apps/web/src/components/discover/DiscoverMap.tsx`
-- [ ] T028 [US3] Ensure popup shows `geoid` (optional) + overall score only — no link/navigation to report routes in `apps/web/src/components/discover/DiscoverMap.tsx`
-- [ ] T029 [US3] Dismiss/replace popup on map click-away or new selection without leaving the page in `apps/web/src/components/discover/DiscoverMap.tsx`
+- [x] T027 [US3] Add click/hover `queryRenderedFeatures` + Mapbox Popup for score/unavailable in `apps/web/src/components/discover/DiscoverMap.tsx`
+- [x] T028 [US3] Ensure popup shows `geoid` (optional) + overall score only — no link/navigation to report routes in `apps/web/src/components/discover/DiscoverMap.tsx`
+- [x] T029 [US3] Dismiss/replace popup on map click-away or new selection without leaving the page in `apps/web/src/components/discover/DiscoverMap.tsx`
 
 **Checkpoint**: US3 — inspect scores via popup
 
@@ -120,10 +120,10 @@
 
 **Purpose**: Hardening and validation across stories
 
-- [ ] T030 [P] Confirm Discover never calls lookup/save/touch user APIs (code review + grep) across `apps/web/src/components/discover/` and `apps/web/src/app/discover/`
-- [ ] T031 [P] Verify `/discover` and `/discover/map` are public (not gated in `apps/web/src/middleware.ts`)
-- [ ] T032 Run quickstart scenarios in `specs/008-discover-mode/quickstart.md` and fix gaps found
-- [ ] T033 [P] Run `cd apps/api && pytest tests/test_discover.py -q` and `cd apps/web && npm test -- --run src/__tests__/discover*.test.*` — ensure green
+- [x] T030 [P] Confirm Discover never calls lookup/save/touch user APIs (code review + grep) across `apps/web/src/components/discover/` and `apps/web/src/app/discover/`
+- [x] T031 [P] Verify `/discover` and `/discover/map` are public (not gated in `apps/web/src/middleware.ts`)
+- [x] T032 Run quickstart scenarios in `specs/008-discover-mode/quickstart.md` and fix gaps found
+- [x] T033 [P] Run `cd apps/api && pytest tests/test_discover.py -q` and `cd apps/web && npm test -- --run src/__tests__/discover*.test.*` — ensure green
 
 ---
 
