@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
-from typing import Any
+from typing import Any, Literal
 
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -15,6 +15,8 @@ from app.schemas.discover import (
     DiscoverFeature,
     DiscoverFeatureProperties,
     DiscoverMeta,
+    DiscoverSummary,
+    DiscoverTractHighlight,
     DiscoverTractsResponse,
 )
 
@@ -26,6 +28,8 @@ MAX_BBOX_SPAN_DEG = 3.0
 FEATURE_CAP = 2500
 # ~10m-ish simplification at mid-latitudes; keeps city overlays light.
 GEOMETRY_SIMPLIFY_TOLERANCE = 0.00015
+# Keep central fraction of place bbox for city-scope centroids (FR-015).
+CITY_CORE_SHRINK = 0.7
 
 
 class DiscoverBBoxError(Exception):
@@ -83,6 +87,105 @@ def validate_bbox(
     )
 
 
+def shrink_bbox(bbox: DiscoverBBox, shrink: float = CITY_CORE_SHRINK) -> DiscoverBBox:
+    """Return an axis-aligned core keeping the central `shrink` fraction of each axis."""
+    shrink = max(0.01, min(1.0, shrink))
+    span_lng = bbox.max_lng - bbox.min_lng
+    span_lat = bbox.max_lat - bbox.min_lat
+    pad_lng = span_lng * (1.0 - shrink) / 2.0
+    pad_lat = span_lat * (1.0 - shrink) / 2.0
+    return DiscoverBBox(
+        min_lng=bbox.min_lng + pad_lng,
+        min_lat=bbox.min_lat + pad_lat,
+        max_lng=bbox.max_lng - pad_lng,
+        max_lat=bbox.max_lat - pad_lat,
+    )
+
+
+def friendly_tract_label(place_name: str | None, geoid: str) -> str:
+    """Short place context + tract suffix (GEOID stays secondary in UI)."""
+    suffix = geoid[-6:] if len(geoid) >= 6 else geoid
+    place = (place_name or "").strip()
+    if place:
+        # Prefer city before first comma ("Bentonville, Arkansas, …").
+        short = place.split(",")[0].strip() or place
+        return f"{short} · Tract {suffix}"
+    return f"Tract {suffix}"
+
+
+def build_city_summary(
+    features: list[DiscoverFeature],
+    *,
+    place_name: str | None,
+    scope_mode: Literal["inner_bbox", "place_polygon"] = "inner_bbox",
+) -> DiscoverSummary:
+    """Aggregate snapshot stats over city-scoped tracts only."""
+    scoped = [f for f in features if f.properties.in_city_scope]
+    scored = [
+        f
+        for f in scoped
+        if f.properties.overall_score is not None
+    ]
+    scores = [float(f.properties.overall_score or 0) for f in scored]
+    total_count = len(scoped)
+    scored_count = len(scored)
+
+    if scored_count == 0:
+        return DiscoverSummary(
+            scope_mode=scope_mode,
+            average_overall=None,
+            score_min=None,
+            score_max=None,
+            scored_count=0,
+            total_count=total_count,
+            highest=None,
+            lowest=None,
+            insufficient_data=True,
+        )
+
+    average = sum(scores) / scored_count
+    score_min = min(scores)
+    score_max = max(scores)
+
+    if scored_count < 2:
+        return DiscoverSummary(
+            scope_mode=scope_mode,
+            average_overall=round(average, 2),
+            score_min=score_min,
+            score_max=score_max,
+            scored_count=scored_count,
+            total_count=total_count,
+            highest=None,
+            lowest=None,
+            insufficient_data=True,
+        )
+
+    highest_f = max(scored, key=lambda f: float(f.properties.overall_score or 0))
+    lowest_f = min(scored, key=lambda f: float(f.properties.overall_score or 0))
+    hi = float(highest_f.properties.overall_score or 0)
+    lo = float(lowest_f.properties.overall_score or 0)
+
+    return DiscoverSummary(
+        scope_mode=scope_mode,
+        average_overall=round(average, 2),
+        score_min=score_min,
+        score_max=score_max,
+        scored_count=scored_count,
+        total_count=total_count,
+        highest=DiscoverTractHighlight(
+            geoid=highest_f.properties.geoid,
+            overall_score=hi,
+            label=friendly_tract_label(place_name, highest_f.properties.geoid),
+        ),
+        lowest=DiscoverTractHighlight(
+            geoid=lowest_f.properties.geoid,
+            overall_score=lo,
+            label=friendly_tract_label(place_name, lowest_f.properties.geoid),
+        ),
+        insufficient_data=False,
+    )
+
+
 async def fetch_tracts_in_bbox(
     session: AsyncSession,
     *,
@@ -93,7 +196,9 @@ async def fetch_tracts_in_bbox(
     place_name: str | None = None,
 ) -> DiscoverTractsResponse:
     bbox = validate_bbox(min_lng, min_lat, max_lng, max_lat)
+    core = shrink_bbox(bbox)
     vintage = settings.SCORE_DATA_VINTAGE
+    scope_mode = "inner_bbox"
 
     # Fetch one extra row to detect truncation without a separate COUNT.
     limit = FEATURE_CAP + 1
@@ -105,7 +210,14 @@ async def fetch_tracts_in_bbox(
                 ns.overall_score AS overall_score,
                 ST_AsGeoJSON(
                     ST_SimplifyPreserveTopology(t.geometry, :tol)
-                ) AS geojson
+                ) AS geojson,
+                ST_Within(
+                    ST_Centroid(t.geometry),
+                    ST_MakeEnvelope(
+                        :core_min_lng, :core_min_lat,
+                        :core_max_lng, :core_max_lat, 4326
+                    )
+                ) AS in_city_scope
             FROM census_tracts t
             LEFT JOIN neighborhood_scores ns
               ON ns.geoid = t.geoid
@@ -128,6 +240,10 @@ async def fetch_tracts_in_bbox(
             "min_lat": bbox.min_lat,
             "max_lng": bbox.max_lng,
             "max_lat": bbox.max_lat,
+            "core_min_lng": core.min_lng,
+            "core_min_lat": core.min_lat,
+            "core_max_lng": core.max_lng,
+            "core_max_lat": core.max_lat,
             "limit": limit,
         },
     )
@@ -138,7 +254,6 @@ async def fetch_tracts_in_bbox(
 
     features: list[DiscoverFeature] = []
     scores: list[float] = []
-    unscored = 0
 
     for row in rows:
         geo_raw = row["geojson"]
@@ -154,7 +269,6 @@ async def fetch_tracts_in_bbox(
         score_f: float | None
         if score is None:
             score_f = None
-            unscored += 1
         else:
             score_f = float(score)
             scores.append(score_f)
@@ -165,23 +279,30 @@ async def fetch_tracts_in_bbox(
                 properties=DiscoverFeatureProperties(
                     geoid=str(row["geoid"]),
                     overall_score=score_f,
+                    in_city_scope=bool(row["in_city_scope"]),
                 ),
             )
         )
 
     scored_count = len(scores)
-    # Recompute unscored from features in case some rows lacked geometry.
     unscored_count = sum(
         1 for f in features if f.properties.overall_score is None
     )
+    summary = build_city_summary(
+        features, place_name=place_name, scope_mode=scope_mode
+    )
 
     logger.info(
-        "discover_tracts place=%r features=%d scored=%d unscored=%d truncated=%s",
+        "discover_tracts place=%r features=%d scored=%d unscored=%d "
+        "truncated=%s scope_mode=%s city_scoped=%d city_scored=%d",
         place_name,
         len(features),
         scored_count,
         unscored_count,
         truncated,
+        scope_mode,
+        summary.total_count,
+        summary.scored_count,
     )
 
     return DiscoverTractsResponse(
@@ -196,4 +317,5 @@ async def fetch_tracts_in_bbox(
             score_max=max(scores) if scores else None,
             data_vintage=vintage,
         ),
+        summary=summary,
     )

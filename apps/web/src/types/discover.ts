@@ -7,12 +7,31 @@ export const discoverBBoxSchema = z.object({
   max_lat: z.number(),
 });
 
+export const discoverTractHighlightSchema = z.object({
+  geoid: z.string(),
+  overall_score: z.number(),
+  label: z.string(),
+});
+
+export const discoverSummarySchema = z.object({
+  scope_mode: z.enum(["inner_bbox", "place_polygon"]),
+  average_overall: z.number().nullable(),
+  score_min: z.number().nullable(),
+  score_max: z.number().nullable(),
+  scored_count: z.number(),
+  total_count: z.number(),
+  highest: discoverTractHighlightSchema.nullable(),
+  lowest: discoverTractHighlightSchema.nullable(),
+  insufficient_data: z.boolean(),
+});
+
 export const discoverFeatureSchema = z.object({
   type: z.literal("Feature"),
   geometry: z.record(z.string(), z.unknown()),
   properties: z.object({
     geoid: z.string(),
     overall_score: z.number().nullable(),
+    in_city_scope: z.boolean(),
   }),
 });
 
@@ -29,9 +48,12 @@ export const discoverTractsResponseSchema = z.object({
     score_max: z.number().nullable().optional(),
     data_vintage: z.string(),
   }),
+  summary: discoverSummarySchema,
 });
 
 export type DiscoverBBox = z.infer<typeof discoverBBoxSchema>;
+export type DiscoverSummary = z.infer<typeof discoverSummarySchema>;
+export type DiscoverTractHighlight = z.infer<typeof discoverTractHighlightSchema>;
 export type DiscoverTractsResponse = z.infer<typeof discoverTractsResponseSchema>;
 
 export function buildDiscoverMapHref(input: {

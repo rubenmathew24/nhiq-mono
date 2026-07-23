@@ -14,6 +14,7 @@ type Props = {
   bbox: DiscoverBBox;
   placeName: string;
   tracts: DiscoverTractsResponse | null;
+  focusedGeoid?: string | null;
 };
 
 const SOURCE_ID = "discover-tracts";
@@ -37,7 +38,42 @@ function popupHtml(geoid: string, score: number | null): string {
   </div>`;
 }
 
-export default function DiscoverMap({ bbox, placeName, tracts }: Props) {
+/** Expand ring coordinates into a LngLatBounds. */
+function boundsFromGeometry(geometry: GeoJSON.Geometry): mapboxgl.LngLatBounds | null {
+  const bounds = new mapboxgl.LngLatBounds();
+  let any = false;
+
+  const extend = (coords: number[][]) => {
+    for (const c of coords) {
+      if (c.length >= 2) {
+        bounds.extend([c[0], c[1]]);
+        any = true;
+      }
+    }
+  };
+
+  const walk = (g: GeoJSON.Geometry) => {
+    if (g.type === "Polygon") {
+      for (const ring of g.coordinates) extend(ring as number[][]);
+    } else if (g.type === "MultiPolygon") {
+      for (const poly of g.coordinates) {
+        for (const ring of poly) extend(ring as number[][]);
+      }
+    } else if (g.type === "GeometryCollection") {
+      for (const child of g.geometries) walk(child);
+    }
+  };
+
+  walk(geometry);
+  return any ? bounds : null;
+}
+
+export default function DiscoverMap({
+  bbox,
+  placeName,
+  tracts,
+  focusedGeoid = null,
+}: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<mapboxgl.Map | null>(null);
   const popupRef = useRef<mapboxgl.Popup | null>(null);
@@ -62,7 +98,6 @@ export default function DiscoverMap({ bbox, placeName, tracts }: Props) {
       [bbox.min_lng - spanLng * pad, bbox.min_lat - spanLat * pad],
       [bbox.max_lng + spanLng * pad, bbox.max_lat + spanLat * pad],
     ];
-
     const map = new mapboxgl.Map({
       container: containerRef.current,
       style: "mapbox://styles/mapbox/light-v11",
@@ -166,6 +201,7 @@ export default function DiscoverMap({ bbox, placeName, tracts }: Props) {
           properties: {
             geoid: f.properties.geoid,
             overall_score: f.properties.overall_score,
+            in_city_scope: f.properties.in_city_scope,
           },
         })),
       };
@@ -194,6 +230,55 @@ export default function DiscoverMap({ bbox, placeName, tracts }: Props) {
       map.once("load", apply);
     }
   }, [tracts]);
+
+  // Focus: dim others + gentle fit; clear restores city framing.
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+
+    const applyFocus = () => {
+      if (!map.getLayer(FILL_ID)) return;
+
+      if (!focusedGeoid) {
+        map.setPaintProperty(FILL_ID, "fill-opacity", 0.55);
+        map.fitBounds(
+          [
+            [bbox.min_lng, bbox.min_lat],
+            [bbox.max_lng, bbox.max_lat],
+          ],
+          { padding: 40, duration: 600, maxZoom: 14 },
+        );
+        return;
+      }
+
+      map.setPaintProperty(FILL_ID, "fill-opacity", [
+        "case",
+        ["==", ["get", "geoid"], focusedGeoid],
+        0.75,
+        0.12,
+      ] as mapboxgl.ExpressionSpecification);
+
+      const feature = tracts?.features.find(
+        (f) => f.properties.geoid === focusedGeoid,
+      );
+      if (!feature) return;
+      const featureBounds = boundsFromGeometry(
+        feature.geometry as GeoJSON.Geometry,
+      );
+      if (!featureBounds || featureBounds.isEmpty()) return;
+      map.fitBounds(featureBounds, {
+        padding: 56,
+        duration: 650,
+        maxZoom: 13,
+      });
+    };
+
+    if (map.isStyleLoaded()) {
+      applyFocus();
+    } else {
+      map.once("load", applyFocus);
+    }
+  }, [focusedGeoid, tracts, bbox]);
 
   if (!mapboxToken?.trim()) {
     return (

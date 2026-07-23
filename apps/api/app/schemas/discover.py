@@ -17,6 +17,7 @@ class DiscoverBBox(BaseModel):
 class DiscoverFeatureProperties(BaseModel):
     geoid: str
     overall_score: float | None = None
+    in_city_scope: bool = False
 
 
 class DiscoverFeature(BaseModel):
@@ -34,9 +35,28 @@ class DiscoverMeta(BaseModel):
     data_vintage: str
 
 
+class DiscoverTractHighlight(BaseModel):
+    geoid: str
+    overall_score: float
+    label: str
+
+
+class DiscoverSummary(BaseModel):
+    scope_mode: Literal["inner_bbox", "place_polygon"] = "inner_bbox"
+    average_overall: float | None = None
+    score_min: float | None = None
+    score_max: float | None = None
+    scored_count: int = 0
+    total_count: int = 0
+    highest: DiscoverTractHighlight | None = None
+    lowest: DiscoverTractHighlight | None = None
+    insufficient_data: bool = True
+
+
 class DiscoverTractsResponse(BaseModel):
     place_name: str | None = None
     bbox: DiscoverBBox
     type: Literal["FeatureCollection"] = "FeatureCollection"
     features: list[DiscoverFeature] = Field(default_factory=list)
     meta: DiscoverMeta
+    summary: DiscoverSummary

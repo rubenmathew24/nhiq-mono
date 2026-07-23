@@ -137,10 +137,10 @@
 
 **⚠️ CRITICAL**: Complete before US4 implementation tasks (tests may be written first and fail)
 
-- [ ] T034 Extend Pydantic models with `in_city_scope`, `summary` (`scope_mode`, averages, high/low, `insufficient_data`) in `apps/api/app/schemas/discover.py` per `specs/008-discover-mode/contracts/discover-api.md`
-- [ ] T035 [P] Extend Zod/TS types for `summary` + `in_city_scope` in `apps/web/src/types/discover.ts`
-- [ ] T036 Ensure `/discover/map` is a Server Component shell (Header/Footer) with client island `apps/web/src/components/discover/DiscoverMapClient.tsx` and thin `apps/web/src/app/discover/map/page.tsx` (fixes async Header-in-client bug)
-- [ ] T037 [P] Allow `http://127.0.0.1:3000` (and localhost) in `CORS_ORIGINS` in `apps/api/app/core/config.py`; align loopback host in `getApiBase()` in `apps/web/src/lib/api.ts`
+- [x] T034 Extend Pydantic models with `in_city_scope`, `summary` (`scope_mode`, averages, high/low, `insufficient_data`) in `apps/api/app/schemas/discover.py` per `specs/008-discover-mode/contracts/discover-api.md`
+- [x] T035 [P] Extend Zod/TS types for `summary` + `in_city_scope` in `apps/web/src/types/discover.ts`
+- [x] T036 Ensure `/discover/map` is a Server Component shell (Header/Footer) with client island `apps/web/src/components/discover/DiscoverMapClient.tsx` and thin `apps/web/src/app/discover/map/page.tsx` (fixes async Header-in-client bug)
+- [x] T037 [P] Allow `http://127.0.0.1:3000` (and localhost) in `CORS_ORIGINS` in `apps/api/app/core/config.py`; align loopback host in `getApiBase()` in `apps/web/src/lib/api.ts`
 
 **Checkpoint**: Summary contracts + map shell ready for US4
 
@@ -154,18 +154,18 @@
 
 ### Tests for User Story 4
 
-- [ ] T038 [P] [US4] API tests: `summary` aggregates city-scoped only; `in_city_scope` flags; `insufficient_data` when &lt;2 scored city tracts; high/low null vs populated in `apps/api/tests/test_discover.py` (or `apps/api/tests/test_discover_summary.py`)
-- [ ] T039 [P] [US4] Web test: summary layout order (headline → highest → lowest → rest) and empty/insufficient state in `apps/web/src/__tests__/discover-city-summary.test.tsx`
-- [ ] T040 [P] [US4] Web test: hover/tap handlers set/clear `focusedGeoid` (no report navigation) in `apps/web/src/__tests__/discover-summary-focus.test.tsx`
+- [x] T038 [P] [US4] API tests: `summary` aggregates city-scoped only; `in_city_scope` flags; `insufficient_data` when &lt;2 scored city tracts; high/low null vs populated in `apps/api/tests/test_discover.py` (or `apps/api/tests/test_discover_summary.py`)
+- [x] T039 [P] [US4] Web test: summary layout order (headline → highest → lowest → rest) and empty/insufficient state in `apps/web/src/__tests__/discover-city-summary.test.tsx`
+- [x] T040 [P] [US4] Web test: hover/tap handlers set/clear `focusedGeoid` (no report navigation) in `apps/web/src/__tests__/discover-summary-focus.test.tsx`
 
 ### Implementation for User Story 4
 
-- [ ] T041 [US4] Implement inner-bbox city-core membership (`CITY_CORE_SHRINK`) + tag `in_city_scope` on features in `apps/api/app/services/discover_service.py`
-- [ ] T042 [US4] Compute `summary` (average, min/max, counts, highest/lowest labels, `scope_mode=inner_bbox`, `insufficient_data`) over city-scoped tracts only in `apps/api/app/services/discover_service.py`
-- [ ] T043 [US4] Return extended response from thin handler in `apps/api/app/api/v1/endpoints/discover.py` (no summary logic in the route); log `scope_mode`
-- [ ] T044 [P] [US4] Build `DiscoverCitySummary` (headline, highest/lowest near top, friendly label + score, GEOID secondary, empty state) in `apps/web/src/components/discover/DiscoverCitySummary.tsx`
-- [ ] T045 [US4] Add `focusedGeoid` prop: dim non-focused fills + gentle `fitBounds` within `maxBounds`; clear restores city framing in `apps/web/src/components/discover/DiscoverMap.tsx`
-- [ ] T046 [US4] Wire fetch → parse `summary` → render `DiscoverCitySummary` under map; hover/tap focus + clear in `apps/web/src/components/discover/DiscoverMapClient.tsx`
+- [x] T041 [US4] Implement inner-bbox city-core membership (`CITY_CORE_SHRINK`) + tag `in_city_scope` on features in `apps/api/app/services/discover_service.py`
+- [x] T042 [US4] Compute `summary` (average, min/max, counts, highest/lowest labels, `scope_mode=inner_bbox`, `insufficient_data`) over city-scoped tracts only in `apps/api/app/services/discover_service.py`
+- [x] T043 [US4] Return extended response from thin handler in `apps/api/app/api/v1/endpoints/discover.py` (no summary logic in the route); log `scope_mode`
+- [x] T044 [P] [US4] Build `DiscoverCitySummary` (headline, highest/lowest near top, friendly label + score, GEOID secondary, empty state) in `apps/web/src/components/discover/DiscoverCitySummary.tsx`
+- [x] T045 [US4] Add `focusedGeoid` prop: dim non-focused fills + gentle `fitBounds` within `maxBounds`; clear restores city framing in `apps/web/src/components/discover/DiscoverMap.tsx`
+- [x] T046 [US4] Wire fetch → parse `summary` → render `DiscoverCitySummary` under map; hover/tap focus + clear in `apps/web/src/components/discover/DiscoverMapClient.tsx`
 
 **Checkpoint**: US4 — city snapshot + focus UX complete
 
@@ -175,9 +175,9 @@
 
 **Purpose**: Validation and hardening for US4
 
-- [ ] T047 [P] Re-confirm Discover still never calls lookup/save/touch user APIs across `apps/web/src/components/discover/` and `apps/web/src/app/discover/`
-- [ ] T048 Run city-summary scenarios in `specs/008-discover-mode/quickstart.md` (summary section) and fix gaps
-- [ ] T049 [P] Run `cd apps/api && pytest tests/test_discover.py tests/test_discover_summary.py -q` (adjust paths to files that exist) and `cd apps/web && npm test -- --run src/__tests__/discover` — ensure green
+- [x] T047 [P] Re-confirm Discover still never calls lookup/save/touch user APIs across `apps/web/src/components/discover/` and `apps/web/src/app/discover/`
+- [x] T048 Run city-summary scenarios in `specs/008-discover-mode/quickstart.md` (summary section) and fix gaps
+- [x] T049 [P] Run `cd apps/api && pytest tests/test_discover.py tests/test_discover_summary.py -q` (adjust paths to files that exist) and `cd apps/web && npm test -- --run src/__tests__/discover` — ensure green
 
 ---
 

@@ -32,7 +32,7 @@ async def get_discover_tracts(
     place_name: str | None = Query(None, max_length=200),
     session: AsyncSession = Depends(get_db),
 ):
-    """Return census tracts intersecting a bbox with overall scores (public POC)."""
+    """Return bbox tracts + city-scoped summary with overall scores (public POC)."""
     try:
         return await fetch_tracts_in_bbox(
             session,
