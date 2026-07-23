@@ -2,7 +2,7 @@
 
 ## 1. Place search → bbox lock
 
-**Decision**: Browser Mapbox Places Geocoding autocomplete with `country=US` and place-oriented `types` (at minimum `place`; allow `locality` if needed for coverage). On selection, read the feature’s `bbox` (`[minLng, minLat, maxLng, maxLat]`). If `bbox` is missing, derive a padded box from the feature center (`center`) using a fixed small delta (documented constant). Navigate to the Discover map route with place label + bbox in the query string (or equivalent serializable state). Pass the same bbox into the tracts API and set Mapbox `maxBounds` (with light padding) so pan/zoom cannot leave the place area.
+**Decision**: Browser Mapbox Places Geocoding autocomplete with `country=US` and place-oriented `types` (at minimum `place`; allow `locality` if needed for coverage). On selection, read the feature’s `bbox` (`[minLng, minLat, maxLng, maxLat]`). If `bbox` is missing, derive a padded box from the feature center (`center`) using a fixed small delta (documented constant). Navigate to the Discover map route with place label + bbox in the query string (or equivalent serializable state). Pass the same bbox into the tracts API. Map lock uses **city framing** after `fitBounds(place bbox, padding)` — see §15 for how `minZoom` / `maxBounds` are derived so scroll, nav −, and un-focus stay aligned.
 
 **Rationale**: Matches clarify (search-result bbox); constitution allows Mapbox Places from the browser; no new city-boundary ingest for POC.
 
@@ -10,6 +10,7 @@
 - Census place polygons — accurate city limits but new ingest + matching logic
 - County-only lock — simpler SQL but wrong UX for many cities
 - Server-side geocode only — extra hop; Places already client-allowed
+- Constructor `maxBounds = place bbox ± 2%` only — rejected after runtime (blocked scroll short of padded city framing; see §15)
 
 ## 2. Tracts + scores API shape
 
@@ -133,13 +134,23 @@ Map `meta` remains overlay-oriented (full FeatureCollection). Client does not re
 
 ## 13. Summary ↔ map focus UX
 
-**Decision**: `DiscoverCitySummary` places average/coverage headline, then **highest**, then **lowest**, then remaining stats (FR-019). Hover/tap sets `focusedGeoid`; map dims non-focused fills and `fitBounds` to that feature within `maxBounds`. Clear restores city framing.
+**Decision**: `DiscoverCitySummary` places average/coverage headline, then **highest**, then **lowest**, then remaining stats (FR-019). **Click/tap** sets `focusedGeoid` (toggle: click active again → `null`); map dims non-focused fills and `fitBounds` to that feature within lock. Clear restores city framing via `fitCityAndLockMinZoom` (see §15). Call `map.stop()` before each focus/`fitBounds` so in-flight cameras do not race. **Hover MUST NOT** set or clear focus (FR-016 amend 2026-07-23). Active row shows selected styling + short “Focused · click to clear” hint (FR-020).
 
-**Rationale**: Clarify hover/tap + gentle fit + layout visibility.
+**Pointer clear (superseded):** List-level `mouseLeave` clear and hover-to-focus are **removed** — they caused races and no longer match product (click-only).
+
+**What went wrong (historical hover path)**: Each row had `onMouseLeave → null`. The gap between Highest and Lowest sits outside both buttons, so moving between them fired leave→`null` (start ~600ms city restore `fitBounds`) then enter→other geoid (tract `fitBounds`). Competing Mapbox camera animations left the map on the wrong tract or mid-city framing intermittently.
+
+**How it was fixed (interim)**: List-level clear only; then product amended to **click-only** toggle/switch — no hover handlers.
+
+**Rationale**: Click is intentional; avoids hover races; same UX on desktop and touch; selected hint teaches clear affordance.
 
 **Alternatives considered**:
 - Highlight only without fit — rejected
 - Always pin both high and low — rejected
+- Per-row `mouseLeave` clear — rejected after runtime race
+- List-level leave clear — superseded by click-only
+- Debounce null ~50ms — obsolete under click-only
+- Keyboard Enter/Space map-focus requirement — OUT OF SCOPE for POC (clarify B)
 
 ## 14. Local CORS / host alignment
 
@@ -149,3 +160,51 @@ Map `meta` remains overlay-oriented (full FeatureCollection). Client does not re
 
 **Alternatives considered**:
 - Document “only use localhost” — brittle for Next bound to `127.0.0.1`
+
+## 15. City framing zoom lock (scroll / nav − / un-focus)
+
+**Decision** (`DiscoverMap.tsx` → `fitCityAndLockMinZoom`):
+
+1. `fitBounds(place bbox, { padding: 40 })` for city framing (initial load + summary un-focus).
+2. `setMinZoom(map.getZoom())` so neither scroll nor Mapbox nav **−** can zoom out past that framing.
+3. `setMaxBounds` from the **actual framed `getBounds()`** (small ~2% expand for float/pan slack), not from the raw place bbox alone.
+4. `map.scrollZoom.enable({ around: "center" })` so wheel zoom is not biased to the cursor.
+
+**What went wrong**: Three different zoom-out floors:
+
+| Control | Symptom (example Bentonville) |
+| --- | --- |
+| Un-focus city `fitBounds` | ~zoom **10.28** (desired) |
+| Scroll wheel max-out | Stuck ~**11.62** (too zoomed in) |
+| Nav **−** | Could go to hard `minZoom: 8` (too zoomed out), then later matched un-focus after minZoom lock but scroll still stuck |
+
+Root cause: place-only `maxBounds` (±2% on the search bbox) is **tighter** than the visible area after `fitBounds` + 40px padding. Scroll zoom respects that tight `maxBounds` and refuses to open to the padded framing; programmatic `fitBounds` / nav could still reach `minZoom`. Hard-coded `minZoom: 8` also let the **−** button zoom past city framing before the lock existed.
+
+**How it was fixed**: Derive lock from the framed view after fit (`minZoom` + matching `maxBounds`); remove hard `minZoom: 8`; scroll around center. Post-fix: wheel, nav −, and un-focus share ~the same floor (~10.28 in the Bentonville run).
+
+**Rationale**: Product wants one “city home” framing for lock, un-focus, and zoom-out.
+
+**Alternatives considered**:
+- Keep place `maxBounds` + only `setMinZoom` — insufficient (scroll still blocked ~11.62)
+- `around: "center"` alone — insufficient without expanding `maxBounds`
+- Document “use − not scroll” — rejected
+
+## 16. Map page Server shell (related hardening)
+
+**Decision**: `/discover/map` is a Server Component (`Header` / `Footer`) with client island `DiscoverMapClient` for map + summary.
+
+**Rationale**: Async Header using `headers()` / auth must not live under `"use client"` (runtime: async Client Component / request-scope errors).
+
+**Alternatives considered**: Make Header sync-only on Discover — wider layout change; island is local.
+
+## 17. Water-only tract exclusion (Lake Michigan / coastal)
+
+**Decision**: Discover MUST NOT color or summarize tracts with `census_tracts.aland = 0`. Prefer filtering in `discover_service` (omit from FeatureCollection **or** set a non-display flag and skip in relative min/max + summary). Depends on 002/003 schema + census upsert of TIGER `ALAND`/`AWATER`.
+
+**Rationale**: Cook County includes water-only TIGER tracts over Lake Michigan. They can still hold scores and paint as “lowest” neighborhoods though nobody lives there. Census already marks land area; we were dropping it on ingest.
+
+**Alternatives considered**:
+- Building footprints — rejected (heavy, unnecessary)
+- Tract codes 9900–9998 only — heuristic, incomplete as sole rule
+- ACS `total_population = 0` — deferred (needs ACS join; secondary signal)
+- Delete water tracts from warehouse — rejected (breaks national coverage / FEMA joins; 003 keeps rows)

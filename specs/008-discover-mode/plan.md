@@ -4,11 +4,11 @@
 
 **Input**: Feature specification from `/specs/008-discover-mode/spec.md`
 
-**Note**: Updated after city-summary clarify expansion (US4). Base map POC already implemented on this branch.
+**Note**: Updated after city-summary clarify expansion (US4) and click-focus amend (2026-07-23). Base map POC already implemented on this branch.
 
 ## Summary
 
-Public **Discover** map (place autocomplete → locked Mapbox choropleth of census tracts by relative overall score) plus a **city snapshot summary** under the map: average, highest/lowest tracts, scored/total counts, min–max — scoped to the **searched city** (place polygon when available, else tighter core), not the full map-bbox overlay. Summary high/low rows sit near the top; hover/tap focuses that tract (dim others + gentle fit within lock). No auth, no saved searches, overall score only.
+Public **Discover** map (place autocomplete → locked Mapbox choropleth of census tracts by relative overall score) plus a **city snapshot summary** under the map: average, highest/lowest tracts, scored/total counts, min–max — scoped to the **searched city** (place polygon when available, else tighter core), not the full map-bbox overlay. Summary high/low rows sit near the top; **click/tap** focuses that tract (dim others + gentle fit within lock); click active row again clears; selected styling + “Focused · click to clear” hint. Hover MUST NOT change map focus. No auth, no saved searches, overall score only.
 
 ## Technical Context
 
@@ -20,13 +20,13 @@ Public **Discover** map (place autocomplete → locked Mapbox choropleth of cens
 
 **Testing**: `apps/api/tests/test_discover*.py` (bbox, city-scope summary, focus payload); `apps/web/src/__tests__/discover*.test.*` (summary layout, focus handlers, colors)
 
-**Target Platform**: Web (desktop primary; touch tap-to-focus required)
+**Target Platform**: Web (desktop primary; touch click/tap-to-focus; keyboard high/low map-focus OUT OF SCOPE for POC)
 
 **Project Type**: Monorepo web + API (`apps/web`, `apps/api`)
 
 **Performance Goals**: City map + summary in ~1–2s for typical demo cities; gentle fit without unlock; no multi-second freezes
 
-**Constraints**: Thin client / fat API; browser Mapbox Places (+ GL); public endpoints; city snapshot ≠ map bbox membership; clear empty/insufficient-data summary states; CORS must allow both `localhost` and `127.0.0.1` web origins for local browser fetches
+**Constraints**: Thin client / fat API; browser Mapbox Places (+ GL); public endpoints; city snapshot ≠ map bbox membership; clear empty/insufficient-data summary states; CORS must allow both `localhost` and `127.0.0.1` web origins for local browser fetches; summary high/low **click-only** focus (no hover; no list `mouseLeave` clear); scroll / nav − / un-focus share one city-framing zoom lock (`fitCityAndLockMinZoom` — research §§13–15); water-only tracts (`aland = 0`) excluded from fills + summary (research §17; depends on 002/003)
 
 **Scale/Scope**: Extend existing Discover POC with summary + focus UX; no dimension toggles; no report deep-links; no mandatory national place-polygon ingest for this increment (fallback core is acceptable)
 

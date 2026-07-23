@@ -181,6 +181,32 @@
 
 ---
 
+## Phase 10: Water-only tract exclusion (amend 2026-07-23)
+
+**Purpose**: Hide Lake Michigan–style water-only tracts from Discover fills and city snapshot. Requires 002/003 `aland`/`awater`.
+
+**Depends on**: `infra/sql/010_census_tract_land_water.sql` + census upsert of `ALAND`/`AWATER` (002 T068–T070 / 003 T034–T036).
+
+- [x] T050 Exclude `aland = 0` tracts from choropleth-eligible features and from city-scope summary aggregates in `apps/api/app/services/discover_service.py` per FR-008a / FR-015 / research §17
+- [x] T051 [P] API tests: `is_discover_display_tract(0)` false; SQL WHERE excludes `aland = 0` (NULL treated as land) in `apps/api/tests/test_discover.py` + `discover_service.py`
+- [x] T052 Confirm web relative colors ignore omitted water tracts; no client-only heuristic required if API filters (see `specs/008-discover-mode/quickstart.md`)
+- [x] T053 Document Chicago water-tract check in quickstart; note NULL `aland` = treat as land until backfill
+
+---
+
+## Phase 11: Summary focus = click (amend 2026-07-23)
+
+**Purpose**: Highest/Lowest map focus is click/tap only (FR-016/FR-020). Remove hover-to-focus and list `mouseLeave` clear. Selected styling + “Focused · click to clear” hint. Keyboard map-focus OUT OF SCOPE for POC.
+
+**Independent Test**: Click Highest → map focuses; hover alone does nothing; click Lowest → switches; click Lowest again → clears + city framing; active row shows hint.
+
+- [ ] T054 [P] Update web tests: hover MUST NOT call `onFocusGeoid`; click toggles/switches; focused row shows clear-affordance hint in `apps/web/src/__tests__/discover-city-summary.test.tsx`
+- [ ] T055 [US4] Remove hover/`onMouseLeave` focus handlers; click-only toggle/switch; selected styling + “Focused · click to clear” (or equivalent) on active row in `apps/web/src/components/discover/DiscoverCitySummary.tsx` per FR-016 / FR-020 / research §13
+- [ ] T056 [P] Confirm `DiscoverMapClient` / map focus path still restores city framing on `focusedGeoid === null` (no hover-driven clears) in `apps/web/src/components/discover/`
+- [ ] T057 Run `cd apps/web && npx vitest run src/__tests__/discover-city-summary.test.tsx` (and related discover tests) — ensure green; smoke quickstart click scenarios
+
+---
+
 ## Dependencies & Execution Order
 
 ### Phase Dependencies
@@ -191,6 +217,8 @@
 - **US4 Foundation (Phase 7)**: Blocks US4 implementation (T041+)
 - **US4 (Phase 8)**: After Phase 7; depends on existing map/choropleth (US2)
 - **Expansion Polish (Phase 9)**: After US4
+- **Water-only (Phase 10)**: Done (aland filter)
+- **Click-focus (Phase 11)**: After US4 summary UI exists
 
 ### User Story Dependencies
 
@@ -212,6 +240,7 @@
 - T038 || T039 || T040 (US4 tests)
 - T044 || T041 (summary UI vs service, different files)
 - T047 || T049 (polish)
+- T054 || T056 (Phase 11 tests vs map path check)
 
 ---
 
@@ -241,7 +270,9 @@ Phases 1–6 complete: Discover search → locked map → relative choropleth �
 1. Phase 7 — extend contracts + Server/client map shell + CORS/host alignment
 2. Phase 8 US4 — city-scoped summary + focus UX
 3. Phase 9 — quickstart + tests green
-4. **STOP and VALIDATE** US4 independent test before `/speckit-close`
+4. Phase 10 — water-only exclusion
+5. Phase 11 — click-only high/low focus
+6. **STOP and VALIDATE** before `/speckit-close`
 
 ### Suggested MVP scope (historical)
 
@@ -256,3 +287,4 @@ Phases 1–6 complete: Discover search → locked map → relative choropleth �
 - Do not persist Discover searches
 - Keep city-scope + summary aggregates in `discover_service.py`; Next.js stays thin
 - Commit rhythm: plan+tasks = Commit #2 at start of `/speckit-implement` (this file stays uncommitted until then)
+- Click-focus: no hover; toggle same row to clear; selected + hint per FR-020

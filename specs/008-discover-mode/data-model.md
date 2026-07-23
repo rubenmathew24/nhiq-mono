@@ -10,6 +10,8 @@ Discover is a **read-only presentation** over existing spatial/score tables. No 
 | --- | --- |
 | `geoid` | Tract identity in overlays, popups, summary high/low |
 | `geometry` | Border polygon(s), WGS84; map filter = intersects bbox; city scope = centroid in core/polygon |
+| `aland` | TIGER land area m²; **`0` → water-only** — exclude from fills + city snapshot (FR-008a) |
+| `awater` | Optional; not required for filter rule |
 | `state_fips` / `county_fips` | Not required in API response for POC |
 
 ### Neighborhood score (`neighborhood_scores`)
@@ -66,6 +68,10 @@ Discover is a **read-only presentation** over existing spatial/score tables. No 
 ## UI state (not persisted)
 
 `focusedGeoid: string | null` — summary hover/tap focus; drives map dim + gentle fit.
+
+- Desktop: set on row `mouseEnter`; clear on **list** `mouseLeave` (not per-row leave), so crossing the gap between highest/lowest does not clear focus.
+- Touch: tap row to set; tap again / elsewhere to clear.
+- Map camera: `map.stop()` then tract `fitBounds` on focus; city `fitCityAndLockMinZoom` on clear (locks `minZoom` + framed `maxBounds` — research §15).
 
 ## Out of scope
 

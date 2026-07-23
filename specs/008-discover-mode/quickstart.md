@@ -25,9 +25,24 @@
 
 1. Below the map, see average / coverage headline, then **highest** and **lowest** near the top, then counts / min–max.
 2. High/low labels show friendly text + score (GEOID secondary), not GEOID-only.
-3. Hover (desktop) or tap (touch) highest/lowest → map dims others and gently fits to that tract within lock; clear hover/tap restores city framing.
-4. On ~laptop viewport, interacting with high/low does not require scrolling the map away.
-5. Confirm summary highs/lows are city-scoped: if map shows fringe tracts outside the core, they must not set city high/low when only in the outer bbox.
+3. **Click** (or tap) highest/lowest → map dims others and gently fits to that tract within lock; the active row shows selected styling and a “Focused · click to clear” (or equivalent) hint.
+4. Click the **other** high/low row → focus switches; click the **same** active row again → focus clears and city framing restores. Hovering high/low rows MUST NOT change the map (research §13).
+5. On ~laptop viewport, interacting with high/low does not require scrolling the map away.
+6. Confirm summary highs/lows are city-scoped: if map shows fringe tracts outside the core, they must not set city high/low when only in the outer bbox.
+
+## Validate water-only exclusion (after 002/003 land/water backfill)
+
+1. Ensure `census_tracts.aland` / `awater` exist and Cook County (or Chicago metro) was re-ingested.
+2. Open Discover → Chicago.
+3. Expect Lake Michigan water-only tracts (`aland = 0`) are **not** colored and do **not** appear as city highest/lowest.
+4. If `aland` is still NULL everywhere, exclusion cannot work yet — run migration + census force first (do not treat GEOID heuristics as a substitute in product).
+
+## Validate zoom-out lock (city framing)
+
+1. From city framing (or after un-focus from a high/low row), zoom in, then scroll-zoom out as far as possible.
+2. Zoom in, then click Mapbox **−** until it stops.
+3. Un-focus from a high/low row again (leave the summary list).
+4. Expect all three to land on the **same** city framing (not scroll stuck more zoomed-in, not **−** going wider than un-focus). See research §15.
 
 ## Validate empty / error paths
 

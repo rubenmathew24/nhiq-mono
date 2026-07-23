@@ -82,12 +82,13 @@ Example high/low when ≥ 2 city-scoped scored tracts:
 
 ### Behavior
 
-- **Map features**: tracts whose geometry intersects envelope `(min_lng, min_lat, max_lng, max_lat)` SRID 4326.
-- **City scope (`in_city_scope`)**: v1 default — tract centroid inside shrunk inner bbox (configurable shrink factor). Future — centroid in place polygon when ingested/`scope_mode=place_polygon`.
+- **Map features**: tracts whose geometry intersects envelope `(min_lng, min_lat, max_lng, max_lat)` SRID 4326, excluding water-only tracts (`aland = 0`) from fills / relative coloring (omit or non-display flag per FR-008a).
+- **City scope (`in_city_scope`)**: v1 default — tract centroid inside shrunk inner bbox (configurable shrink factor). Future — centroid in place polygon when ingested/`scope_mode=place_polygon`. City scope membership for snapshot also excludes `aland = 0`.
 - **Score join**: left join active `SCORE_DATA_VINTAGE` overall score.
-- **Summary**: aggregates over city-scoped tracts only (not full FeatureCollection). `highest`/`lowest` null + `insufficient_data: true` when fewer than two scored city-scoped tracts.
+- **Summary**: aggregates over city-scoped **land** tracts only (not full FeatureCollection; not water-only). `highest`/`lowest` null + `insufficient_data: true` when fewer than two scored city-scoped land tracts.
 - Geometry may be simplified; feature cap → `meta.truncated: true`.
 - **Must not** write `address_lookups`, `saved_lookups`, or any user history.
+- **Prerequisite**: `census_tracts.aland` populated via 002/003 migration + census re-ingest; NULL `aland` treated as land until backfill.
 
 ### Errors
 
@@ -103,8 +104,9 @@ Suggested codes: `INVALID_BBOX`, `BBOX_TOO_LARGE`.
 
 - Map page: one `apiFetch` per place; render choropleth from `features`; render `DiscoverCitySummary` from `summary`.
 - Relative colors: client min/max among **rendered scored** features (map view), unchanged.
-- Focus UX: client-only; pass `focusedGeoid` into map for dim + `fitBounds`.
-- Layout: highest/lowest rows immediately under average/coverage headline.
+- Focus UX: client-only; pass `focusedGeoid` into map for dim + `fitBounds`. Set/clear focus via **click/tap** on high/low rows only (toggle same row to clear; switch on other row). Hover MUST NOT change focus (research §13).
+- Zoom lock: after city framing / un-focus, client locks `minZoom` and `maxBounds` to the framed view so scroll and nav − match un-focus (research §15).
+- Layout: highest/lowest rows immediately under average/coverage headline; active row shows selected styling + short clear-affordance hint.
 
 ## Non-goals (this contract)
 
