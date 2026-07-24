@@ -8,22 +8,25 @@ Operator-facing contract. Narrative source of truth: [`docs/azure-setup-and-cicd
 
 ```text
 feature PR → merge to dev → promote dev → master
-→ GitHub Deploy updates niq-api / niq-web
-→ Rebuild/push worker image; ACA jobs use new image
+→ GitHub Deploy updates niq-api / niq-web (+ numbered SQL via migrate)
+→ National ingest workflow: rebuild/push neighborhoodiq-worker:dev only if
+   workers/ or docker/worker.Dockerfile changed since image revision label
+→ Run continuous national ingest (census gaps include NULL aland)
 ```
 
 Local Compose success does **not** clear the national gate.
 
 ## 2. Schema (Azure Postgres)
 
-Apply in order if missing (see azure-setup §16 Schema on Azure):
+Apply in order if missing (Deploy on `master` applies numbered `infra/sql/*.sql` automatically when those paths change — 007):
 
 ```text
 … existing through 006 …
 infra/sql/007_report_detail.sql
+infra/sql/010_census_tract_land_water.sql
 ```
 
-Confirm `acs_indicators.total_population` exists. Use Docker `psql` + `sslmode=require` pattern from azure-setup §7.
+Confirm `acs_indicators.total_population` and `census_tracts.aland` / `awater` exist when those features are in use.
 
 Expect: `neighborhood_scores.score_detail`, `fema_nri_tracts`, `hospital_timely_measures`.
 

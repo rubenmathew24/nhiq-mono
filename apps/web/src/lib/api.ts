@@ -18,7 +18,23 @@ export function getApiBase(): string {
       "http://localhost:8000"
     );
   }
-  return publicUrl ?? "http://localhost:8000";
+  let base = publicUrl ?? "http://localhost:8000";
+  // Localdev: keep hostname aligned (localhost vs 127.0.0.1). Mismatched hosts
+  // trigger CORS/Private Network Access failures ("Load failed") in some browsers.
+  try {
+    const apiUrl = new URL(base);
+    const pageHost = window.location.hostname;
+    if (
+      (apiUrl.hostname === "localhost" || apiUrl.hostname === "127.0.0.1") &&
+      (pageHost === "localhost" || pageHost === "127.0.0.1")
+    ) {
+      apiUrl.hostname = pageHost;
+      base = apiUrl.origin;
+    }
+  } catch {
+    /* keep base */
+  }
+  return base;
 }
 
 type ApiOptions = RequestInit & {

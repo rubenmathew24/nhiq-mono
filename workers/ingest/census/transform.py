@@ -17,6 +17,20 @@ def normalize_geoid(raw: Any) -> str | None:
     return geoid
 
 
+def coerce_area_m2(raw: Any) -> int | None:
+    """Coerce TIGER ALAND/AWATER to a non-negative int (m²), or None if missing/invalid."""
+    if raw is None:
+        return None
+    try:
+        # numpy scalar / Decimal / str from shapefile attrs
+        val = int(raw)
+    except (TypeError, ValueError):
+        return None
+    if val < 0:
+        return None
+    return val
+
+
 def row_in_fixture_county(state_fips: Any, county_fips: Any) -> bool:
     """True when STATEFP/COUNTYFP are in the canonical fixture allowlist."""
     state = str(state_fips).zfill(2)[-2:]
@@ -33,7 +47,7 @@ def filter_tract_records(
     Keep tracts in the active county allowlist and normalize identifiers.
 
     Each record should include: geoid (or GEOID), state_fips/STATEFP,
-    county_fips/COUNTYFP, tract_fips/TRACTCE.
+    county_fips/COUNTYFP, tract_fips/TRACTCE, and optionally ALAND/AWATER.
     """
     allow = county_allowlist if county_allowlist is not None else fixture_county_fips()
     out: list[dict[str, Any]] = []
@@ -54,6 +68,8 @@ def filter_tract_records(
                 "county_fips": str(county).zfill(3)[-3:],
                 "tract_fips": tract,
                 "geometry": r.get("geometry"),
+                "aland": coerce_area_m2(r.get("aland", r.get("ALAND"))),
+                "awater": coerce_area_m2(r.get("awater", r.get("AWATER"))),
             }
         )
     return out

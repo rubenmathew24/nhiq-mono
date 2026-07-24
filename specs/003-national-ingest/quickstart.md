@@ -8,7 +8,8 @@ Full narrative: [`docs/azure-setup-and-cicd.md`](../../docs/azure-setup-and-cicd
 
 - [ ] SQL `006_geo_counties.sql` applied; county registry bootstrapped (`niq-worker-geo` with `INGEST_GEO_LOAD_ALL=1`)
 - [ ] `infra/sql/007_report_detail.sql` applied when expand/report-detail is needed; confirm `acs_indicators.total_population`
-- [ ] Worker image current; ACA jobs include `niq-worker-fema`, `niq-worker-cms-timely`, `niq-worker-orchestrate`
+- [ ] `infra/sql/010_census_tract_land_water.sql` applied when Discover water-only filtering / honest census coverage is needed; confirm `census_tracts.aland` / `awater`. **Deploy on `master` applies numbered SQL automatically** when `infra/sql/` changes (007). After apply, `/coverage` census % drops until counties have non-NULL `aland` (national continuous census gap-fill — no force).
+- [ ] Worker image: National ingest GHA updates `neighborhoodiq-worker:dev` when `workers/` / `docker/worker.Dockerfile` changed since the labeled image SHA (or on `force_worker_rebuild`); ACA jobs include `niq-worker-fema`, `niq-worker-cms-timely`, `niq-worker-orchestrate`
 - [ ] ACA timeouts: orchestrator `21600`s; workers `10800`s
 - [ ] Keys as for metro ingest; Azure SP / `AZURE_CREDENTIALS`; GHA `actions: write` for continuous chaining
 

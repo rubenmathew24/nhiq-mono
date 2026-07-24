@@ -173,9 +173,12 @@ async def compute_national_coverage(session: AsyncSession) -> CoverageResponse:
     census_ok = await _fetch_cf_set(
         session,
         """
-        SELECT DISTINCT (state_fips || county_fips) AS cf
+        SELECT (state_fips || county_fips) AS cf
         FROM census_tracts
         WHERE (state_fips || county_fips) = ANY(:counties)
+        GROUP BY (state_fips || county_fips)
+        HAVING COUNT(*) > 0
+           AND COUNT(*) FILTER (WHERE aland IS NULL) = 0
         """,
         params_cf,
     )

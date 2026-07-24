@@ -23,6 +23,12 @@
 - Q: What education sources are required before the education phase closes? → A: **Both NCES and Urban Institute** (option B) — NCES for government-provided school directory/identity; Urban for complementary statistics. Planning MUST explore fields from each and use complementary signals in the education score (not duplicate the same metric twice).
 - Q: Which sources must the economic phase use? → A: **Census ACS + BLS LAUS** (option B / recommended) — ACS as the government spine for fixture geographies; BLS LAUS unemployment as a complementary labor signal. Planning MUST explore fields from each for scoring. Zillow/Redfin remain out of scope (FR-013).
 
+### Session 2026-07-23 (TIGER land/water area)
+
+- Q: Should census tract ingest keep TIGER land/water area? → A: **Yes** — persist `ALAND` / `AWATER` (m²) on each `census_tracts` row. TIGER already ships these attributes; do not drop them on transform. Building footprints remain OUT OF SCOPE.
+- Q: What is a “water-only” tract for downstream products? → A: **`ALAND = 0`** (Census land area). Tract codes in the 9900–9998 range may corroborate but MUST NOT be the sole filter. ACS population filters are OUT OF SCOPE for this amendment (may be revisited later).
+- Q: Existing DBs without land/water columns? → A: Additive migration + census re-ingest (force/re-run for affected counties) so rows refresh; no wipe of scores required.
+
 ### Canonical test addresses (fixture)
 
 Documented fixture for verification (order stable; Bentonville required):
@@ -67,9 +73,9 @@ An operator runs the census tract boundary ingestion job for the **fixture-scope
 
 **Acceptance Scenarios**:
 
-1. **Given** a healthy local database with spatial support, **When** the operator runs the census tract ingestion job for the fixture geography set, **Then** tract records covering the fixture addresses are stored with geographic IDs (state, county, tract components) and polygon geometry in a consistent geographic coordinate system.
+1. **Given** a healthy local database with spatial support, **When** the operator runs the census tract ingestion job for the fixture geography set, **Then** tract records covering the fixture addresses are stored with geographic IDs (state, county, tract components), polygon geometry in a consistent geographic coordinate system, and Census TIGER **land area** and **water area** (square meters) for each tract.
 2. **Given** a failure downloading or parsing one unit of the fixture geography set, **When** ingestion continues for remaining units, **Then** successful units still load and the failure is reported without silently marking the whole run successful.
-3. **Given** tracts already loaded for a fixture geography unit, **When** the operator re-runs ingestion, **Then** the job ends in a defined, documented reload behavior (no uncontrolled duplicate tracts for the same geographic ID).
+3. **Given** tracts already loaded for a fixture geography unit, **When** the operator re-runs ingestion, **Then** the job ends in a defined, documented reload behavior (no uncontrolled duplicate tracts for the same geographic ID) and land/water area fields refresh from TIGER when present.
 4. **Given** this feature’s local path, **When** workers run, **Then** they MUST NOT require or claim a full 50-state / national ingest.
 
 ---
@@ -189,6 +195,7 @@ After education, an operator runs **Census ACS** and **BLS LAUS** ingest for fix
 - **FR-002a**: Environment scoring MUST prefer EPA AQS county aggregates when worthy (documented min distinct monitor-days in the scoring window); when EPA is missing or unworthy, MUST fall back to Open-Meteo modeled US AQI (or a documented numeric default if both fail). Score rows MUST persist machine-readable dimension provenance (`score_sources`) including the environment `source_id`.
 - **FR-003**: System MUST support configuring EPA source credentials via environment/secret configuration (never committed secrets).
 - **FR-004**: System MUST ingest census tract boundaries with geographic identifiers and polygon geometry suitable for spatial distance and centroid queries, limited to the **fixture-scoped** geography set required by the canonical test addresses (not a 50-state national load).
+- **FR-004a**: Census tract ingestion MUST persist Census TIGER **land area** (`ALAND`) and **water area** (`AWATER`) in square meters on each tract row (nullable only when the source row lacks the attribute). These fields enable downstream products (e.g. Discover) to treat **water-only** tracts (`ALAND = 0`) differently from inhabited land tracts. Building footprints are OUT OF SCOPE.
 - **FR-005**: System MUST ingest CMS hospital records including provider identity, location, emergency-services flag, and overall star rating when available, upserting on provider identity, limited to facilities usable for scoring the fixture geographies (not a national hospital warehouse as a success requirement).
 - **FR-006**: System MUST provide a score computation job that reads ingested raw tables and writes neighborhood scores for healthcare and environment (0–100), plus an overall score using the product’s published dimension weights (healthcare 25%, safety 25%, education 20%, environment 15%, economic 15%). For this feature’s local path, the job MUST score **all census tracts in each county that contains a canonical test address** (county-scoped), not only the single tract of each street address and not whole-state/national tract sets.
 - **FR-007**: System MUST use documented placeholder scores for any of safety, education, and economic that are **not yet delivered** in the current phase. After a dimension’s source worker and scoring path ship in a closeable slice, that dimension MUST NOT remain on a silent placeholder for fixture-county tracts.
@@ -211,7 +218,7 @@ After education, an operator runs **Census ACS** and **BLS LAUS** ingest for fix
 ### Key Entities
 
 - **Air quality reading**: County-day observation for a pollutant parameter, with AQI and category.
-- **Census tract**: Geographic polygon with a stable national GEOID and state/county/tract components.
+- **Census tract**: Geographic polygon with a stable national GEOID and state/county/tract components, plus TIGER land/water area (m²) when ingested.
 - **Hospital**: CMS-identified facility with location, optional star rating, and emergency-services flag.
 - **Crime stats (FBI CDE)**: Agency-oriented offense/benchmark aggregates from the FBI Crime Data Explorer chart API, keyed for upsert and joined into safety scoring for fixture counties.
 - **Neighborhood score**: Per-tract healthcare, safety, environment, education, economic, and overall scores for a data vintage, computed from raw ingested data (with placeholders where sources are missing for not-yet-delivered phases).
@@ -226,7 +233,7 @@ After education, an operator runs **Census ACS** and **BLS LAUS** ingest for fix
 ### Measurable Outcomes
 
 - **SC-001**: An operator can complete a successful EPA ingestion run against the local database in one documented command path, and afterwards AQI readings exist for counties covering the fixture addresses.
-- **SC-002**: After census ingestion for the agreed geography set, each of the 10 fixture addresses can be matched to a tract with valid geometry.
+- **SC-002**: After census ingestion for the agreed geography set, each of the 10 fixture addresses can be matched to a tract with valid geometry, and fixture-county tract rows include populated land/water area fields from TIGER (or an explicit null only when the source omitted them).
 - **SC-003**: After hospital ingestion, hospitals usable for nearest-facility scoring exist for each fixture geography (at least one emergency-capable facility within a documented search radius, or the healthcare default path is exercised and documented per address).
 - **SC-004**: Score computation produces healthcare, environment, and overall scores for **100%** of census tracts in the counties containing the 10 fixture addresses (verified by count of tracts in those counties vs scored rows) without manual data patching.
 - **SC-005**: Re-running EPA and hospital jobs twice in succession results in zero duplicate natural keys (county+parameter+date; provider id).

@@ -1,0 +1,60 @@
+# Quickstart: 008-discover-mode
+
+## Prerequisites
+
+- Local stack: API + web + Postgres/PostGIS with `census_tracts` + `neighborhood_scores` (aligned `SCORE_DATA_VINTAGE`)
+- `NEXT_PUBLIC_MAPBOX_TOKEN` set for web (Places + Mapbox GL)
+- Prefer opening web as either `http://127.0.0.1:3000` or `http://localhost:3000` (API CORS allows both; browser API host is aligned automatically)
+- Feature code for Discover pages + `/api/v1/discover/tracts` (with `summary`)
+
+## Validate header + search entry
+
+1. Open the site home (signed out).
+2. Header shows **Discover**; click it → `/discover`.
+3. Type 3+ characters of a U.S. city (e.g. `Bentonville`).
+4. Expect place suggestions; select one → `/discover/map` with place + bbox params.
+
+## Validate locked choropleth map
+
+1. Basemap constrained to place bbox.
+2. Tract borders; relative overall colors; legend says relative-to-view.
+3. Hover/click scored tract → popup score; no `/report/...` navigation.
+4. Mixed coverage → gray + soft banner; empty scores → empty message.
+
+## Validate city snapshot summary
+
+1. Below the map, see average / coverage headline, then **highest** and **lowest** near the top, then counts / min–max.
+2. High/low labels show friendly text + score (GEOID secondary), not GEOID-only. Score numbers (average, high/low, min–max) use product absolute score-quality colors (same as report/dashboard)—not the map’s relative fill ramp.
+3. **Click** (or tap) highest/lowest → map dims others and gently fits to that tract within lock; the active row shows selected styling and a “Focused · click to clear” (or equivalent) hint.
+4. Click the **other** high/low row → focus switches; click the **same** active row again → focus clears and city framing restores. Hovering high/low rows MUST NOT change the map (research §13).
+5. On ~laptop viewport, interacting with high/low does not require scrolling the map away.
+6. Confirm summary highs/lows are city-scoped: if map shows fringe tracts outside the core, they must not set city high/low when only in the outer bbox.
+
+## Validate water-only exclusion (after 002/003 land/water backfill)
+
+1. Ensure `census_tracts.aland` / `awater` exist and Cook County (or Chicago metro) was re-ingested.
+2. Open Discover → Chicago.
+3. Expect Lake Michigan water-only tracts (`aland = 0`) are **not** colored and do **not** appear as city highest/lowest.
+4. If `aland` is still NULL everywhere, exclusion cannot work yet — run migration + census force first (do not treat GEOID heuristics as a substitute in product).
+
+## Validate zoom-out lock (city framing)
+
+1. From city framing (or after un-focus from a high/low row), zoom in, then scroll-zoom out as far as possible.
+2. Zoom in, then click Mapbox **−** until it stops.
+3. Un-focus from a high/low row again (leave the summary list).
+4. Expect all three to land on the **same** city framing (not scroll stuck more zoomed-in, not **−** going wider than un-focus). See research §15.
+
+## Validate empty / error paths
+
+1. No scored tracts → empty map message; summary insufficient/empty (no fake high/low).
+2. Inverted/huge bbox API → `400` actionable detail.
+3. Mapbox token missing → search/map degrade without crash.
+
+## Automated checks
+
+```bash
+cd apps/api && pytest tests/test_discover.py -q
+cd apps/web && npm test -- --run src/__tests__/discover
+```
+
+See [contracts/discover-api.md](./contracts/discover-api.md), [data-model.md](./data-model.md), [research.md](./research.md).

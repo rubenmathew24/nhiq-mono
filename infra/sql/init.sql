@@ -10,12 +10,18 @@ CREATE TABLE IF NOT EXISTS census_tracts (
     county_fips VARCHAR(3) NOT NULL,
     tract_fips VARCHAR(6) NOT NULL,
     geometry GEOMETRY(MULTIPOLYGON, 4326),
+    -- TIGER ALAND / AWATER (m²); 0 land area = water-only (Discover excludes).
+    aland BIGINT,
+    awater BIGINT,
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
 CREATE INDEX IF NOT EXISTS idx_census_tracts_geoid ON census_tracts(geoid);
 CREATE INDEX IF NOT EXISTS idx_census_tracts_geometry ON census_tracts USING GIST(geometry);
 CREATE INDEX IF NOT EXISTS idx_census_tracts_county ON census_tracts(state_fips, county_fips);
+CREATE INDEX IF NOT EXISTS idx_census_tracts_aland_zero
+  ON census_tracts (aland)
+  WHERE aland = 0;
 
 -- Neighborhood scores (cached per tract)
 CREATE TABLE IF NOT EXISTS neighborhood_scores (

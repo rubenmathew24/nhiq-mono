@@ -23,6 +23,17 @@ Indexes: `(state_fips)`.
 
 Empty or incomplete registry for included 50+DC → fail closed for national continuous/status success.
 
+## Table: `census_tracts` (shared with 002; land/water amend)
+
+National census worker writes the same table as local fixture ingest. Additive columns (see [`002` data-model](../002-data-ingestion-workers/data-model.md)):
+
+| Column | Type | Notes |
+|--------|------|-------|
+| aland | BIGINT NULL | TIGER land area m²; `0` = water-only |
+| awater | BIGINT NULL | TIGER water area m² |
+
+**Completeness**: Census checkpoint / inventory / `/coverage` / national status: county is done only when it has ≥1 tract **and** every tract has `aland IS NOT NULL`. After migration `010`, counties whose rows still have NULL `aland`/`awater` are **incomplete** until census re-runs (continuous national gap-fill — no force required once the worker image includes the upsert). Do **not** drop water-only tracts (`aland = 0`) from the warehouse.
+
 ## Report-detail entities (reuse; schema `007_report_detail.sql`)
 
 | Entity | Storage | Role |
@@ -44,7 +55,7 @@ Empty or incomplete registry for included 50+DC → fail closed for national con
 | Worker | Unit done when |
 |--------|----------------|
 | geo | row in `geo_counties` |
-| census | ≥1 `census_tracts` for county |
+| census | ≥1 `census_tracts` for county **and** every tract has `aland IS NOT NULL` |
 | epa | ≥1 `epa_aqi_readings` for county |
 | cms | ≥1 `hospitals` for state (state grain) |
 | fbi | ≥1 `crime_agency_selection` for county |
