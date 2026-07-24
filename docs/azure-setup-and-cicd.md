@@ -410,7 +410,7 @@ Paste the **entire JSON** into GitHub secret `AZURE_CREDENTIALS` (never commit i
 | [`.github/workflows/deploy.yml`](../.github/workflows/deploy.yml) | `push` to `master`, `workflow_dispatch` | **Change-aware Deploy** (see below) |
 | [`.github/workflows/ci-master.yml`](../.github/workflows/ci-master.yml) | `pull_request` → **`master` only** | Web lint+vitest; API pytest on ephemeral PostGIS+Redis after `init.sql` + numbered migrations |
 
-#### Deploy behavior (as-built, feature 010)
+#### Deploy behavior (as-built, feature 007 / `007-cicd-prod-deploy`)
 
 1. **Detect** path changes vs previous commit (`force_full` on dispatch treats all app categories as changed). Categories: `web`, `api`, `schema` (SQL **or** API), `app_config` (`infra/deploy/app-env.manifest.json`). **Workers are never deployed.**
 2. **Migrate** (if `schema`) — `scripts/apply-sql-migrations.py` + `schema_migrations` table — **before** any new API/web image rollout. Failure stops the workflow (no new images).
@@ -448,7 +448,7 @@ Values can change if resources are recreated; confirm in Portal or CLI when unsu
 | Key Vault | `niq-kv-21698` (example; use your vault name) | East US |
 | Storage | `niqstorage*****` (random suffix) | East US |
 | Deploy workflow | `.github/workflows/deploy.yml` on `master` | — |
-| Worker image | `neighborhoodiq-worker:dev` in ACR | Hand-pushed (not Deploy.yml) |
+| Worker image | `neighborhoodiq-worker:dev` in ACR | **National ingest** GHA rebuilds/pushes when `workers/` or `docker/worker.Dockerfile` changed since the SHA labeled on `:dev` (skipped on chain redispatches; optional `force_worker_rebuild`) — not Deploy.yml |
 | Worker jobs | `niq-worker-*` (9 manual ACA Jobs) | See §16 |
 
 ---
@@ -462,7 +462,7 @@ Values can change if resources are recreated; confirm in Portal or CLI when unsu
 | CI | Separate `ci.yml` + `deploy.yml` + workers | **`ci-master.yml` on PRs to `master`**; Deploy on `master` push |
 | Migrations | Alembic job **after** API deploy | **Numbered `infra/sql` + `apply-sql-migrations.py` before images** (not Alembic-after-API) |
 | Workers / Front Door / Key Vault→ACA identity | Specified | **Workers: manual ACA Jobs wired (see §16)**; Front Door / KV→ACA identity still not wired |
-| Image promotion | Tag by git SHA + `latest` | API/web via Deploy on `master`; **worker image pushed by hand** to ACR tag `neighborhoodiq-worker:dev` |
+| Image promotion | Tag by git SHA + `latest` | API/web via Deploy on `master`; **worker** via National ingest when worker paths changed (`:dev` + `sha-<gitsha>`, revision label) |
 | Ingest schema | Design raw tables | Azure has `init.sql` + manual `002` / `003` / `004` applied |
 | National ingest | Design 50-state loops | **Not done.** Jobs currently scoped to fixture counties via optional `INGEST_COUNTY_ALLOWLIST` |
 
@@ -504,10 +504,11 @@ Status job env: `INGEST_SCOPE=metro_10` (or `smoke` / `national`), optional `ING
 
 ### Report-detail promote → Azure smoke gate (before National Ingest)
 
-1. Merge feature to `dev`, promote `dev` → `master`; wait for Deploy (API/web) and rebuild/push the **worker** image used by ACA jobs.
-2. Apply [`infra/sql/007_report_detail.sql`](../infra/sql/007_report_detail.sql) on Azure Postgres (idempotent). Confirm `acs_indicators.total_population` exists (from `004` / init).
-3. Ensure `niq-worker-fema` and `niq-worker-cms-timely` exist (table above).
-4. **Smoke fill** (Benton County): set `INGEST_SCOPE=smoke` on acs / fema / cms_timely / scoring (or allowlist `05007`), then start in order:
+1. Merge feature to `dev`, promote `dev` → `master`; wait for Deploy (API/web). Numbered SQL under `infra/sql/` (including `010_census_tract_land_water.sql`) is applied by Deploy’s migrate job — no laptop `psql` for ordinary migrations.
+2. Worker image: **National ingest** rebuilds/pushes `neighborhoodiq-worker:dev` when `workers/` or `docker/worker.Dockerfile` changed since the revision labeled on the current `:dev` image (Deploy.yml still does **not** build workers — 007). First run after a worker change (or unlabeled legacy image) builds once; chain redispatches skip rebuild. Optional workflow input `force_worker_rebuild=true`.
+3. Confirm columns (optional): `census_tracts.aland` / `awater` exist; `/coverage` census % may be &lt;100% until national census backfill fills NULL `aland` (skip-done treats NULL as incomplete — **no** `force_states` required solely for land/water backfill).
+4. Ensure `niq-worker-fema` and `niq-worker-cms-timely` exist (table above).
+5. **Smoke fill** (Benton County): set `INGEST_SCOPE=smoke` on acs / fema / cms_timely / scoring (or allowlist `05007`), then start in order:
 
 ```powershell
 az containerapp job start --name niq-worker-acs --resource-group neighborhoodiq-rg
@@ -516,20 +517,20 @@ az containerapp job start --name niq-worker-cms-timely --resource-group neighbor
 az containerapp job start --name niq-worker-scoring --resource-group neighborhoodiq-rg
 ```
 
-5. Open production web → `609 SE Jamaica Dr, Bentonville, AR` → expand report must match the known-good local/dev expand UI (sub-scores, plain-English stats, hazard/wait when sources provided).
-6. **If smoke fails, do not start National Ingest.** Local Compose alone does not clear this gate.
+6. Open production web → `609 SE Jamaica Dr, Bentonville, AR` → expand report must match the known-good local/dev expand UI (sub-scores, plain-English stats, hazard/wait when sources provided).
+7. **If smoke fails, do not start National Ingest.** Local Compose alone does not clear this gate.
 
-See also [`specs/005-national-report-detail/quickstart.md`](../specs/005-national-report-detail/quickstart.md).
+See also [`specs/003-national-ingest/quickstart.md`](../specs/003-national-ingest/quickstart.md) (Azure smoke gate + continuous national).
 
 ### National ingest (50 states + DC, continuous)
 
-See also [`specs/003-national-ingest/quickstart.md`](../specs/003-national-ingest/quickstart.md) and [`specs/007-national-ingest-redesign/quickstart.md`](../specs/007-national-ingest-redesign/quickstart.md).
+See also [`specs/003-national-ingest/quickstart.md`](../specs/003-national-ingest/quickstart.md).
 
 1. Apply [`infra/sql/006_geo_counties.sql`](../infra/sql/006_geo_counties.sql) (and **`007_report_detail.sql`** if not already applied for expand reports).
 2. Bootstrap registry (all included jurisdictions): `INGEST_GEO_LOAD_ALL=1` on `niq-worker-geo`, then start it.
 3. **Preferred:** GitHub → Actions → **National ingest** → Run workflow with **`continuous=true`** (default). Optional: `batch_states` (default 10), `state_filter`, `force_states`, `state_exclude`. Set `continuous=false` + `max_states` for a bounded diagnostic nibble. The Action sets `ORCH_CONTINUOUS=1`, starts `niq-worker-orchestrate`, and **chains** orchestrator executions (then self-redispatches the workflow with `chain_depth`, max 50) until logs show `orch_cycle_result=complete`. Progress echoes include `orch_start`, `orch_cycle_result`, `national_progress`.
 4. **Local one-command path:** `.\scripts\national-ingest.ps1` (optional `-AllowMyIp` for Postgres firewall). Same exit-code loop: `0` complete, `2` more work → restart, `1` hard fail.
-5. **Bulk / wide fetch (007):** FEMA downloads the national NRI tracts CSV zip once per national run; ACS uses `in=state:SS county:*`; Urban pages `?fips=` per state with skip-done; FBI caches per-state agency lists and uses bounded county concurrency (`FBI_MAX_CONCURRENCY`); EPA/BLS prefer AirData / LAUS flat files (`EPA_USE_BULK_FILES` / `BLS_USE_BULK_FILES`, default on, API fallback). CMS Timely skips when the batch’s states already have measures for the active vintage.
+5. **Bulk / wide fetch (003 national ingest):** FEMA downloads the national NRI tracts CSV zip once per national run; ACS uses `in=state:SS county:*`; Urban pages `?fips=` per state with skip-done; FBI caches per-state agency lists and uses bounded county concurrency (`FBI_MAX_CONCURRENCY`); EPA/BLS prefer AirData / LAUS flat files (`EPA_USE_BULK_FILES` / `BLS_USE_BULK_FILES`, default on, API fallback). CMS Timely skips when the batch’s states already have measures for the active vintage.
 6. **Progress %:** every job — including **scoring** — uses the full `geo_counties` national county universe as denominator (scoring done = counties where every tract has `fbi_cde` + non-empty `score_detail`). Exclusion only affects scheduling, not the meaning of 100%. Status with `INGEST_SCOPE=national` for Workbook %; orchestrator emits slim `INGEST_STATUS_SNAPSHOT` after workers. Re-import [`infra/workbook-ingest-status.json`](../infra/workbook-ingest-status.json) if the gallery is stale.
 7. **ACA timeouts:** orchestrator `--replica-timeout 21600` (6h); per-source / scoring jobs `10800` (3h). Apply with:
 
@@ -543,7 +544,7 @@ done
 8. Manual fallback: set on ingest/scoring jobs `INGEST_SCOPE=national`, `INGEST_STATE_BATCH=<SS,SS,...>`; run workers in order; re-start to resume (`skip_checkpoint`). Set `INGEST_FORCE=1` to re-upsert without skip-done (formula changes / bad data only).
 9. Territories are **not** in v1; enable later by moving FIPS from `TERRITORY_STATE_FIPS` → `INCLUDED_STATE_FIPS` in code.
 
-Orchestrator job: `niq-worker-orchestrate`. GitHub Actions **National ingest** injects the Deploy service principal from `AZURE_CREDENTIALS` into the job env on each run and needs `permissions: actions: write` for self-redispatch. The SP must be able to start/update jobs in the RG. **Do not** wire national ingest to the `master` Deploy workflow. Rebuild/push `neighborhoodiq-worker:dev` after worker code changes so ACA runs the new image.
+Orchestrator job: `niq-worker-orchestrate`. GitHub Actions **National ingest** injects the Deploy service principal from `AZURE_CREDENTIALS` into the job env on each run and needs `permissions: actions: write` for self-redispatch. The SP must be able to start/update jobs in the RG. **Do not** wire national ingest to the `master` Deploy workflow. Worker image updates are handled by National ingest when worker paths change (see detect-worker / build-worker jobs); Deploy remains worker-free per 007.
 
 **Exit codes (continuous):** `0` = nation complete, `2` = time budget with gaps remaining (chain another cycle), `1` = hard failure.
 

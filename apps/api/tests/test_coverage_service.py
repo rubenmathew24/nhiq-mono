@@ -237,3 +237,31 @@ def test_by_state_sums_match_national_and_epa_no_fallback(monkeypatch):
 def test_pct_helper():
     assert cs._pct(1, 4) == 25.0
     assert cs._pct(0, 0) == 0.0
+
+
+def test_coverage_census_query_requires_aland(monkeypatch):
+    """Census coverage done-check must require non-NULL aland on every tract."""
+    session = AsyncMock()
+    universe = MagicMock()
+    universe.fetchall.return_value = [("05007", "05")]
+    session.execute = AsyncMock(return_value=universe)
+    seen: list[str] = []
+
+    async def fake_fetch(_session, sql, params):
+        seen.append(sql)
+        return set()
+
+    async def fake_timely(_session, *, states, vintage):
+        return {}
+
+    monkeypatch.setattr(cs, "_fetch_cf_set", fake_fetch)
+    monkeypatch.setattr(cs, "_fetch_timely_hospital_counts", fake_timely)
+    asyncio.run(cs.compute_national_coverage(session))
+    census_sql = next(
+        s
+        for s in seen
+        if "census_tracts" in s.lower()
+        and "aland is null" in s.lower()
+        and "acs_indicators" not in s.lower()
+    )
+    assert "having" in census_sql.lower()

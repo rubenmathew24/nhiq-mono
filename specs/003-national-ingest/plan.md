@@ -1,47 +1,41 @@
 # Implementation Plan: National Ingest
 
-**Branch**: `003-national-ingest` | **Date**: 2026-07-15 | **Spec**: [spec.md](./spec.md)
+**Branch**: `003-national-ingest` | **Date**: 2026-07-23 (consolidated) | **Spec**: [spec.md](./spec.md)
 
-**Input**: Feature specification from `/specs/003-national-ingest/spec.md`
+**Input**: Consolidated feature specification (original 003 + absorbed 005 report-detail + 007 redesign).
 
 ## Summary
 
-Enable ops to load **50 states + DC** county data in **explicit state batches**, with **DB-backed skip-done checkpoints** on every worker, **FBI agency selection via county centroids**, and a **real `INGEST_SCOPE=national` status denominator**. Keep `smoke` / `metro_10` fixture paths. Territories stay out of v1 but share an extensible jurisdiction list.
-
-**Orchestrator (US5–US7):** Inventory gaps per worker from Postgres; ACA job `niq-worker-orchestrate` starts only incomplete worker/state pairs (per-state pipeline order), or **all** workers when `ORCH_FORCE_STATES` includes the state. Explicit `ORCH_FORCE_STATES` / `ORCH_STATE_FILTER` lists are **exclusive** (no gap padding to fill `max_states`). Status snapshots emit after each worker and every N units; console `INGEST_STATUS_SNAPSHOT` is metrics-only for Log Analytics Workbook; full detail stays in Postgres. ARM PATCH/START retries transient 5xx/429. Thin GitHub Actions `workflow_dispatch` triggers the orchestrator—not Deploy-on-master.
+As-built national ops path: **50 states + DC** via `geo_counties`; **explicit state batches** + **DB skip-done checkpoints**; **inventory orchestrator** (ACA + GHA) with **class A/B report-detail priority**; **Azure smoke gate** before trusting expand; **honest status %** (full registry, scoring county-grain); **continuous** completion (GHA chain / PowerShell) with **multi-state batching**; **bulk/wide fetches** (FEMA NRI CSV, ACS `county:*`, Urban `?fips=`, FBI cache+concurrency, EPA/BLS bulk flags). Preserve **smoke** / **metro_10**. Score formulas and fixture product path remain in **002**; expand UI in **004**.
 
 ## Technical Context
 
 **Language/Version**: Python 3.12 (workers)
 
-**Primary Dependencies**: Existing worker stack (psycopg2, geopandas/shapely, requests); Azure ACA Jobs + Postgres
+**Primary Dependencies**: httpx/requests, psycopg2, pandas/csv+zipfile (FEMA), concurrent.futures, Azure ACA Jobs, GitHub Actions, PowerShell
 
-**Storage**: PostgreSQL 16 + PostGIS (`geo_counties` registry + existing ingest/score tables)
+**Storage**: PostgreSQL + PostGIS (`geo_counties`, raw ingest, `neighborhood_scores` / `score_detail`, `fema_nri_tracts`, `hospital_timely_measures`, `ingest_status_snapshot`)
 
 **Testing**: pytest under `workers/tests/`
 
-**Target Platform**: Docker worker image; Azure Container Apps Jobs (`niq-worker-*`)
+**Target Platform**: Azure Container Apps Jobs + GitHub Actions; local PowerShell coordinator; Docker Compose for metro/smoke
 
-**Project Type**: Batch workers + ops status (no product API/UI change required)
+**Performance Goals**: ≥50% wall-clock reduction vs prior max-5 sequential pattern; continuous unattended 50+DC completion
 
-**Performance Goals**: One small state batch completable within ACA replica timeout with restarts; national % updates after each worker and every ~15 counties mid-job
+**Constraints**: ACA timeouts (orchestrator 21600s, workers 10800s); GHA ≤6h with self-redispatch; FBI CDE rate limits; no manual FBI master downloads; national workers require `INGEST_STATE_BATCH`
 
-**Constraints**: ACA ~7200s timeout; national runs **require** `INGEST_STATE_BATCH`; no all-51 unattended run in v1; force re-runs use upserts only (no wipe)
-
-**Scale/Scope**: ~3,143 counties (50+DC); phased by state FIPS batch
+**Scale/Scope**: ~3,143 counties / ~74k tracts; 11 pipeline workers + scoring
 
 ## Constitution Check
 
-*GATE: Must pass before Phase 0 research. Re-check after Phase 1 design.*
-
-- [x] **I. Locked Stack & Monorepo**: Workers + `infra/sql` only; no new frameworks
-- [x] **II. Thin Client, Fat API**: No web/API business logic changes
-- [x] **III. Precomputed Data Path**: Still ingest → score → API reads precomputed rows
-- [x] **IV. API Contracts & Versioning**: N/A (no public API change)
-- [x] **V. Security & Secrets**: Existing Key Vault / env keys; no new secrets in repo
-- [x] **VI. Test Alongside Features**: pytest for scope, batch rejection, checkpoints, national status
-- [x] **VII. Observability & Graceful Degradation**: Structured skip/fetch logs; honest partial FBI coverage
-- [x] **VIII. Clear User-Facing Errors**: Clear RuntimeError when national batch missing / invalid state FIPS
+- [x] **I. Locked Stack & Monorepo**: Workers + GHA + ACA only
+- [x] **II. Thin Client, Fat API**: No product web/API changes required for national ops (004 owns expand UI)
+- [x] **III. Precomputed Data Path**: Batch ingest → scoring → DB
+- [x] **IV. API Contracts & Versioning**: Ops env contracts only
+- [x] **V. Security & Secrets**: Existing Key Vault / SP patterns
+- [x] **VI. Test Alongside Features**: pytest for status, inventory, bulk/wide, continuous, report-detail checkpoints
+- [x] **VII. Observability & Graceful Degradation**: Snapshots, cycle markers, checkpoint resume
+- [x] **VIII. Clear User-Facing Errors**: Fail-closed registry; clear batch/bulk failures
 
 ## Project Structure
 
@@ -54,34 +48,40 @@ specs/003-national-ingest/
 ├── data-model.md
 ├── quickstart.md
 ├── contracts/
-│   └── worker-env.md
+│   ├── worker-env.md
+│   ├── continuous-orchestrator.md
+│   ├── azure-ops.md
+│   └── national-orchestrator.md
 └── tasks.md
 ```
 
-### Source Code (touched)
+### Source Code (as-built touch list)
 
 ```text
 infra/sql/006_geo_counties.sql
-workers/ingest/geo/           # jurisdictions, scope resolution, county registry load
-workers/ingest/checkpoints.py # shared “is county done?” helpers
-workers/ingest/inventory.py   # gap inventory JSON
-workers/ingest/force.py       # INGEST_FORCE helper
-workers/ingest/status_pulse.py # mid-run snapshot cadence
-workers/ingest/orchestrate/   # ACA orchestrator (+ ARM retries)
-workers/ingest/*/run.py       # use scope + checkpoints + force + pulse
-workers/ingest/fbi/run.py     # centroids / geo_counties points
-workers/ingest/status.py      # real national denominators
-workers/scoring/compute.py    # national batch counties
+infra/sql/007_report_detail.sql
+workers/ingest/geo/
+workers/ingest/checkpoints.py
+workers/ingest/inventory.py
+workers/ingest/force.py
+workers/ingest/status_pulse.py
+workers/ingest/status.py
+workers/ingest/orchestrate/
+workers/ingest/{fema,cms_timely,acs,urban,fbi,epa,bls,*/run.py}
+workers/scoring/compute.py
 .github/workflows/national-ingest.yml
-docs/azure-setup-and-cicd.md  # national runbook
+scripts/national-ingest.ps1
+docs/azure-setup-and-cicd.md
+workers/tests/
 ```
 
 ## Complexity Tracking
 
 | Violation | Why Needed | Simpler Alternative Rejected Because |
 |-----------|------------|--------------------------------------|
-| New `geo_counties` table | National FBI needs centroids; status needs stable universe | Deriving only from tracts couples universe to census completion and lacks centroids before tracts exist |
+| `geo_counties` table | National FBI needs centroids; status needs stable universe | Deriving only from tracts couples universe to census completion |
+| Continuous GHA self-chain | Platform time limits | Manual ≤5-state re-triggers cannot finish nation |
 
-## Phase 0 / Phase 1
+## Phase artifacts
 
-See [research.md](./research.md), [data-model.md](./data-model.md), [contracts/worker-env.md](./contracts/worker-env.md), [quickstart.md](./quickstart.md).
+See [research.md](./research.md), [data-model.md](./data-model.md), [contracts/](./contracts/), [quickstart.md](./quickstart.md), [tasks.md](./tasks.md) (completed archive).

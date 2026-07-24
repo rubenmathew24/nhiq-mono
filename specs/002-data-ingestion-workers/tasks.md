@@ -312,3 +312,14 @@ Phases 1–7 (US1–US5): census/EPA/CMS/scoring/live reports with environment p
 ## Phase 13: Convergence
 
 - [x] T067 Update `specs/002-data-ingestion-workers/quickstart.md` Done-when checkboxes for V7 (FBI CDE / Bentonville non-placeholder safety) and V9 (ACS + BLS dual-source economic) to match the completed Compose smokes; note FBI may still be partial on non-Benton fixture counties due to upstream 503s per SC-007, T060 (partial)
+
+---
+
+## Phase 14: TIGER land/water area (amend 2026-07-23)
+
+**Purpose**: Persist Census TIGER `ALAND`/`AWATER` so Discover can exclude water-only tracts. Align with `003` national census path and `008` Discover filter.
+
+- [x] T068 Add additive migration `infra/sql/010_census_tract_land_water.sql` (`aland`/`awater` BIGINT NULL) and mirror columns in `infra/sql/init.sql` per `data-model.md` / FR-004a
+- [x] T069 Keep `ALAND`/`AWATER` in `workers/ingest/census/run.py` transform and `workers/ingest/census/transform.py` (`filter_tract_records`); upsert both columns on load
+- [x] T070 [P] Unit/integration tests: fixture or sample TIGER row with `ALAND=0` persists `aland=0`; land tract persists positive `aland` in `workers/tests/` (or census transform tests)
+- [x] T071 Document re-ingest for existing DBs in `specs/002-data-ingestion-workers/quickstart.md` (migration + `worker-census` force/re-run for Cook County / Chicago demo)

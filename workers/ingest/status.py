@@ -142,12 +142,15 @@ def compute_job_statuses(cur, counties: frozenset[str], scope: str) -> list[JobS
             for name in JOB_NAMES
         ]
 
-    # census — SSCCC = state_fips || county_fips
+    # census — SSCCC = state_fips || county_fips; require aland backfill
     cur.execute(
         """
-        SELECT DISTINCT (state_fips || county_fips) AS cf
+        SELECT (state_fips || county_fips) AS cf
         FROM census_tracts
         WHERE (state_fips || county_fips) = ANY(%s)
+        GROUP BY (state_fips || county_fips)
+        HAVING COUNT(*) > 0
+           AND COUNT(*) FILTER (WHERE aland IS NULL) = 0
         """,
         (county_list,),
     )
