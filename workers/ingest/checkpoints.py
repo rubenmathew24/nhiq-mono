@@ -29,14 +29,24 @@ def counties_with_geo(database_url: str, counties: list[str]) -> set[str]:
 
 
 def counties_with_census_tracts(database_url: str, counties: list[str]) -> set[str]:
+    """Counties where every stored tract has TIGER land area (aland) populated.
+
+    Empty counties (no tracts) are not done. Rows with ``aland IS NULL`` mean
+    migration/backfill pending — incomplete for coverage, inventory, and
+    census skip-done (so national ingest re-runs without INGEST_FORCE).
+    Water-only tracts (``aland = 0``) still count as complete once filled.
+    """
     if not counties:
         return set()
     return _fetch_set(
         database_url,
         """
-        SELECT DISTINCT (state_fips || county_fips)
+        SELECT (state_fips || county_fips) AS cf
         FROM census_tracts
         WHERE (state_fips || county_fips) = ANY(%s)
+        GROUP BY (state_fips || county_fips)
+        HAVING COUNT(*) > 0
+           AND COUNT(*) FILTER (WHERE aland IS NULL) = 0
         """,
         (counties,),
     )

@@ -24,7 +24,7 @@
 ## Validate city snapshot summary
 
 1. Below the map, see average / coverage headline, then **highest** and **lowest** near the top, then counts / min–max.
-2. High/low labels show friendly text + score (GEOID secondary), not GEOID-only.
+2. High/low labels show friendly text + score (GEOID secondary), not GEOID-only. Score numbers (average, high/low, min–max) use product absolute score-quality colors (same as report/dashboard)—not the map’s relative fill ramp.
 3. **Click** (or tap) highest/lowest → map dims others and gently fits to that tract within lock; the active row shows selected styling and a “Focused · click to clear” (or equivalent) hint.
 4. Click the **other** high/low row → focus switches; click the **same** active row again → focus clears and city framing restores. Hovering high/low rows MUST NOT change the map (research §13).
 5. On ~laptop viewport, interacting with high/low does not require scrolling the map away.

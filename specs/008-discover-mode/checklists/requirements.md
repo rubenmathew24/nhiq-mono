@@ -34,5 +34,6 @@
 - Clarification loop completed (8 Q→A) on 2026-07-23; shared understanding reached for POC scope.
 - Clarify expansion 2026-07-23 (city summary): 6 Q→A — snapshot pack + hover/tap focus, city-scope polygon/core, friendly labels, touch tap, gentle fit, high/low rows near top for map visibility.
 - Clarify amend 2026-07-23 (summary focus = click): 3 Q→A — click toggle/switch (not hover); selected styling + “Focused · click to clear” hint; pointer/touch only (no keyboard map-focus requirement for POC).
+- Amend 2026-07-23 (snapshot score colors): city snapshot numerics use absolute product score-quality colors (report/dashboard bands); map fills stay relative.
 - Feasibility / “what’s needed” detail is reported in the specify completion message for planning; kept out of `spec.md` to preserve stakeholder-facing, technology-agnostic wording.
-- Validation after click-focus clarify: all checklist items still pass (16/16).
+- Validation after snapshot score-color amend: all checklist items still pass (16/16).

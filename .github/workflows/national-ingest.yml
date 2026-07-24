@@ -1,7 +1,8 @@
 name: National ingest
 
 # Manual trigger only — does NOT run on push to master/dev (Deploy is separate).
-# Worker list (incl. fema / cms_timely) comes from orchestrator inventory code — no new inputs here.
+# Optionally rebuilds neighborhoodiq-worker:dev when workers/ (or worker Dockerfile)
+# changed since the SHA baked into the current :dev image (skipped on chain redispatch).
 on:
   workflow_dispatch:
     inputs:
@@ -34,16 +35,156 @@ on:
         description: Auto-incremented self-redispatch depth (do not set manually)
         required: false
         default: "0"
+      force_worker_rebuild:
+        description: Force rebuild/push of neighborhoodiq-worker:dev even if workers/ unchanged
+        required: false
+        default: "false"
+        type: boolean
 
 permissions:
   contents: read
   actions: write
 
 jobs:
+  detect-worker:
+    name: Detect worker image update
+    runs-on: ubuntu-latest
+    outputs:
+      need_build: ${{ steps.detect.outputs.need_build }}
+      previous_sha: ${{ steps.detect.outputs.previous_sha }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Detect whether workers/ changed since image SHA
+        id: detect
+        env:
+          CHAIN_DEPTH: ${{ github.event.inputs.chain_depth }}
+          FORCE_REBUILD: ${{ github.event.inputs.force_worker_rebuild }}
+          ACR_LOGIN_SERVER: ${{ secrets.ACR_LOGIN_SERVER }}
+          ACR_USERNAME: ${{ secrets.ACR_USERNAME }}
+          ACR_PASSWORD: ${{ secrets.ACR_PASSWORD }}
+          HEAD_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          DEPTH="${CHAIN_DEPTH:-0}"
+          if [ "$DEPTH" != "0" ]; then
+            echo "chain_depth=$DEPTH — skip worker rebuild on self-redispatch"
+            echo "need_build=false" >> "$GITHUB_OUTPUT"
+            echo "previous_sha=" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          FORCE_RAW="${FORCE_REBUILD:-false}"
+          case "${FORCE_RAW,,}" in
+            1|true|yes)
+              echo "force_worker_rebuild=true"
+              echo "need_build=true" >> "$GITHUB_OUTPUT"
+              echo "previous_sha=" >> "$GITHUB_OUTPUT"
+              exit 0
+              ;;
+          esac
+
+          if [ -z "${ACR_LOGIN_SERVER:-}" ] || [ -z "${ACR_USERNAME:-}" ] || [ -z "${ACR_PASSWORD:-}" ]; then
+            echo "::error::ACR_LOGIN_SERVER / ACR_USERNAME / ACR_PASSWORD secrets required for worker image detect"
+            exit 1
+          fi
+
+          echo "$ACR_PASSWORD" | docker login "$ACR_LOGIN_SERVER" -u "$ACR_USERNAME" --password-stdin
+          IMG="${ACR_LOGIN_SERVER}/neighborhoodiq-worker:dev"
+          PREV=""
+          if docker buildx imagetools inspect "$IMG" --format '{{json .}}' > /tmp/worker-img.json 2>/tmp/worker-img.err; then
+            PREV=$(python3 <<'PY'
+          import json
+          data = json.load(open("/tmp/worker-img.json"))
+          candidates = []
+          def walk(o):
+              if isinstance(o, dict):
+                  for k, v in o.items():
+                      if k in ("org.opencontainers.image.revision", "org.opencontainers.image.revision".lower()) and isinstance(v, str):
+                          candidates.append(v)
+                      if k in ("Labels", "labels", "annotations") and isinstance(v, dict):
+                          for lk, lv in v.items():
+                              if "revision" in str(lk).lower() and isinstance(lv, str):
+                                  candidates.append(lv)
+                      walk(v)
+              elif isinstance(o, list):
+                  for i in o:
+                      walk(i)
+          walk(data)
+          print(candidates[0] if candidates else "")
+          PY
+            )
+          else:
+            echo "Could not inspect $IMG (missing or inaccessible) — will build"
+            cat /tmp/worker-img.err || true
+          fi
+
+          echo "previous_sha=${PREV}" >> "$GITHUB_OUTPUT"
+          echo "Image revision label: '${PREV:-<none>}' ; HEAD=$HEAD_SHA"
+
+          if [ -z "$PREV" ]; then
+            echo "need_build=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          if ! git cat-file -e "${PREV}^{commit}" 2>/dev/null; then
+            echo "Previous image SHA not in this clone — will build"
+            echo "need_build=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          CHANGED=$(git diff --name-only "$PREV" "$HEAD_SHA" -- workers/ docker/worker.Dockerfile || true)
+          if [ -n "$CHANGED" ]; then
+            echo "Worker paths changed since $PREV:"
+            printf '%s\n' "$CHANGED"
+            echo "need_build=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "No workers/ or docker/worker.Dockerfile changes since $PREV — skip rebuild"
+            echo "need_build=false" >> "$GITHUB_OUTPUT"
+          fi
+
+  build-worker:
+    name: Build & push worker image
+    runs-on: ubuntu-latest
+    needs: detect-worker
+    if: needs.detect-worker.outputs.need_build == 'true'
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Log in to ACR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ secrets.ACR_LOGIN_SERVER }}
+          username: ${{ secrets.ACR_USERNAME }}
+          password: ${{ secrets.ACR_PASSWORD }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build & push neighborhoodiq-worker
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: docker/worker.Dockerfile
+          platforms: linux/amd64
+          push: true
+          tags: |
+            ${{ secrets.ACR_LOGIN_SERVER }}/neighborhoodiq-worker:dev
+            ${{ secrets.ACR_LOGIN_SERVER }}/neighborhoodiq-worker:sha-${{ github.sha }}
+          labels: |
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+          cache-from: type=gha,scope=worker
+          cache-to: type=gha,scope=worker,mode=max
+
   orchestrate:
     name: Start niq-worker-orchestrate
     runs-on: ubuntu-latest
     timeout-minutes: 350
+    needs: [detect-worker, build-worker]
+    if: |
+      always() &&
+      needs.detect-worker.result == 'success' &&
+      (needs.build-worker.result == 'success' || needs.build-worker.result == 'skipped')
     steps:
       - name: Azure Login
         uses: azure/login@v2
@@ -129,6 +270,7 @@ jobs:
           STATE_FILTER: ${{ github.event.inputs.state_filter }}
           FORCE_STATES: ${{ github.event.inputs.force_states }}
           STATE_EXCLUDE: ${{ github.event.inputs.state_exclude }}
+          FORCE_WORKER_REBUILD: ${{ github.event.inputs.force_worker_rebuild }}
           CHAIN_DEPTH: ${{ github.event.inputs.chain_depth }}
         run: |
           set -euo pipefail
@@ -234,6 +376,7 @@ jobs:
               -f "inputs[state_filter]=${STATE_FILTER}" \
               -f "inputs[force_states]=${FORCE_STATES}" \
               -f "inputs[state_exclude]=${STATE_EXCLUDE}" \
+              -f "inputs[force_worker_rebuild]=false" \
               -f "inputs[chain_depth]=${next_depth}"
             echo "Handed off to new workflow run (chain_depth=$next_depth)"
           }

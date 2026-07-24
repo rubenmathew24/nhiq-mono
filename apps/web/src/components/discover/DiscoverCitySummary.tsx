@@ -1,6 +1,7 @@
 "use client";
 
 import type { DiscoverSummary } from "@/types/discover";
+import { cn, scoreTextClass } from "@/lib/utils";
 
 type Props = {
   summary: DiscoverSummary | null | undefined;
@@ -33,15 +34,28 @@ export default function DiscoverCitySummary({
         </h2>
         <p className="text-sm text-muted-foreground">
           Average overall{" "}
-          <span className="font-semibold text-foreground">
+          <span
+            className={cn(
+              "font-semibold",
+              summary.average_overall != null
+                ? scoreTextClass(summary.average_overall)
+                : "text-foreground",
+            )}
+          >
             {formatScore(summary.average_overall)}
           </span>
           {" · "}
           {summary.scored_count} of {summary.total_count} tracts scored
           {summary.score_min != null && summary.score_max != null && (
             <>
-              {" · "}range {formatScore(summary.score_min)}–
-              {formatScore(summary.score_max)}
+              {" · "}range{" "}
+              <span className={cn("font-semibold", scoreTextClass(summary.score_min))}>
+                {formatScore(summary.score_min)}
+              </span>
+              –
+              <span className={cn("font-semibold", scoreTextClass(summary.score_max))}>
+                {formatScore(summary.score_max)}
+              </span>
             </>
           )}
         </p>
@@ -117,7 +131,12 @@ function HighlightRow({
             <p className="text-xs text-mint mt-1">Focused · click to clear</p>
           ) : null}
         </div>
-        <p className="text-2xl font-bold tabular-nums shrink-0">
+        <p
+          className={cn(
+            "text-2xl font-bold tabular-nums shrink-0",
+            scoreTextClass(score),
+          )}
+        >
           {formatScore(score)}
         </p>
       </div>

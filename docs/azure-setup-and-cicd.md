@@ -448,7 +448,7 @@ Values can change if resources are recreated; confirm in Portal or CLI when unsu
 | Key Vault | `niq-kv-21698` (example; use your vault name) | East US |
 | Storage | `niqstorage*****` (random suffix) | East US |
 | Deploy workflow | `.github/workflows/deploy.yml` on `master` | — |
-| Worker image | `neighborhoodiq-worker:dev` in ACR | Hand-pushed (not Deploy.yml) |
+| Worker image | `neighborhoodiq-worker:dev` in ACR | **National ingest** GHA rebuilds/pushes when `workers/` or `docker/worker.Dockerfile` changed since the SHA labeled on `:dev` (skipped on chain redispatches; optional `force_worker_rebuild`) — not Deploy.yml |
 | Worker jobs | `niq-worker-*` (9 manual ACA Jobs) | See §16 |
 
 ---
@@ -462,7 +462,7 @@ Values can change if resources are recreated; confirm in Portal or CLI when unsu
 | CI | Separate `ci.yml` + `deploy.yml` + workers | **`ci-master.yml` on PRs to `master`**; Deploy on `master` push |
 | Migrations | Alembic job **after** API deploy | **Numbered `infra/sql` + `apply-sql-migrations.py` before images** (not Alembic-after-API) |
 | Workers / Front Door / Key Vault→ACA identity | Specified | **Workers: manual ACA Jobs wired (see §16)**; Front Door / KV→ACA identity still not wired |
-| Image promotion | Tag by git SHA + `latest` | API/web via Deploy on `master`; **worker image pushed by hand** to ACR tag `neighborhoodiq-worker:dev` |
+| Image promotion | Tag by git SHA + `latest` | API/web via Deploy on `master`; **worker** via National ingest when worker paths changed (`:dev` + `sha-<gitsha>`, revision label) |
 | Ingest schema | Design raw tables | Azure has `init.sql` + manual `002` / `003` / `004` applied |
 | National ingest | Design 50-state loops | **Not done.** Jobs currently scoped to fixture counties via optional `INGEST_COUNTY_ALLOWLIST` |
 
@@ -504,10 +504,11 @@ Status job env: `INGEST_SCOPE=metro_10` (or `smoke` / `national`), optional `ING
 
 ### Report-detail promote → Azure smoke gate (before National Ingest)
 
-1. Merge feature to `dev`, promote `dev` → `master`; wait for Deploy (API/web) and rebuild/push the **worker** image used by ACA jobs.
-2. Apply [`infra/sql/007_report_detail.sql`](../infra/sql/007_report_detail.sql) on Azure Postgres (idempotent). Confirm `acs_indicators.total_population` exists (from `004` / init).
-3. Ensure `niq-worker-fema` and `niq-worker-cms-timely` exist (table above).
-4. **Smoke fill** (Benton County): set `INGEST_SCOPE=smoke` on acs / fema / cms_timely / scoring (or allowlist `05007`), then start in order:
+1. Merge feature to `dev`, promote `dev` → `master`; wait for Deploy (API/web). Numbered SQL under `infra/sql/` (including `010_census_tract_land_water.sql`) is applied by Deploy’s migrate job — no laptop `psql` for ordinary migrations.
+2. Worker image: **National ingest** rebuilds/pushes `neighborhoodiq-worker:dev` when `workers/` or `docker/worker.Dockerfile` changed since the revision labeled on the current `:dev` image (Deploy.yml still does **not** build workers — 007). First run after a worker change (or unlabeled legacy image) builds once; chain redispatches skip rebuild. Optional workflow input `force_worker_rebuild=true`.
+3. Confirm columns (optional): `census_tracts.aland` / `awater` exist; `/coverage` census % may be &lt;100% until national census backfill fills NULL `aland` (skip-done treats NULL as incomplete — **no** `force_states` required solely for land/water backfill).
+4. Ensure `niq-worker-fema` and `niq-worker-cms-timely` exist (table above).
+5. **Smoke fill** (Benton County): set `INGEST_SCOPE=smoke` on acs / fema / cms_timely / scoring (or allowlist `05007`), then start in order:
 
 ```powershell
 az containerapp job start --name niq-worker-acs --resource-group neighborhoodiq-rg
@@ -516,8 +517,8 @@ az containerapp job start --name niq-worker-cms-timely --resource-group neighbor
 az containerapp job start --name niq-worker-scoring --resource-group neighborhoodiq-rg
 ```
 
-5. Open production web → `609 SE Jamaica Dr, Bentonville, AR` → expand report must match the known-good local/dev expand UI (sub-scores, plain-English stats, hazard/wait when sources provided).
-6. **If smoke fails, do not start National Ingest.** Local Compose alone does not clear this gate.
+6. Open production web → `609 SE Jamaica Dr, Bentonville, AR` → expand report must match the known-good local/dev expand UI (sub-scores, plain-English stats, hazard/wait when sources provided).
+7. **If smoke fails, do not start National Ingest.** Local Compose alone does not clear this gate.
 
 See also [`specs/003-national-ingest/quickstart.md`](../specs/003-national-ingest/quickstart.md) (Azure smoke gate + continuous national).
 
@@ -543,7 +544,7 @@ done
 8. Manual fallback: set on ingest/scoring jobs `INGEST_SCOPE=national`, `INGEST_STATE_BATCH=<SS,SS,...>`; run workers in order; re-start to resume (`skip_checkpoint`). Set `INGEST_FORCE=1` to re-upsert without skip-done (formula changes / bad data only).
 9. Territories are **not** in v1; enable later by moving FIPS from `TERRITORY_STATE_FIPS` → `INCLUDED_STATE_FIPS` in code.
 
-Orchestrator job: `niq-worker-orchestrate`. GitHub Actions **National ingest** injects the Deploy service principal from `AZURE_CREDENTIALS` into the job env on each run and needs `permissions: actions: write` for self-redispatch. The SP must be able to start/update jobs in the RG. **Do not** wire national ingest to the `master` Deploy workflow. Rebuild/push `neighborhoodiq-worker:dev` after worker code changes so ACA runs the new image.
+Orchestrator job: `niq-worker-orchestrate`. GitHub Actions **National ingest** injects the Deploy service principal from `AZURE_CREDENTIALS` into the job env on each run and needs `permissions: actions: write` for self-redispatch. The SP must be able to start/update jobs in the RG. **Do not** wire national ingest to the `master` Deploy workflow. Worker image updates are handled by National ingest when worker paths change (see detect-worker / build-worker jobs); Deploy remains worker-free per 007.
 
 **Exit codes (continuous):** `0` = nation complete, `2` = time budget with gaps remaining (chain another cycle), `1` = hard failure.
 

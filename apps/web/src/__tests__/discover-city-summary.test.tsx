@@ -43,6 +43,11 @@ describe("DiscoverCitySummary", () => {
     expect(lowIdx).toBeGreaterThan(highIdx);
     expect(screen.getByText(/Bentonville · Tract 020102/)).toBeInTheDocument();
     expect(screen.getByText(/GEOID 05007020102/)).toBeInTheDocument();
+    // Product score tiers: good (≥75) / mid / poor — same as report/dashboard.
+    const highestBtn = screen.getByRole("button", { name: /highest/i });
+    const lowestBtn = screen.getByRole("button", { name: /lowest/i });
+    expect(highestBtn.querySelector(".text-score-good")).toHaveTextContent("91.0");
+    expect(lowestBtn.querySelector(".text-score-mid")).toHaveTextContent("54.2");
   });
 
   it("shows insufficient state without fake high/low", () => {

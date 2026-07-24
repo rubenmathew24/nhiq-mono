@@ -73,4 +73,4 @@ Postgres `ingest_status_snapshot` retains full `detail` JSON for ops SQL.
 
 ## GitHub Actions
 
-Workflow `.github/workflows/national-ingest.yml`: `workflow_dispatch` only (inputs `continuous`, `max_states`, `state_filter`, `force_states`, `state_exclude`, `chain_depth`). Does not run on push to `master`. Continuous mode may self-redispatch (`actions: write`).
+Workflow `.github/workflows/national-ingest.yml`: `workflow_dispatch` only (inputs `continuous`, `max_states`, `batch_states`, `state_filter`, `force_states`, `state_exclude`, `chain_depth`, `force_worker_rebuild`). Does not run on push to `master`. Before orchestrate: **detect-worker** compares `workers/` + `docker/worker.Dockerfile` to the `org.opencontainers.image.revision` on `neighborhoodiq-worker:dev` and **build-worker** pushes `:dev` + `sha-<gitsha>` only when needed (skipped when `chain_depth≠0`). Continuous mode may self-redispatch (`actions: write`; redispatches set `force_worker_rebuild=false`).

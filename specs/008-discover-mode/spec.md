@@ -71,10 +71,11 @@ Below the map, the visitor sees a compact **city snapshot** for the place they s
 
 1. **Given** a searched place with at least two scored city tracts, **When** the map page loads, **Then** a summary below the map shows city average overall, highest tract, lowest tract, scored/total counts, and min–max range for that city scope.
 2. **Given** the summary shows a highest (or lowest) tract, **When** the visitor **clicks** that summary row, **Then** the map gently fits/pans to that tract within lock bounds, brings it into focus, and dims other tracts, and the active row shows selected styling plus a short “focused / click to clear” hint. **When** the visitor clicks the other high/low row, **Then** focus switches to that tract (hint moves with focus). **When** the visitor clicks the currently focused row again, **Then** focus clears, the hint/selection clears, and the map restores the normal choropleth / city framing. Hovering over high/low rows MUST NOT focus or clear the map.
-3. **Given** the summary lists a highest or lowest tract, **When** the visitor reads the row, **Then** they see the overall score and a friendly label (with GEOID secondary), not GEOID alone as the only identifier.
+3. **Given** the summary lists a highest or lowest tract, **When** the visitor reads the row, **Then** they see the overall score and a friendly label (with GEOID secondary), not GEOID alone as the only identifier, and the numeric score is colored with the product’s absolute score-quality colors (same bands as neighborhood report / dashboard scores)—not the map’s relative choropleth ramp.
 4. **Given** the map page with a summary, **When** the visitor interacts with the highest or lowest row, **Then** those rows are positioned such that the map remains visible on a typical desktop viewport without scrolling it away.
 5. **Given** zero scored city tracts, **When** the summary would render, **Then** it shows a clear empty/unavailable summary state (not fabricated highs/lows).
 6. **Given** water-only census tracts in the place (e.g. Lake Michigan tracts with TIGER land area `ALAND = 0`), **When** the map and summary load, **Then** those tracts MUST NOT receive colored choropleth fills and MUST NOT set city average / highest / lowest / scored counts (they may be omitted from the FeatureCollection or flagged non-display; inhabited land tracts continue to color and drive the snapshot).
+7. **Given** a city snapshot with average and min–max overall scores, **When** the visitor reads the snapshot headline, **Then** those numeric scores ALSO use the same absolute product score-quality colors as the highest/lowest row scores.
 
 ---
 
@@ -115,6 +116,7 @@ Below the map, the visitor sees a compact **city snapshot** for the place they s
 - **FR-016**: Clicking the highest or lowest tract entry in the summary MUST focus that tract on the map and dim other tracts, and MUST gently fit/pan the map to that tract within the place lock bounds. Hover MUST NOT change focus. Clicking the other high/low row MUST switch focus to that tract. Clicking the currently focused row again MUST clear focus and restore the normal map presentation (including restoring the city-framed view). Desktop and touch use the same click/tap semantics (no hover-to-focus path).
 - **FR-017**: When fewer than two scored city-scoped tracts exist, the summary MUST NOT invent a meaningful highest/lowest pair; it MUST show an honest empty or insufficient-data state for those fields.
 - **FR-018**: Highest and lowest summary rows MUST show the overall score and a friendly place/area label when available, with the census tract GEOID secondary (not the sole primary label).
+- **FR-018a**: Numeric overall scores shown in the city snapshot (average, highest, lowest, and min–max range values) MUST use the product’s **absolute** score-quality color bands—the same bands used for overall scores on neighborhood reports and the dashboard (e.g. higher scores read as “good,” mid-range as “mid,” lower as “poor”). These colors MUST NOT follow the map’s **relative** choropleth ramp (FR-007). Map fills remain relative; summary score text remains absolute.
 - **FR-019**: The summary layout MUST place highest and lowest tract rows near the top of the report (immediately under any one-line city average / coverage headline) so that on a typical desktop viewport the map remains visible while the visitor interacts with those rows.
 - **FR-020**: While a highest or lowest row is focused, that row MUST show a clear selected/pressed visual state **and** a short affordance hint (e.g. “Focused · click to clear”) so visitors can discover how to restore city framing. Unfocused high/low rows MUST NOT show that focused hint.
 
@@ -124,7 +126,7 @@ Below the map, the visitor sees a compact **city snapshot** for the place they s
 - **Census tract region**: A geographic neighborhood unit with a stable public identifier and border shape.
 - **Neighborhood overall score**: A single 0–100-style overall score for a tract when available; may be missing for some tracts.
 - **Map presentation state**: Locked view, relative color legend for currently visible scored tracts, partial-coverage or empty-coverage messaging, active tract popup, and optional highlight focus for a summary-selected tract.
-- **City snapshot summary**: Aggregated overall-score stats for the searched city scope (average, high/low tracts, counts, min–max), shown below the map.
+- **City snapshot summary**: Aggregated overall-score stats for the searched city scope (average, high/low tracts, counts, min–max), shown below the map; numeric scores use absolute product score-quality colors.
 
 ## Success Criteria *(mandatory)*
 
@@ -140,12 +142,14 @@ Below the map, the visitor sees a compact **city snapshot** for the place they s
 - **SC-008**: When focusing the summary’s highest or lowest row by click/tap, at least 90% of testers correctly point to the matching focused tract on the map within 5 seconds.
 - **SC-009**: On a standard laptop viewport (~1440×900), interacting with highest/lowest summary rows does not require scrolling the map out of view.
 - **SC-010**: For Chicago (or another metro with water-only TIGER tracts), after census land/water backfill, Discover does not color Lake Michigan water-only tracts and does not list them as city highest/lowest.
+- **SC-011**: For a demo city with a high overall (≥75-style) and a mid/low overall in the snapshot, testers recognize that summary score numbers use the same quality color language as report/dashboard scores (not merely “whatever is hottest on this map”).
 
 ## Assumptions
 
 - National tract shapes and overall scores already exist for a meaningful set of U.S. areas from prior ingest/scoring work; Discover surfaces what is already available rather than computing new scores on demand.
 - “City” for map lock still means the autocomplete place’s search bounding area. City **snapshot** membership is stricter: place polygon when available, else tighter core (centroid-in-inner-box), so summary highs/lows stay city-relevant.
 - Relative coloring is computed among scored **land** tracts in the current view; gray unscored land tracts are excluded from the relative scale; water-only (`aland = 0`) tracts are excluded from fills and snapshot entirely.
+- City snapshot **numeric** scores use absolute product score-quality colors (aligned with report/dashboard); map fills stay relative to the current view. Visitors may see a “lowest on this map” tract still colored “mid/good” in absolute terms, or a “highest” tract still “poor” absolute—that is intentional.
 - Header Discover link is visible on the same public chrome as other marketing/product nav items (exact label: “Discover”).
 - Mobile browsers are in scope for basic usability (search + map + popup), but desktop is the primary demo surface for the POC.
 - Future dimension toggles and report deep-links are deferred; this spec does not require schema changes solely for those. Land/water columns live on `census_tracts` via 002/003 (not Discover-owned schema).
@@ -189,3 +193,7 @@ Below the map, the visitor sees a compact **city snapshot** for the place they s
 - Q: How should the visitor clear Highest/Lowest map focus? → A: **B** — click a row to focus; click the other switches focus; click the active row again clears and restores city framing. Hover does not focus or clear.
 - Q: Should the active high/low row show selected styling? → A: **C** — selected/pressed visual state plus a short “Focused · click to clear” (or equivalent) hint on the active row.
 - Q: Keyboard support for high/low focus? → A: **B** — pointer/touch only for this POC; no keyboard map-focus requirement (native button activation may still fire click where the control is a `<button>`).
+
+### Session 2026-07-23 (snapshot score colors)
+
+- Q: Should city snapshot score numbers use map-relative colors or product score colors? → A: **Product absolute score-quality colors** (same bands as neighborhood report / dashboard overall scores) for average, highest, lowest, and min–max numerics. Map choropleth fills remain relative (FR-007).

@@ -14,11 +14,11 @@
 
 ### R1a — Tract land/water area (2026-07-23)
 
-**Decision**: National census path keeps TIGER `ALAND`/`AWATER` on `census_tracts` (same as 002 FR-004a). Water-only tracts stay in the warehouse; Discover filters presentation (`aland = 0`). Status/scoring denominators unchanged.
+**Decision**: National census path keeps TIGER `ALAND`/`AWATER` on `census_tracts` (same as 002 FR-004a). Water-only tracts (`aland = 0`) stay in the warehouse; Discover filters presentation. **Census done** for inventory, status, and `/coverage` requires non-NULL `aland` on every tract in the county so post-`010` prod drops below 100% until continuous national census backfill fills columns (no `INGEST_FORCE` required for NULL-aland counties).
 
-**Rationale**: One schema for smoke / metro_10 / national; Lake Michigan–style tracts otherwise pollute city maps/summaries without being “gaps” in national ingest.
+**Rationale**: One schema for smoke / metro_10 / national; Lake Michigan–style tracts otherwise pollute city maps/summaries; NULL `aland` must not look “complete” on `/coverage`.
 
-**Alternatives rejected**: Separate “display tracts” table; deleting water-only rows (breaks FEMA/score grain); ACS population as national census requirement for this amend.
+**Alternatives rejected**: Separate “display tracts” table; deleting water-only rows (breaks FEMA/score grain); treating NULL `aland` as done (hides backfill debt); ACS population as national census requirement for this amend.
 
 ### R2 — Jurisdiction extensibility
 
