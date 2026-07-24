@@ -115,7 +115,7 @@ jobs:
           print(candidates[0] if candidates else "")
           PY
             )
-          else:
+          else
             echo "Could not inspect $IMG (missing or inaccessible) — will build"
             cat /tmp/worker-img.err || true
           fi
