@@ -96,4 +96,6 @@ jobs:
 
       - run: npm ci
       - run: npm run lint
+      # Same gate as Docker `npm run build` (Next runs tsc); catches TS before Deploy.
+      - run: npm run typecheck
       - run: npm test

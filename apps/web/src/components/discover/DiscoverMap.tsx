@@ -45,6 +45,11 @@ function fitCityAndLockMinZoom(
     const z = map.getZoom();
     map.setMinZoom(z);
     const b = map.getBounds();
+    // getBounds() is typed nullable (map not ready); skip lock until we have a view.
+    if (!b) {
+      options?.onDone?.();
+      return;
+    }
     const padX = Math.max((b.getEast() - b.getWest()) * 0.02, 0.001);
     const padY = Math.max((b.getNorth() - b.getSouth()) * 0.02, 0.001);
     map.setMaxBounds([
@@ -237,7 +242,7 @@ export default function DiscoverMap({
         type: "FeatureCollection" as const,
         features: tracts.features.map((f) => ({
           type: "Feature" as const,
-          geometry: f.geometry as GeoJSON.Geometry,
+          geometry: f.geometry as unknown as GeoJSON.Geometry,
           properties: {
             geoid: f.properties.geoid,
             overall_score: f.properties.overall_score,
@@ -301,7 +306,7 @@ export default function DiscoverMap({
       );
       if (!feature) return;
       const featureBounds = boundsFromGeometry(
-        feature.geometry as GeoJSON.Geometry,
+        feature.geometry as unknown as GeoJSON.Geometry,
       );
       if (!featureBounds || featureBounds.isEmpty()) return;
       map.fitBounds(featureBounds, {
