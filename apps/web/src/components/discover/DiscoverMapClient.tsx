@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useEffect, useMemo, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import DiscoverMap from "@/components/discover/DiscoverMap";
@@ -26,23 +26,60 @@ function parseBBox(params: URLSearchParams): DiscoverBBox | null {
   return { min_lng, min_lat, max_lng, max_lat };
 }
 
+function bboxFetchKey(bbox: DiscoverBBox, place: string): string {
+  return [
+    place,
+    bbox.min_lng,
+    bbox.min_lat,
+    bbox.max_lng,
+    bbox.max_lat,
+  ].join("|");
+}
+
 function DiscoverMapInner() {
   const searchParams = useSearchParams();
   const place = searchParams.get("place")?.trim() || "Selected place";
-  const bbox = useMemo(() => parseBBox(searchParams), [searchParams]);
+  const bbox = parseBBox(searchParams);
 
+  if (!bbox) {
+    return (
+      <div className="space-y-4">
+        <h1 className="font-display text-3xl font-bold">Discover map</h1>
+        <p className="text-muted-foreground">
+          This map link is missing a valid place area. Search again from
+          Discover.
+        </p>
+        <Link href="/discover" className="text-mint font-semibold underline">
+          Back to Discover
+        </Link>
+      </div>
+    );
+  }
+
+  // Remount on place/bbox change so load/error/focus reset without sync setState in effects.
+  return (
+    <DiscoverMapLoader
+      key={bboxFetchKey(bbox, place)}
+      bbox={bbox}
+      place={place}
+    />
+  );
+}
+
+function DiscoverMapLoader({
+  bbox,
+  place,
+}: {
+  bbox: DiscoverBBox;
+  place: string;
+}) {
   const [tracts, setTracts] = useState<DiscoverTractsResponse | null>(null);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [focusedGeoid, setFocusedGeoid] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!bbox) return;
     let cancelled = false;
-    setLoading(true);
-    setError(null);
-    setTracts(null);
-    setFocusedGeoid(null);
 
     const qs = new URLSearchParams({
       min_lng: String(bbox.min_lng),
@@ -81,21 +118,6 @@ function DiscoverMapInner() {
       cancelled = true;
     };
   }, [bbox, place]);
-
-  if (!bbox) {
-    return (
-      <div className="space-y-4">
-        <h1 className="font-display text-3xl font-bold">Discover map</h1>
-        <p className="text-muted-foreground">
-          This map link is missing a valid place area. Search again from
-          Discover.
-        </p>
-        <Link href="/discover" className="text-mint font-semibold underline">
-          Back to Discover
-        </Link>
-      </div>
-    );
-  }
 
   const scores =
     tracts?.features.map((f) => f.properties.overall_score) ?? [];
